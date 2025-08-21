@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.2] - 2025-08-21
+### Added
+- Github actions for building and pushing images to docker hub.
 
 ## [v1.3.1] - 2025-08-20
-###
-- Fixed TUI distortion when title-tidy is used over ssh
+### Fixed
+- TUI distortion when title-tidy is used over ssh
 ### Added
 - Github actions for build validation and test coverage.
 - More unit tests to meet new testing requirements.
