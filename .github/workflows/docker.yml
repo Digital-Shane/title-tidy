@@ -37,7 +37,7 @@ jobs:
           # 2) Push to main     -> add "latest"
           # 3) Any tag push     -> add the exact tag name
           tags: |
-            type=raw,value=develop,enable=${{ startsWith(github.ref, 'refs/heads/') }}
+            type=raw,value=develop,enable=${{ startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=tag
 
