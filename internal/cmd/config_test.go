@@ -2,13 +2,10 @@ package cmd
 
 import (
 	"context"
-	"os"
 	"testing"
-	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/treeview"
-	"github.com/google/go-cmp/cmp"
 )
 
 func TestCreateMediaFilter(t *testing.T) {
@@ -54,43 +51,6 @@ func TestUnwrapRoot(t *testing.T) {
 	got2 := UnwrapRoot(tr2)
 	if len(got2) != 2 || got2[0] != a || got2[1] != b {
 		t.Errorf("UnwrapRoot(multi) = %v, want originals [%v %v]", got2, a, b)
-	}
-}
-
-func TestSimpleFileInfo(t *testing.T) {
-	d := &SimpleFileInfo{name: "Dir", isDir: true}
-	if !d.IsDir() {
-		t.Errorf("SimpleFileInfo.IsDir(dir) = false, want true")
-	}
-	if d.Name() != "Dir" {
-		t.Errorf("SimpleFileFileInfo.Name() = %v, want %v", d.Name(), "Dir")
-	}
-	if d.Mode()&os.ModeDir == 0 {
-		t.Errorf("SimpleFileInfo.Mode() missing directory bit: %v", d.Mode())
-	}
-	if d.Size() != 0 {
-		t.Errorf("SimpleFileInfo.Size() = %v, want 0", d.Size())
-	}
-	if d.Sys() != nil {
-		t.Errorf("SimpleFileInfo.Sys() = %v, want nil", d.Sys())
-	}
-	// Check ModTime is recent
-	if time.Since(d.ModTime()) > time.Minute {
-		t.Errorf("SimpleFileInfo.ModTime() = %v, want recent time", d.ModTime())
-	}
-
-	f := &SimpleFileInfo{name: "file.txt", isDir: false}
-	if f.IsDir() {
-		t.Errorf("SimpleFileInfo.IsDir(file) = true, want false")
-	}
-	if diff := cmp.Diff("file.txt", f.Name()); diff != "" {
-		t.Errorf("SimpleFileInfo.Name() mismatch (-want +got)\n%s", diff)
-	}
-	if f.Mode()&os.ModeDir != 0 {
-		t.Errorf("SimpleFileInfo.Mode() has directory bit set for file: %v", f.Mode())
-	}
-	if f.Mode()&0644 != 0644 {
-		t.Errorf("SimpleFileInfo.Mode() for file = %v, want 0644", f.Mode())
 	}
 }
 
@@ -223,16 +183,16 @@ func findNodeByName(tree *treeview.Tree[treeview.FileInfo], name string) *treevi
 
 // Shared helpers for cmd package tests
 func testNewFileNode(name string) *treeview.Node[treeview.FileInfo] {
-	return treeview.NewNode(name, name, treeview.FileInfo{FileInfo: &SimpleFileInfo{name: name, isDir: false}, Path: name})
+	return treeview.NewNode(name, name, treeview.FileInfo{FileInfo: core.NewSimpleFileInfo(name, false), Path: name})
 }
 func testNewDirNode(name string) *treeview.Node[treeview.FileInfo] {
-	return treeview.NewNode(name, name, treeview.FileInfo{FileInfo: &SimpleFileInfo{name: name, isDir: true}, Path: name})
+	return treeview.NewNode(name, name, treeview.FileInfo{FileInfo: core.NewSimpleFileInfo(name, true), Path: name})
 }
 func testNewTree(nodes ...*treeview.Node[treeview.FileInfo]) *treeview.Tree[treeview.FileInfo] {
 	return treeview.NewTree(nodes)
 }
 func testTreeviewFileInfo(name string, isDir bool) treeview.FileInfo {
-	return treeview.FileInfo{FileInfo: &SimpleFileInfo{name: name, isDir: isDir}, Path: name}
+	return treeview.FileInfo{FileInfo: core.NewSimpleFileInfo(name, isDir), Path: name}
 }
 func assertBool(t *testing.T, got bool, want bool, desc string) {
 	t.Helper()

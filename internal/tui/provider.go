@@ -119,9 +119,9 @@ func selectTreeIconSet() map[string]string {
 
 func isSshSession() bool {
 	return os.Getenv("SSH_CLIENT") != "" ||
-			os.Getenv("SSH_TTY") != "" ||
-			os.Getenv("SSH_CONNECTION") != "" ||
-			os.Getenv("SSH_CLIENT") != ""
+		os.Getenv("SSH_TTY") != "" ||
+		os.Getenv("SSH_CONNECTION") != "" ||
+		os.Getenv("SSH_CLIENT") != ""
 }
 
 // CreateRenameProvider constructs the [treeview.DefaultNodeProvider] used by

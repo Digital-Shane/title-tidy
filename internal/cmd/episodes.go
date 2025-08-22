@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/treeview"
@@ -13,7 +14,7 @@ import (
 var EpisodesCommand = CommandConfig{
 	maxDepth:    1,
 	includeDirs: false,
-	annotate: func(t *treeview.Tree[treeview.FileInfo]) {
+	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) {
 		for ni := range t.All(context.Background()) {
 			// Only operate on leaf nodes (files) at depth 0; directories are excluded by includeDirs=false.
 			if ni.Node.Data().IsDir() {
@@ -21,7 +22,18 @@ var EpisodesCommand = CommandConfig{
 			}
 			m := core.EnsureMeta(ni.Node)
 			m.Type = core.MediaEpisode
-			m.NewName = media.FormatEpisodeName(ni.Node.Name(), ni.Node)
+
+			// Parse season/episode from filename
+			season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
+			if !found {
+				continue
+			}
+
+			// Preserve the file extension (with language code for subtitles)
+			ext := media.ExtractExtension(ni.Node.Name())
+
+			// Apply template and add extension - Episodes command has no show/year context
+			m.NewName = cfg.ApplyEpisodeTemplate("", "", season, episode) + ext
 		}
 	},
 }

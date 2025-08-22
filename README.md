@@ -1,4 +1,6 @@
-# Title Tidy
+<div align="center">
+  <img src="logo.png" alt="Title Tidy Logo" height="300">
+</div>
 
 Title tidy is the quickest way to standardizes your media file names for use in Jellyfin, Plex, and Emby. Title tidy uses
 intelligent parsing of folder structures and file names to automatically determine exactly how to name media. Whether you

@@ -66,7 +66,7 @@ func TestExtractSubtitleSuffix(t *testing.T) {
 		{"noext", ""},
 	}
 	for _, tc := range tests {
-		if got := ExtractSubtitleSuffix(tc.in); got != tc.want {
+		if got := extractSubtitleSuffix(tc.in); got != tc.want {
 			t.Errorf("ExtractSubtitleSuffix(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
@@ -103,7 +103,7 @@ func TestExtractExtension(t *testing.T) {
 		{"trailingdot.", "."},
 	}
 	for _, tc := range tests {
-		if got := ExtractExtension(tc.in); got != tc.want {
+		if got := extractExtension(tc.in); got != tc.want {
 			t.Errorf("ExtractExtension(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
@@ -188,12 +188,12 @@ func TestParseSeasonEpisode_FallbackFailure_NilNode(t *testing.T) {
 
 func TestFirstIntFromRegexps_EmptySubmatch(t *testing.T) {
 	t.Parallel()
-	
+
 	// Test with regex that has empty capturing groups to hit line 150-151
 	// This regex matches but has empty first capture group
 	re := regexp.MustCompile(`(\d*)test(\d+)`)
-	
-	// Input where first group matches empty string but second matches number  
+
+	// Input where first group matches empty string but second matches number
 	got, ok := firstIntFromRegexps("test123", re)
 	if !ok || got != 123 {
 		t.Errorf("firstIntFromRegexps with empty submatch = (%d,%v), want (123,true)", got, ok)

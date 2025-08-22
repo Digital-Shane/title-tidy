@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 )
 
@@ -14,7 +15,7 @@ func TestShowsCommandAnnotate(t *testing.T) {
 	show.AddChild(season)
 	tr := testNewTree(show)
 
-	ShowsCommand.annotate(tr)
+	ShowsCommand.annotate(tr, config.DefaultConfig())
 
 	sm := core.GetMeta(show)
 	if sm == nil || sm.Type != core.MediaShow || sm.NewName == "" {

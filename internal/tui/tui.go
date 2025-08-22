@@ -102,7 +102,7 @@ type RenameModel struct {
 	statsDirty bool
 
 	// Icon support
-	iconSet     map[string]string
+	iconSet map[string]string
 }
 
 // NewRenameModel returns an initialized RenameModel for the provided tree with
@@ -332,7 +332,7 @@ func (m *RenameModel) renderStatusBar() string {
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
 		return statusStyleBase.Width(m.width).Render(combined)
 	}
-	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  r: Rename  │  d: Remove  │  esc: Quit", 
+	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  r: Rename  │  d: Remove  │  esc: Quit",
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
 		m.getIcon("arrows")[2:]) // Last two characters (left/right arrows)
 	return statusStyleBase.Width(m.width).Render(statusText)

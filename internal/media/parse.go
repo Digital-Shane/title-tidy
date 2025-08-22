@@ -78,10 +78,10 @@ func IsImage(filename string) bool {
 	return imageRe.MatchString(filename)
 }
 
-// ExtractSubtitleSuffix extracts the language code and extension from subtitle files.
+// extractSubtitleSuffix extracts the language code and extension from subtitle files.
 // For example: "movie.en.srt" returns ".en.srt", "movie.srt" returns ".srt"
 // Also handles cases like "movie.eng.srt", "movie.en-US.srt", etc.
-func ExtractSubtitleSuffix(filename string) string {
+func extractSubtitleSuffix(filename string) string {
 	if !IsSubtitle(filename) {
 		return ""
 	}
@@ -132,9 +132,20 @@ func ParseSeasonEpisode(input string, node *treeview.Node[treeview.FileInfo]) (i
 	return tryEpisodeFromContext(input, node)
 }
 
-// ExtractExtension extracts the file extension including the dot.
-// Returns the extension (e.g., ".mp4") or empty string if no extension found.
+// ExtractExtension extracts the file extension.
 func ExtractExtension(filename string) string {
+	ext := ""
+	if IsSubtitle(filename) {
+		ext = extractSubtitleSuffix(filename)
+	} else {
+		ext = extractExtension(filename)
+	}
+	return ext
+}
+
+// extractExtension extracts the file extension including the dot.
+// Returns the extension (e.g., ".mp4") or empty string if no extension found.
+func extractExtension(filename string) string {
 	if dotIndex := strings.LastIndex(filename, "."); dotIndex != -1 {
 		return filename[dotIndex:]
 	}
