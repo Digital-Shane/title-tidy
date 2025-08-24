@@ -79,11 +79,6 @@ func RunCommand(cfg CommandConfig) error {
 	// Mark files for deletion based on flags
 	MarkFilesForDeletion(t, cfg.DeleteNFO, cfg.DeleteImages)
 
-	// Propagate link mode to all nodes if linking is enabled
-	if cfg.LinkMode != core.LinkModeNone {
-		SetLinkMode(t, cfg.LinkMode, cfg.LinkTarget)
-	}
-
 	// Create model
 	model := tui.NewRenameModel(t)
 	model.IsMovieMode = cfg.movieMode
@@ -172,11 +167,3 @@ func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, delete
 	}
 }
 
-// SetLinkMode propagates link mode configuration to all nodes in the tree
-func SetLinkMode(t *treeview.Tree[treeview.FileInfo], linkMode core.LinkMode, linkTarget string) {
-	for ni := range t.All(context.Background()) {
-		meta := core.EnsureMeta(ni.Node)
-		meta.LinkMode = linkMode
-		meta.LinkTarget = linkTarget
-	}
-}

@@ -117,11 +117,9 @@ func TestLinkRegular(t *testing.T) {
 			// Setup metadata
 			mm := core.EnsureMeta(node)
 			mm.NewName = tt.newName
-			mm.LinkMode = tt.linkMode
-			mm.LinkTarget = tt.linkTarget
 			
-			// Perform link operation
-			operated, err := LinkRegular(node, mm)
+			// Perform link operation with direct parameters
+			operated, err := LinkRegular(node, mm, tt.linkMode, tt.linkTarget)
 			
 			// Check error expectation
 			if (err != nil) != tt.wantErr {
@@ -228,7 +226,6 @@ func TestCreateVirtualDirWithLinks(t *testing.T) {
 	dirMeta.NewName = "Movie Collection"
 	dirMeta.IsVirtual = true
 	dirMeta.NeedsDirectory = true
-	dirMeta.LinkMode = core.LinkModeAuto
 	
 	// Create child nodes
 	fileInfo1, _ := os.Stat(file1)
@@ -239,7 +236,6 @@ func TestCreateVirtualDirWithLinks(t *testing.T) {
 	})
 	child1Meta := core.EnsureMeta(child1)
 	child1Meta.NewName = "Movie 1.mkv"
-	child1Meta.LinkMode = core.LinkModeAuto
 	
 	fileInfo2, _ := os.Stat(file2)
 	child2 := treeview.NewNode(file2, file2, treeview.FileInfo{
@@ -249,12 +245,11 @@ func TestCreateVirtualDirWithLinks(t *testing.T) {
 	})
 	child2Meta := core.EnsureMeta(child2)
 	child2Meta.NewName = "Movie 2.mkv"
-	child2Meta.LinkMode = core.LinkModeAuto
 	
 	virtualNode.SetChildren([]*treeview.Node[treeview.FileInfo]{child1, child2})
 	
-	// Execute the function
-	successes, errs := CreateVirtualDirWithLinks(virtualNode, dirMeta)
+	// Execute the function with link mode
+	successes, errs := CreateVirtualDirWithLinks(virtualNode, dirMeta, core.LinkModeAuto, "")
 	
 	// Check results
 	if len(errs) > 0 {
@@ -311,11 +306,9 @@ func TestLinkModeWithTargetDirectory(t *testing.T) {
 	// Setup metadata with target directory
 	mm := core.EnsureMeta(node)
 	mm.NewName = "S01E01.mkv"
-	mm.LinkMode = core.LinkModeAuto
-	mm.LinkTarget = targetDir
 	
-	// Perform link operation
-	operated, err := LinkRegular(node, mm)
+	// Perform link operation with direct parameters
+	operated, err := LinkRegular(node, mm, core.LinkModeAuto, targetDir)
 	if err != nil {
 		t.Fatalf("LinkRegular() error = %v", err)
 	}
@@ -359,9 +352,8 @@ func TestLinkFailureHandling(t *testing.T) {
 	// Try to link with conflicting name
 	mm := core.EnsureMeta(node)
 	mm.NewName = "conflict.txt"
-	mm.LinkMode = core.LinkModeHard
 	
-	operated, err := LinkRegular(node, mm)
+	operated, err := LinkRegular(node, mm, core.LinkModeHard, "")
 	
 	// Should fail due to existing file
 	if err == nil {

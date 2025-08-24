@@ -111,15 +111,15 @@ func calculateTargetPath(sourcePath string, targetRoot string, newName string) (
 
 // LinkRegular creates a link to a node; returns true only when a link was successfully created.
 // It tries hard linking first, then falls back to soft linking if that fails.
-func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bool, error) {
+func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, linkMode core.LinkMode, linkTarget string) (bool, error) {
 	oldPath := node.Data().Path
 	
 	// Determine target path
 	var targetPath string
 	var err error
-	if mm.LinkTarget != "" {
+	if linkTarget != "" {
 		// Link to different directory with structure preservation
-		targetPath, err = calculateTargetPath(oldPath, mm.LinkTarget, mm.NewName)
+		targetPath, err = calculateTargetPath(oldPath, linkTarget, mm.NewName)
 		if err != nil {
 			return false, mm.Fail(err)
 		}
@@ -151,13 +151,13 @@ func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bo
 	}
 	
 	// Try hard link first if in auto or hard mode
-	if mm.LinkMode == core.LinkModeAuto || mm.LinkMode == core.LinkModeHard {
+	if linkMode == core.LinkModeAuto || linkMode == core.LinkModeHard {
 		if err := os.Link(absOldPath, targetPath); err == nil {
 			mm.Success()
 			// Update node path to reflect the link location
 			node.Data().Path = targetPath
 			return true, nil
-		} else if mm.LinkMode == core.LinkModeHard {
+		} else if linkMode == core.LinkModeHard {
 			// Hard link required but failed
 			return false, mm.Fail(fmt.Errorf("hard link failed: %w", err))
 		}
@@ -215,17 +215,17 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta
 // CreateVirtualDirWithLinks materializes a virtual movie directory then links its children into it.
 //
 // Returns a count of successful operations (directory creation + child links), and contextual errors
-func CreateVirtualDirWithLinks(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (int, []error) {
+func CreateVirtualDirWithLinks(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, linkMode core.LinkMode, linkTarget string) (int, []error) {
 	successes := 0
 	errs := []error{}
 
 	// Determine where to create the directory
 	var dirPath string
-	if mm.LinkTarget != "" {
+	if linkTarget != "" {
 		// Create directory in target location
 		// Calculate relative path for the virtual directory
 		relPath := mm.NewName
-		dirPath = filepath.Join(mm.LinkTarget, relPath)
+		dirPath = filepath.Join(linkTarget, relPath)
 	} else {
 		// Create directory in current location
 		dirPath = filepath.Join(".", mm.NewName)
@@ -260,10 +260,10 @@ func CreateVirtualDirWithLinks(node *treeview.Node[treeview.FileInfo], mm *core.
 		
 		// Try hard link first if in auto or hard mode
 		linked := false
-		if cm.LinkMode == core.LinkModeAuto || cm.LinkMode == core.LinkModeHard {
+		if linkMode == core.LinkModeAuto || linkMode == core.LinkModeHard {
 			if err := os.Link(absOldPath, targetPath); err == nil {
 				linked = true
-			} else if cm.LinkMode == core.LinkModeHard {
+			} else if linkMode == core.LinkModeHard {
 				// Hard link required but failed
 				errs = append(errs, fmt.Errorf("%s hard link: %w", child.Name(), cm.Fail(err)))
 				continue
@@ -315,8 +315,8 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						// Create the directory and handle children based on link mode
 						var s int
 						var errs []error
-						if mm.LinkMode != core.LinkModeNone {
-							s, errs = CreateVirtualDirWithLinks(node, mm)
+						if m.LinkMode != core.LinkModeNone {
+							s, errs = CreateVirtualDirWithLinks(node, mm, m.LinkMode, m.LinkTarget)
 						} else {
 							s, errs = CreateVirtualDir(node, mm)
 						}
@@ -383,8 +383,8 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						// Perform the filesystem operation based on link mode
 						var operated bool
 						var err error
-						if mm.LinkMode != core.LinkModeNone {
-							operated, err = LinkRegular(node, mm)
+						if m.LinkMode != core.LinkModeNone {
+							operated, err = LinkRegular(node, mm, m.LinkMode, m.LinkTarget)
 						} else {
 							operated, err = RenameRegular(node, mm)
 						}
