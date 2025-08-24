@@ -1,0 +1,7 @@
+services:
+  title-tidy:
+    image: digitalnal/title-tidy:latest
+    volumes:
+      - ./media:/app/media
+    working_dir: /app/media
+    entrypoint: ["/bin/sh"]
