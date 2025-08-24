@@ -38,7 +38,8 @@ _validate_mode mode:
 		mv|movies)   echo "movies"   ;;
 		se|seasons)  echo "seasons"  ;;
 		sw|shows)    echo "shows"    ;;
-		*) echo "Invalid mode: {{mode}}" >&2; echo "Allowed: ep|episodes mv|movies se|seasons sw|shows" >&2; exit 1 ;;
+		config)      echo "config"   ;;
+		*) echo "Invalid mode: {{mode}}" >&2; echo "Allowed: ep|episodes mv|movies se|seasons sw|shows config" >&2; exit 1 ;;
 	esac
 
 
@@ -52,8 +53,9 @@ _publish_gif gif_path:
 #   just demo mv       # movies demo
 #   just demo se       # seasons demo
 #   just demo sw       # shows demo
+#   just demo config   # config demo
 # Synonyms accepted:
-#   ep|episodes  mv|movies  se|seasons  sw|shows
+#   ep|episodes  mv|movies  se|seasons  sw|shows  config
 # Steps performed:
 # 1. go install . (ensure latest binary in PATH)
 # 2. Run matching demo/make.sh to generate demo data under demo/data
@@ -86,6 +88,7 @@ demo target:
 
 # Generate a gif for a specific demo mode
 # Usage: just create-gif episodes
+# Usage: just create-gif config
 create-gif mode:
 	#!/usr/bin/env bash
 	set -euo pipefail
@@ -95,11 +98,18 @@ create-gif mode:
 	demo_dir="$(pwd)/demo/$target"
 	cd "$demo_dir"
 	echo "Generating gif for $target demo..."
-	vhs demo.tape
+	if [ "$target" = "config" ]; then
+		./backup-config.sh
+		vhs demo.tape
+		./restore-config.sh
+	else
+		vhs demo.tape
+	fi
 	echo "Created $demo_dir/demo.gif"
 
 # Generate, publish and update README for a specific demo
 # Usage: just update-gif episodes
+# Usage: just update-gif config
 update-gif mode:
 	#!/usr/bin/env bash
 	set -euo pipefail
@@ -109,7 +119,13 @@ update-gif mode:
 	demo_dir="$(pwd)/demo/$target"
 	cd "$demo_dir"
 	echo "Generating gif for $target demo..."
-	vhs demo.tape
+	if [ "$target" = "config" ]; then
+		./backup-config.sh
+		vhs demo.tape
+		./restore-config.sh
+	else
+		vhs demo.tape
+	fi
 	echo "Publishing gif to vhs.charm.sh..."
 	gif_url=$(vhs publish demo.gif)
 	rm -f demo.gif
@@ -122,6 +138,7 @@ update-gif mode:
 		movies)   section_header="### Movies"   ;;
 		seasons)  section_header="### Seasons"  ;;
 		shows)    section_header="### Shows"    ;;
+		config)   section_header="### Config"   ;;
 	esac
 	# Update the gif URL in the line following the section header
 	# This matches the pattern ![text](url) and replaces the URL part
@@ -137,6 +154,7 @@ update-gif mode:
 
 # Update all demo gifs in README
 @update-all-gifs:
+	just update-gif config
 	just update-gif episodes
 	just update-gif movies
 	just update-gif seasons

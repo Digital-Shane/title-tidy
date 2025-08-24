@@ -28,6 +28,39 @@ title-tidy [command]
 
 ## Commands
 
+### Config
+
+```bash
+title-tidy config
+```
+
+Title Tidy allows you to completely customize how your media files are named using configurable templates:
+
+![config demo](https://vhs.charm.sh/vhs-2rOLUfADomJlkelyTqdLx1.gif)
+
+This opens an interactive interface where you can customize the naming templates for:
+* **Show folders**: How TV show directories are named (default: `{show} ({year})`)
+* **Season folders**: How season directories are named (default: `{season_name}`)
+* **Episode files**: How individual episodes are named (default: `{season_code}{episode_code}`)
+* **Movie folders**: How movie directories are named (default: `{movie} ({year})`)
+
+**Available template variables:**
+* `{show}` - Show name (cleaned)
+* `{movie}` - Movie name (cleaned)  
+* `{year}` - Year from filename
+* `{season}` - Season number (e.g., "01")
+* `{season_code}` - Season with prefix (e.g., "S01")
+* `{season_name}` - Full season name (e.g., "Season 01")
+* `{episode}` - Episode number (e.g., "01")
+* `{episode_code}` - Episode with prefix (e.g., "E01")
+
+**Template examples:**
+* `{show} - {season_code}{episode_code}` → "Breaking Bad - S01E01"
+* `{season_name}` → "Season 01"
+* `{movie} [{year}]` → "The Matrix [1999]"
+
+Your custom templates are saved to `~/.title-tidy/config.json` and will be used for all future renames.
+
 ### Shows
 
 ```bash
@@ -39,7 +72,7 @@ the entire directory structure: show folders, season folders, and all episode fi
 command can process multiple shows at once. Episode files named only after the episode
 will retrieve the season number from the parent directory name. 
 
-![shows demo](https://vhs.charm.sh/vhs-khp71wEjoZxTZlWgZqKZO.gif)
+![shows demo](https://vhs.charm.sh/vhs-18YzRjjqaHeeA7T3oSkjAC.gif)
 
 **Before → After examples:**
 ```
