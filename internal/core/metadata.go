@@ -13,6 +13,16 @@ const (
 	MediaMovieFile                  // File inside a movie directory (video or subtitle)
 )
 
+// LinkMode specifies the type of file system link to create instead of renaming.
+type LinkMode int
+
+const (
+	LinkModeNone LinkMode = iota // Normal rename operation (no linking)
+	LinkModeAuto                  // Try hard link first, fall back to soft link
+	LinkModeHard                  // Hard links only (fail if not possible)
+	LinkModeSoft                  // Soft/symbolic links only
+)
+
 // RenameStatus represents the lifecycle stage of a proposed rename operation.
 // A node starts at RenameStatusNone; after execution it is marked success or
 // error with an accompanying message when relevant.

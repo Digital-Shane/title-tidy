@@ -24,6 +24,8 @@ import (
 //   - InstantMode: apply renames immediately without interactive preview.
 //   - DeleteNFO: mark NFO files for deletion during rename.
 //   - DeleteImages: mark image files for deletion during rename.
+//   - LinkMode: type of file system link to create instead of renaming.
+//   - LinkTarget: root directory for creating linked file structure.
 type CommandConfig struct {
 	maxDepth     int
 	includeDirs  bool
@@ -34,6 +36,8 @@ type CommandConfig struct {
 	DeleteNFO    bool
 	DeleteImages bool
 	Config       *config.FormatConfig
+	LinkMode     core.LinkMode
+	LinkTarget   string
 }
 
 func RunCommand(cfg CommandConfig) error {
@@ -80,6 +84,8 @@ func RunCommand(cfg CommandConfig) error {
 	model.IsMovieMode = cfg.movieMode
 	model.DeleteNFO = cfg.DeleteNFO
 	model.DeleteImages = cfg.DeleteImages
+	model.LinkMode = cfg.LinkMode
+	model.LinkTarget = cfg.LinkTarget
 
 	// If instant mode, perform renames immediately
 	if cfg.InstantMode {
@@ -160,3 +166,4 @@ func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, delete
 		}
 	}
 }
+
