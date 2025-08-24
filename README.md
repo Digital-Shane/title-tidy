@@ -178,10 +178,9 @@ Some Film (2022)/                                  → Some Film (2022)/
 
 ## Installation
 
-### Prerequisites
+### Option 1: Go Install (Recommended)
 
-Before installing Title Tidy, you need to have Go (Golang) installed on your computer.
-Go is a programming language that Title Tidy is built with.
+The recommended way to install Title Tidy is using Go. This provides the best performance and easiest usage.
 
 #### Installing Go
 
@@ -200,12 +199,59 @@ Go is a programming language that Title Tidy is built with.
 2. Download the Linux tarball for your architecture
 3. Extract and install.
 
-### Installing Title Tidy
+#### Installing Title Tidy
 
 Once Go is installed, you can install Title Tidy with a single command:
 
 ```bash
 go install github.com/Digital-Shane/title-tidy@latest
+```
+
+### Option 2: Docker
+
+For containerized environments or if you prefer not to install Go, you can use Docker:
+
+```bash
+# Pull the latest image
+docker pull digitalnal/title-tidy:latest
+
+# Run a command (replace /path/to/your/media with your actual media directory)
+docker run -v /path/to/your/media:/app/media -w /app/media digitalnal/title-tidy:latest title-tidy shows
+```
+
+#### Docker Compose
+
+For repeated usage, you can use Docker Compose for easy interactive access:
+
+```yaml
+services:
+  title-tidy:
+    image: digitalnal/title-tidy:latest
+    volumes:
+      - ./media:/app/media
+    working_dir: /app/media
+    entrypoint: ["/bin/sh"]
+```
+
+Then run:
+```bash
+# Drop into an interactive shell in the container
+docker-compose run --rm title-tidy
+
+# Once inside the container, you can run title-tidy commands directly:
+# title-tidy shows
+# title-tidy seasons  
+# title-tidy episodes
+# exit
+```
+
+#### Building Locally
+
+You can also build the Docker image locally:
+
+```bash
+docker build -t title-tidy .
+docker run -v /path/to/your/media:/app/media -w /app/media title-tidy title-tidy shows
 ```
 
 ## Built With
