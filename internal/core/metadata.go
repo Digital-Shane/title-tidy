@@ -13,6 +13,16 @@ const (
 	MediaMovieFile                  // File inside a movie directory (video or subtitle)
 )
 
+// LinkMode specifies the type of file system link to create instead of renaming.
+type LinkMode int
+
+const (
+	LinkModeNone LinkMode = iota // Normal rename operation (no linking)
+	LinkModeAuto                  // Try hard link first, fall back to soft link
+	LinkModeHard                  // Hard links only (fail if not possible)
+	LinkModeSoft                  // Soft/symbolic links only
+)
+
 // RenameStatus represents the lifecycle stage of a proposed rename operation.
 // A node starts at RenameStatusNone; after execution it is marked success or
 // error with an accompanying message when relevant.
@@ -37,6 +47,8 @@ const (
 //   - NeedsDirectory: Signals that a directory must be created before children
 //     are renamed beneath it (typically paired with IsVirtual).
 //   - MarkedForDeletion: True when the file should be deleted during rename operation.
+//   - LinkMode: Type of link to create instead of renaming (None for normal rename).
+//   - LinkTarget: Root directory for creating linked file structure.
 //
 // The zero value is meaningful: it encodes an untyped, unprocessed node with no rename proposal.
 type MediaMeta struct {
@@ -47,6 +59,8 @@ type MediaMeta struct {
 	IsVirtual         bool
 	NeedsDirectory    bool
 	MarkedForDeletion bool
+	LinkMode          LinkMode
+	LinkTarget        string
 }
 
 // GetMeta retrieves the existing *MediaMeta attached to n or nil when absent.

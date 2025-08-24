@@ -24,6 +24,8 @@ import (
 //   - InstantMode: apply renames immediately without interactive preview.
 //   - DeleteNFO: mark NFO files for deletion during rename.
 //   - DeleteImages: mark image files for deletion during rename.
+//   - LinkMode: type of file system link to create instead of renaming.
+//   - LinkTarget: root directory for creating linked file structure.
 type CommandConfig struct {
 	maxDepth     int
 	includeDirs  bool
@@ -34,6 +36,8 @@ type CommandConfig struct {
 	DeleteNFO    bool
 	DeleteImages bool
 	Config       *config.FormatConfig
+	LinkMode     core.LinkMode
+	LinkTarget   string
 }
 
 func RunCommand(cfg CommandConfig) error {
@@ -75,11 +79,18 @@ func RunCommand(cfg CommandConfig) error {
 	// Mark files for deletion based on flags
 	MarkFilesForDeletion(t, cfg.DeleteNFO, cfg.DeleteImages)
 
+	// Propagate link mode to all nodes if linking is enabled
+	if cfg.LinkMode != core.LinkModeNone {
+		SetLinkMode(t, cfg.LinkMode, cfg.LinkTarget)
+	}
+
 	// Create model
 	model := tui.NewRenameModel(t)
 	model.IsMovieMode = cfg.movieMode
 	model.DeleteNFO = cfg.DeleteNFO
 	model.DeleteImages = cfg.DeleteImages
+	model.LinkMode = cfg.LinkMode
+	model.LinkTarget = cfg.LinkTarget
 
 	// If instant mode, perform renames immediately
 	if cfg.InstantMode {
@@ -158,5 +169,14 @@ func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, delete
 			meta := core.EnsureMeta(ni.Node)
 			meta.MarkedForDeletion = true
 		}
+	}
+}
+
+// SetLinkMode propagates link mode configuration to all nodes in the tree
+func SetLinkMode(t *treeview.Tree[treeview.FileInfo], linkMode core.LinkMode, linkTarget string) {
+	for ni := range t.All(context.Background()) {
+		meta := core.EnsureMeta(ni.Node)
+		meta.LinkMode = linkMode
+		meta.LinkTarget = linkTarget
 	}
 }

@@ -80,6 +80,101 @@ func RenameRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (
 	return true, nil
 }
 
+// calculateTargetPath computes the target path for a link, preserving directory structure
+func calculateTargetPath(sourcePath string, targetRoot string, newName string) (string, error) {
+	// Get absolute source path
+	absSource, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	
+	// Get current working directory to calculate relative path
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	
+	// Calculate relative path from cwd
+	relPath, err := filepath.Rel(cwd, absSource)
+	if err != nil {
+		return "", err
+	}
+	
+	// Preserve directory structure in target
+	targetDir := targetRoot
+	if relDir := filepath.Dir(relPath); relDir != "." {
+		targetDir = filepath.Join(targetRoot, relDir)
+	}
+	
+	return filepath.Join(targetDir, newName), nil
+}
+
+// LinkRegular creates a link to a node; returns true only when a link was successfully created.
+// It tries hard linking first, then falls back to soft linking if that fails.
+func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bool, error) {
+	oldPath := node.Data().Path
+	
+	// Determine target path
+	var targetPath string
+	var err error
+	if mm.LinkTarget != "" {
+		// Link to different directory with structure preservation
+		targetPath, err = calculateTargetPath(oldPath, mm.LinkTarget, mm.NewName)
+		if err != nil {
+			return false, mm.Fail(err)
+		}
+		
+		// Ensure target directory exists
+		targetDir := filepath.Dir(targetPath)
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			return false, mm.Fail(fmt.Errorf("failed to create target directory: %w", err))
+		}
+	} else {
+		// Link in current directory (alongside original)
+		targetPath = filepath.Join(filepath.Dir(oldPath), mm.NewName)
+	}
+	
+	// Check if we're trying to link to the same file
+	if oldPath == targetPath {
+		return false, nil
+	}
+	
+	// Check if target already exists
+	if _, err := os.Stat(targetPath); err == nil {
+		return false, mm.Fail(fmt.Errorf("destination already exists"))
+	}
+	
+	// Get absolute path for source (needed for symlinks)
+	absOldPath, err := filepath.Abs(oldPath)
+	if err != nil {
+		return false, mm.Fail(err)
+	}
+	
+	// Try hard link first if in auto or hard mode
+	if mm.LinkMode == core.LinkModeAuto || mm.LinkMode == core.LinkModeHard {
+		if err := os.Link(absOldPath, targetPath); err == nil {
+			mm.Success()
+			// Update node path to reflect the link location
+			node.Data().Path = targetPath
+			return true, nil
+		} else if mm.LinkMode == core.LinkModeHard {
+			// Hard link required but failed
+			return false, mm.Fail(fmt.Errorf("hard link failed: %w", err))
+		}
+		// Auto mode: fall through to try soft link
+	}
+	
+	// Create soft link
+	if err := os.Symlink(absOldPath, targetPath); err != nil {
+		return false, mm.Fail(fmt.Errorf("soft link failed: %w", err))
+	}
+	
+	mm.Success()
+	// Update node path to reflect the link location
+	node.Data().Path = targetPath
+	return true, nil
+}
+
 // CreateVirtualDir materializes a virtual movie directory then renames its children beneath it.
 //
 // Returns a count of successful operations (directory creation + child renames), and contextual errors
@@ -117,6 +212,79 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta
 	return successes, errs
 }
 
+// CreateVirtualDirWithLinks materializes a virtual movie directory then links its children into it.
+//
+// Returns a count of successful operations (directory creation + child links), and contextual errors
+func CreateVirtualDirWithLinks(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (int, []error) {
+	successes := 0
+	errs := []error{}
+
+	// Determine where to create the directory
+	var dirPath string
+	if mm.LinkTarget != "" {
+		// Create directory in target location
+		// Calculate relative path for the virtual directory
+		relPath := mm.NewName
+		dirPath = filepath.Join(mm.LinkTarget, relPath)
+	} else {
+		// Create directory in current location
+		dirPath = filepath.Join(".", mm.NewName)
+	}
+
+	// Create the directory
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		errs = append(errs, fmt.Errorf("create %s: %w", dirPath, mm.Fail(err)))
+		return successes, errs
+	}
+
+	// Directory created successfully
+	successes++
+	mm.Success()
+	node.Data().Path = dirPath
+
+	// Link children into the new directory
+	for _, child := range node.Children() {
+		cm := core.GetMeta(child)
+		if cm == nil || cm.NewName == "" {
+			continue
+		}
+		
+		// Get absolute path of source file
+		absOldPath, err := filepath.Abs(child.Data().Path)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("abs path %s: %w", child.Name(), cm.Fail(err)))
+			continue
+		}
+		
+		targetPath := filepath.Join(dirPath, cm.NewName)
+		
+		// Try hard link first if in auto or hard mode
+		linked := false
+		if cm.LinkMode == core.LinkModeAuto || cm.LinkMode == core.LinkModeHard {
+			if err := os.Link(absOldPath, targetPath); err == nil {
+				linked = true
+			} else if cm.LinkMode == core.LinkModeHard {
+				// Hard link required but failed
+				errs = append(errs, fmt.Errorf("%s hard link: %w", child.Name(), cm.Fail(err)))
+				continue
+			}
+		}
+		
+		// Fall back to soft link if not linked yet
+		if !linked {
+			if err := os.Symlink(absOldPath, targetPath); err != nil {
+				errs = append(errs, fmt.Errorf("%s soft link: %w", child.Name(), cm.Fail(err)))
+				continue
+			}
+		}
+		
+		successes++
+		cm.Success()
+		child.Data().Path = targetPath
+	}
+	return successes, errs
+}
+
 // PerformRenames walks the tree bottom‑up executing pending rename operations.
 // It skips children of virtual directories (handled by the virtual parent) and
 // aggregates success / error counts into a renameCompleteMsg.
@@ -144,8 +312,14 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 					// Found a virtual directory
 					// check if it's the one we need to process
 					if currentCount == m.currentOpIndex {
-						// Create the directory and move its children into it
-						s, errs := CreateVirtualDir(node, mm)
+						// Create the directory and handle children based on link mode
+						var s int
+						var errs []error
+						if mm.LinkMode != core.LinkModeNone {
+							s, errs = CreateVirtualDirWithLinks(node, mm)
+						} else {
+							s, errs = CreateVirtualDir(node, mm)
+						}
 						m.successCount += s
 						m.errorCount += len(errs)
 						m.completedOps++
@@ -203,13 +377,21 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 				}
 				// Only process nodes that actually need renaming
 				if mm.NewName != "" && mm.NewName != node.Name() {
-					// Found a file to rename
+					// Found a file to rename or link
 					// check if it's the one we need to process
 					if currentCount == targetIndex {
-						// Perform the filesystem rename operation
-						if renamed, err := RenameRegular(node, mm); err != nil {
+						// Perform the filesystem operation based on link mode
+						var operated bool
+						var err error
+						if mm.LinkMode != core.LinkModeNone {
+							operated, err = LinkRegular(node, mm)
+						} else {
+							operated, err = RenameRegular(node, mm)
+						}
+						
+						if err != nil {
 							m.errorCount++
-						} else if renamed {
+						} else if operated {
 							m.successCount++
 						}
 						m.completedOps++
