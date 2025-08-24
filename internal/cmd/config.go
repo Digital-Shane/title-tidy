@@ -3,10 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
@@ -28,12 +27,13 @@ import (
 type CommandConfig struct {
 	maxDepth     int
 	includeDirs  bool
-	preprocess   func([]*treeview.Node[treeview.FileInfo]) []*treeview.Node[treeview.FileInfo]
-	annotate     func(*treeview.Tree[treeview.FileInfo])
+	preprocess   func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
+	annotate     func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig)
 	movieMode    bool
 	InstantMode  bool
 	DeleteNFO    bool
 	DeleteImages bool
+	Config       *config.FormatConfig
 }
 
 func RunCommand(cfg CommandConfig) error {
@@ -60,7 +60,7 @@ func RunCommand(cfg CommandConfig) error {
 	// 2. Prepare nodes
 	nodes := UnwrapRoot(t)
 	if cfg.preprocess != nil {
-		nodes = cfg.preprocess(nodes)
+		nodes = cfg.preprocess(nodes, cfg.Config)
 	}
 
 	// 3. Rebuild application tree with provider and expansion.
@@ -69,7 +69,7 @@ func RunCommand(cfg CommandConfig) error {
 		treeview.WithProvider(tui.CreateRenameProvider()),
 	)
 	if cfg.annotate != nil {
-		cfg.annotate(t)
+		cfg.annotate(t, cfg.Config)
 	}
 
 	// Mark files for deletion based on flags
@@ -131,26 +131,6 @@ func UnwrapRoot(t *treeview.Tree[treeview.FileInfo]) []*treeview.Node[treeview.F
 	}
 	return ns
 }
-
-// SimpleFileInfo implements os.FileInfo for synthetic (virtual) nodes inserted
-// into the tree (e.g. wrapping a standalone movie file in a virtual directory
-// before materialization on disk).
-type SimpleFileInfo struct {
-	name  string
-	isDir bool
-}
-
-func (m *SimpleFileInfo) Name() string { return m.name }
-func (m *SimpleFileInfo) Size() int64  { return 0 }
-func (m *SimpleFileInfo) Mode() os.FileMode {
-	if m.isDir {
-		return os.ModeDir | 0755
-	}
-	return 0644
-}
-func (m *SimpleFileInfo) ModTime() time.Time { return time.Now() }
-func (m *SimpleFileInfo) IsDir() bool        { return m.isDir }
-func (m *SimpleFileInfo) Sys() any           { return nil }
 
 // MarkFilesForDeletion traverses the tree and marks NFO and/or image files for deletion
 func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, deleteImages bool) {

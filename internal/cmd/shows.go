@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/treeview"
@@ -10,19 +12,59 @@ import (
 var ShowsCommand = CommandConfig{
 	maxDepth:    3,
 	includeDirs: true,
-	annotate: func(t *treeview.Tree[treeview.FileInfo]) {
-		for ni := range t.All(context.Background()) {
+	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) {
+		// Use BreadthFirst to process shows first, then seasons, then episodes
+		for ni := range t.BreadthFirst(context.Background()) {
 			m := core.EnsureMeta(ni.Node)
 			switch ni.Depth {
-			case 0:
+			case 0: // Shows
 				m.Type = core.MediaShow
-				m.NewName = media.FormatShowName(ni.Node.Name())
-			case 1:
+				// Extract name and year from original filename
+				formatted, year := config.ExtractNameAndYear(ni.Node.Name())
+				if formatted == "" {
+					continue
+				}
+				// Apply show template
+				m.NewName = cfg.ApplyShowFolderTemplate(formatted, year)
+
+			case 1: // Seasons
 				m.Type = core.MediaSeason
-				m.NewName = media.FormatSeasonName(ni.Node.Name())
-			default:
+				// Get show context from parent show node
+				var showName, year string
+				if showNode := ni.Node.Parent(); showNode != nil {
+					showName, year = config.ExtractNameAndYear(showNode.Name())
+				}
+
+				// Extract season number from directory name
+				season, found := media.ExtractSeasonNumber(ni.Node.Name())
+				if !found {
+					continue
+				}
+
+				// Apply season template with full context
+				m.NewName = cfg.ApplySeasonFolderTemplate(showName, year, season)
+
+			case 2: // Episodes
 				m.Type = core.MediaEpisode
-				m.NewName = media.FormatEpisodeName(ni.Node.Name(), ni.Node)
+				// Get show context from grandparent show node
+				var showName, year string
+				if seasonNode := ni.Node.Parent(); seasonNode != nil {
+					if showNode := seasonNode.Parent(); showNode != nil {
+						showName, year = config.ExtractNameAndYear(showNode.Name())
+					}
+				}
+
+				// Parse season/episode from filename
+				season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
+				if !found {
+					continue
+				}
+
+				// Preserve the file extension (with language code for subtitles)
+				ext := media.ExtractExtension(ni.Node.Name())
+
+				// Apply episode template with full context and add extension
+				m.NewName = cfg.ApplyEpisodeTemplate(showName, year, season, episode) + ext
 			}
 		}
 	},

@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/treeview"
 )
@@ -35,7 +36,7 @@ func TestMovieAnnotate_FileTypes(t *testing.T) {
 			dir.AddChild(file)
 			tr := testNewTree(dir)
 
-			MovieAnnotate(tr)
+			MovieAnnotate(tr, config.DefaultConfig())
 
 			fm := core.GetMeta(file)
 			if fm == nil {
@@ -57,7 +58,7 @@ func TestMoviePreprocess_DefensiveEmptyExtension(t *testing.T) {
 	video := testNewFileNode("movie.mkv")
 	nodes := []*treeview.Node[treeview.FileInfo]{nodeWithEmptyExt, video}
 
-	out := MoviePreprocess(nodes)
+	out := MoviePreprocess(nodes, config.DefaultConfig())
 
 	// The file with no extension should be left alone or bundled
 	foundOriginal := false
@@ -85,7 +86,7 @@ func TestMoviePreprocess_SubtitleDefensiveEmptySuffix(t *testing.T) {
 	badSubtitle := testNewFileNode("movie.srt") // This should return empty suffix from ExtractSubtitleSuffix
 	nodes := []*treeview.Node[treeview.FileInfo]{video, badSubtitle}
 
-	out := MoviePreprocess(nodes)
+	out := MoviePreprocess(nodes, config.DefaultConfig())
 
 	// Should create one virtual directory for the video
 	virtualCount := 0
@@ -113,7 +114,7 @@ func TestMovieAnnotate_ChildWithoutParentNewName(t *testing.T) {
 	dirMeta.Type = core.MediaMovie
 	// Don't set NewName - should cause child to be skipped
 
-	MovieAnnotate(tr)
+	MovieAnnotate(tr, config.DefaultConfig())
 
 	// Child should not have been annotated
 	childMeta := core.GetMeta(child)

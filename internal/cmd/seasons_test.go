@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/treeview"
 )
@@ -16,7 +17,7 @@ func TestSeasonsCommandAnnotate(t *testing.T) {
 	season2 := testNewDirNode("Season 02")
 	tr := testNewTree(season1, season2)
 
-	SeasonsCommand.annotate(tr)
+	SeasonsCommand.annotate(tr, config.DefaultConfig())
 
 	for _, s := range []*treeview.Node[treeview.FileInfo]{season1, season2} {
 		mm := core.GetMeta(s)

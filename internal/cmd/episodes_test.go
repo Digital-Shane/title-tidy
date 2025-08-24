@@ -3,6 +3,7 @@ package cmd
 import (
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/treeview"
 )
@@ -14,7 +15,7 @@ func TestEpisodesCommandAnnotate(t *testing.T) {
 	dir.AddChild(testNewFileNode("S01E04.mkv"))
 	tr := testNewTree(f1, f2, dir)
 
-	EpisodesCommand.annotate(tr)
+	EpisodesCommand.annotate(tr, config.DefaultConfig())
 
 	for _, n := range []*treeview.Node[treeview.FileInfo]{f1, f2} {
 		mm := core.GetMeta(n)

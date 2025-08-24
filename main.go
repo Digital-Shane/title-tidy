@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/Digital-Shane/title-tidy/internal/cmd"
+	"github.com/Digital-Shane/title-tidy/internal/config"
 )
 
 func main() {
@@ -30,6 +31,22 @@ func main() {
 		return
 	}
 
+	// Handle config command
+	if command == "config" {
+		if err := cmd.RunConfigCommand(os.Args[2:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Load config once for all operations
+	formatConfig, err := config.Load()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Run a rename command
 	cfg, ok := configs[command]
 	if !ok {
@@ -51,10 +68,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set flags in config
+	// Set flags and config in the command config
 	cfg.InstantMode = *instant
 	cfg.DeleteNFO = *noNFO
 	cfg.DeleteImages = *noImages
+	cfg.Config = formatConfig
 
 	if err := cmd.RunCommand(cfg); err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -69,6 +87,7 @@ func printUsage() {
 	fmt.Printf("  title-tidy seasons   Rename season folders and episodes within\n")
 	fmt.Printf("  title-tidy episodes  Rename episode files in current directory\n")
 	fmt.Printf("  title-tidy movies    Rename movie files and folders\n")
+	fmt.Printf("  title-tidy config    Configure custom naming formats\n")
 	fmt.Printf("  title-tidy help      Show this help message\n\n")
 	fmt.Printf("Options:\n")
 	fmt.Printf("  -i, --instant          Apply renames immediately and exit\n")
