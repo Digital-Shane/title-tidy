@@ -7,6 +7,12 @@ Set Width 1300
 Set Height 700
 
 Hide
+Type "./backup-config.sh"
+Enter
+Type "clear"
+Enter
+Type "cd ../shows"
+Enter
 Type "./make.sh"
 Enter
 Type "cd data"
@@ -14,6 +20,23 @@ Enter
 Type "clear"
 Enter
 Show
+
+Type "title-tidy config"
+Sleep 1s
+Enter
+Sleep 250ms
+Tab
+Sleep 500ms
+Tab
+Sleep 500ms
+Left 30
+Sleep 250ms
+Type "{show} - "
+Sleep 1s
+Ctrl+S
+Sleep 1s
+Ctrl+Q
+Sleep 250ms
 
 Type "title-tidy shows --no-nfo --no-img"
 Sleep 1s
@@ -54,4 +77,7 @@ Type "cd .."
 Enter
 Type "rm -rf data"
 Enter
-Sleep 500ms
+Type "cd ../config"
+Enter
+Type "./restore-config.sh"
+Enter
