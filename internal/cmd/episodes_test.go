@@ -15,7 +15,7 @@ func TestEpisodesCommandAnnotate(t *testing.T) {
 	dir.AddChild(testNewFileNode("S01E04.mkv"))
 	tr := testNewTree(f1, f2, dir)
 
-	EpisodesCommand.annotate(tr, config.DefaultConfig())
+	EpisodesCommand.annotate(tr, config.DefaultConfig(), "")
 
 	for _, n := range []*treeview.Node[treeview.FileInfo]{f1, f2} {
 		mm := core.GetMeta(n)

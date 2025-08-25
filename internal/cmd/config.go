@@ -28,12 +28,13 @@ type CommandConfig struct {
 	maxDepth     int
 	includeDirs  bool
 	preprocess   func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
-	annotate     func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig)
+	annotate     func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, string)
 	movieMode    bool
 	InstantMode  bool
 	DeleteNFO    bool
 	DeleteImages bool
 	Config       *config.FormatConfig
+	LinkPath     string
 }
 
 func RunCommand(cfg CommandConfig) error {
@@ -69,7 +70,7 @@ func RunCommand(cfg CommandConfig) error {
 		treeview.WithProvider(tui.CreateRenameProvider()),
 	)
 	if cfg.annotate != nil {
-		cfg.annotate(t, cfg.Config)
+		cfg.annotate(t, cfg.Config, cfg.LinkPath)
 	}
 
 	// Mark files for deletion based on flags
@@ -80,6 +81,8 @@ func RunCommand(cfg CommandConfig) error {
 	model.IsMovieMode = cfg.movieMode
 	model.DeleteNFO = cfg.DeleteNFO
 	model.DeleteImages = cfg.DeleteImages
+	model.LinkPath = cfg.LinkPath
+	model.IsLinkMode = cfg.LinkPath != ""
 
 	// If instant mode, perform renames immediately
 	if cfg.InstantMode {

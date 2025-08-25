@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
@@ -14,7 +15,7 @@ import (
 var EpisodesCommand = CommandConfig{
 	maxDepth:    1,
 	includeDirs: false,
-	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) {
+	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
 		for ni := range t.All(context.Background()) {
 			// Only operate on leaf nodes (files) at depth 0; directories are excluded by includeDirs=false.
 			if ni.Node.Data().IsDir() {
@@ -34,6 +35,11 @@ var EpisodesCommand = CommandConfig{
 
 			// Apply template and add extension - Episodes command has no show/year context
 			m.NewName = cfg.ApplyEpisodeTemplate("", "", season, episode) + ext
+			
+			// Set destination path if linking
+			if linkPath != "" {
+				m.DestinationPath = filepath.Join(linkPath, m.NewName)
+			}
 		}
 	},
 }

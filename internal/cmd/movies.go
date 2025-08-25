@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -102,10 +103,26 @@ func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 
 // MovieAnnotate adds metadata to any remaining movie directories / files not handled
 // during preprocess (e.g., pre-existing movie directories from the filesystem).
-func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) {
+func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
+	// Track parent paths for building destination hierarchy
+	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
 
 	for ni := range t.All(context.Background()) {
-		if core.GetMeta(ni.Node) != nil { // already annotated
+		if core.GetMeta(ni.Node) != nil { // already annotated but may need destination path
+			m := core.GetMeta(ni.Node)
+			if linkPath != "" && m.DestinationPath == "" {
+				if ni.Depth == 0 {
+					// Top-level movie directory
+					m.DestinationPath = filepath.Join(linkPath, m.NewName)
+					parentPaths[ni.Node] = m.DestinationPath
+				} else if ni.Node.Parent() != nil {
+					// Child of a movie directory
+					parentPath := parentPaths[ni.Node.Parent()]
+					if parentPath != "" {
+						m.DestinationPath = filepath.Join(parentPath, m.NewName)
+					}
+				}
+			}
 			continue
 		}
 		if ni.Depth == 0 && ni.Node.Data().IsDir() { // only treat directories as movie containers
@@ -116,6 +133,12 @@ func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig
 			formatted, year := config.ExtractNameAndYear(ni.Node.Name())
 			// Apply movie template
 			m.NewName = cfg.ApplyMovieTemplate(formatted, year)
+			
+			// Set destination path if linking
+			if linkPath != "" {
+				m.DestinationPath = filepath.Join(linkPath, m.NewName)
+				parentPaths[ni.Node] = m.DestinationPath
+			}
 			continue
 		}
 		p := ni.Node.Parent()
@@ -126,5 +149,13 @@ func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig
 		m := core.EnsureMeta(ni.Node)
 		m.Type = core.MediaMovieFile
 		m.NewName = pm.NewName + media.ExtractExtension(ni.Node.Name())
+		
+		// Set destination path if linking
+		if linkPath != "" && p != nil {
+			parentPath := parentPaths[p]
+			if parentPath != "" {
+				m.DestinationPath = filepath.Join(parentPath, m.NewName)
+			}
+		}
 	}
 }

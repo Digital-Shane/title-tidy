@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -12,7 +13,10 @@ import (
 var ShowsCommand = CommandConfig{
 	maxDepth:    3,
 	includeDirs: true,
-	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) {
+	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
+		// Track parent paths for building destination hierarchy
+		parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
+		
 		// Use BreadthFirst to process shows first, then seasons, then episodes
 		for ni := range t.BreadthFirst(context.Background()) {
 			m := core.EnsureMeta(ni.Node)
@@ -26,6 +30,12 @@ var ShowsCommand = CommandConfig{
 				}
 				// Apply show template
 				m.NewName = cfg.ApplyShowFolderTemplate(formatted, year)
+				
+				// Set destination path if linking
+				if linkPath != "" {
+					m.DestinationPath = filepath.Join(linkPath, m.NewName)
+					parentPaths[ni.Node] = m.DestinationPath
+				}
 
 			case 1: // Seasons
 				m.Type = core.MediaSeason
@@ -43,6 +53,15 @@ var ShowsCommand = CommandConfig{
 
 				// Apply season template with full context
 				m.NewName = cfg.ApplySeasonFolderTemplate(showName, year, season)
+				
+				// Set destination path if linking
+				if linkPath != "" && ni.Node.Parent() != nil {
+					parentPath := parentPaths[ni.Node.Parent()]
+					if parentPath != "" {
+						m.DestinationPath = filepath.Join(parentPath, m.NewName)
+						parentPaths[ni.Node] = m.DestinationPath
+					}
+				}
 
 			case 2: // Episodes
 				m.Type = core.MediaEpisode
@@ -65,6 +84,14 @@ var ShowsCommand = CommandConfig{
 
 				// Apply episode template with full context and add extension
 				m.NewName = cfg.ApplyEpisodeTemplate(showName, year, season, episode) + ext
+				
+				// Set destination path if linking
+				if linkPath != "" && ni.Node.Parent() != nil {
+					parentPath := parentPaths[ni.Node.Parent()]
+					if parentPath != "" {
+						m.DestinationPath = filepath.Join(parentPath, m.NewName)
+					}
+				}
 			}
 		}
 	},
