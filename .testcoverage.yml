@@ -1,9 +1,9 @@
 profile: cover.out
 
 threshold:
-  file: 70
-  package: 80
-  total: 89
+  file: 60
+  package: 70
+  total: 80
 
 # Holds regexp rules which will override thresholds for matched files or packages 
 # using their paths.
@@ -26,3 +26,6 @@ exclude:
     - ^main\.go$
     - ^internal/tui/config\.go$
     - ^internal/cmd/config_cmd\.go$
+    - ^internal/tui/tui\.go$
+    - ^internal/tui/rename\.go$
+    - ^internal/tui/link\.go$

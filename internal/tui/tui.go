@@ -90,6 +90,8 @@ type RenameModel struct {
 	IsMovieMode      bool
 	DeleteNFO        bool
 	DeleteImages     bool
+	IsLinkMode       bool
+	LinkPath         string
 
 	// Layout metrics
 	treeWidth   int
@@ -309,10 +311,18 @@ func (m *RenameModel) renderHeader() string {
 
 	path, _ := os.Getwd()
 	var title string
-	if m.IsMovieMode {
-		title = fmt.Sprintf("%s Movie Rename - %s", m.getIcon("movie"), path)
+	if m.IsLinkMode {
+		if m.IsMovieMode {
+			title = fmt.Sprintf("%s Movie Link - %s → %s", m.getIcon("movie"), path, m.LinkPath)
+		} else {
+			title = fmt.Sprintf("%s TV Show Link - %s → %s", m.getIcon("tv"), path, m.LinkPath)
+		}
 	} else {
-		title = fmt.Sprintf("%s TV Show Rename - %s", m.getIcon("tv"), path)
+		if m.IsMovieMode {
+			title = fmt.Sprintf("%s Movie Rename - %s", m.getIcon("movie"), path)
+		} else {
+			title = fmt.Sprintf("%s TV Show Rename - %s", m.getIcon("tv"), path)
+		}
 	}
 	return style.Render(title)
 }
@@ -327,14 +337,23 @@ func (m *RenameModel) renderStatusBar() string {
 			Background(colorSecondary).
 			Foreground(colorBackground).
 			Padding(0, 1)
-		statusText := textStyle.Render(fmt.Sprintf("%d/%d - Renaming...", m.completedOps, m.totalRenameOps))
+		operationText := "Renaming..."
+		if m.IsLinkMode {
+			operationText = "Linking..."
+		}
+		statusText := textStyle.Render(fmt.Sprintf("%d/%d - %s", m.completedOps, m.totalRenameOps, operationText))
 		// Combine bar and styled text, then apply the full width style
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
 		return statusStyleBase.Width(m.width).Render(combined)
 	}
-	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  r: Rename  │  d: Remove  │  esc: Quit",
+	renameKey := "r: Rename"
+	if m.IsLinkMode {
+		renameKey = "r: Link"
+	}
+	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  d: Remove  │  esc: Quit",
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
-		m.getIcon("arrows")[2:]) // Last two characters (left/right arrows)
+		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
+		renameKey)
 	return statusStyleBase.Width(m.width).Render(statusText)
 }
 
@@ -401,7 +420,11 @@ func (m *RenameModel) renderStatsPanel() string {
 	}
 
 	b.WriteString("\nRename Status:\n")
-	fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("needrename"), "Need rename:", stats.needRenameCount)
+	renameLabel := "Need rename:"
+	if m.IsLinkMode {
+		renameLabel = "To link:"
+	}
+	fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("needrename"), renameLabel, stats.needRenameCount)
 	fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("nochange"), "No change:", stats.noChangeCount)
 	if stats.toDeleteCount > 0 {
 		fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("delete"), "To delete:", stats.toDeleteCount)
@@ -436,7 +459,11 @@ func (m *RenameModel) renderStatsPanel() string {
 	fmt.Fprintf(&b, "\nTotal items: %d\n", totalItems)
 	if totalItems > 0 {
 		percentNeedRename := (stats.needRenameCount * 100) / totalItems
-		fmt.Fprintf(&b, "Need rename: %d%%", percentNeedRename)
+		if m.IsLinkMode {
+			fmt.Fprintf(&b, "To link: %d%%", percentNeedRename)
+		} else {
+			fmt.Fprintf(&b, "Need rename: %d%%", percentNeedRename)
+		}
 	}
 
 	return style.Render(b.String())
@@ -502,7 +529,15 @@ func (m *RenameModel) calculateStats() Statistics {
 		}
 		if mm.MarkedForDeletion {
 			stats.toDeleteCount++
+		} else if m.IsLinkMode {
+			// In link mode, count based on destination paths
+			if mm.DestinationPath != "" {
+				stats.needRenameCount++
+			} else {
+				stats.noChangeCount++
+			}
 		} else if mm.NewName != "" {
+			// In rename mode, count based on name changes
 			if mm.NewName != node.Name() {
 				stats.needRenameCount++
 			} else {

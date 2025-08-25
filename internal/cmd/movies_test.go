@@ -36,7 +36,7 @@ func TestMovieAnnotate_FileTypes(t *testing.T) {
 			dir.AddChild(file)
 			tr := testNewTree(dir)
 
-			MovieAnnotate(tr, config.DefaultConfig())
+			MovieAnnotate(tr, config.DefaultConfig(), "")
 
 			fm := core.GetMeta(file)
 			if fm == nil {
@@ -49,6 +49,90 @@ func TestMovieAnnotate_FileTypes(t *testing.T) {
 				t.Errorf("MovieAnnotate(%s) NewName = %q, want %q", tt.filename, fm.NewName, tt.wantNewName)
 			}
 		})
+	}
+}
+
+func TestMovieAnnotateWithLinking(t *testing.T) {
+	dir := testNewDirNode("Test.Movie.2024")
+	videoFile := testNewFileNode("movie.mkv")
+	subtitleFile := testNewFileNode("movie.en.srt")
+	dir.AddChild(videoFile)
+	dir.AddChild(subtitleFile)
+	tr := testNewTree(dir)
+
+	linkPath := "/test/destination"
+	MovieAnnotate(tr, config.DefaultConfig(), linkPath)
+
+	// Verify directory metadata and destination path
+	dm := core.GetMeta(dir)
+	if dm == nil {
+		t.Fatal("MovieAnnotateWithLinking(directory) meta = nil, want metadata")
+	}
+	if dm.Type != core.MediaMovie {
+		t.Errorf("MovieAnnotateWithLinking(directory) Type = %v, want %v", dm.Type, core.MediaMovie)
+	}
+	if dm.NewName == "" {
+		t.Error("MovieAnnotateWithLinking(directory) NewName = empty, want non-empty")
+	}
+	wantDirDest := "/test/destination/Test Movie (2024)"
+	if dm.DestinationPath != wantDirDest {
+		t.Errorf("MovieAnnotateWithLinking(directory) DestinationPath = %q, want %q", dm.DestinationPath, wantDirDest)
+	}
+
+	// Verify file metadata and destination paths
+	tests := []struct {
+		name     string
+		node     *treeview.Node[treeview.FileInfo]
+		wantDest string
+	}{
+		{
+			name:     "video file",
+			node:     videoFile,
+			wantDest: "/test/destination/Test Movie (2024)/Test Movie (2024).mkv",
+		},
+		{
+			name:     "subtitle file",
+			node:     subtitleFile,
+			wantDest: "/test/destination/Test Movie (2024)/Test Movie (2024).en.srt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fm := core.GetMeta(tt.node)
+			if fm == nil {
+				t.Fatalf("MovieAnnotateWithLinking(%s) meta = nil, want metadata", tt.name)
+			}
+			if fm.Type != core.MediaMovieFile {
+				t.Errorf("MovieAnnotateWithLinking(%s) Type = %v, want %v", tt.name, fm.Type, core.MediaMovieFile)
+			}
+			if fm.NewName == "" {
+				t.Errorf("MovieAnnotateWithLinking(%s) NewName = empty, want non-empty", tt.name)
+			}
+			if fm.DestinationPath != tt.wantDest {
+				t.Errorf("MovieAnnotateWithLinking(%s) DestinationPath = %q, want %q", tt.name, fm.DestinationPath, tt.wantDest)
+			}
+		})
+	}
+}
+
+func TestMovieAnnotateWithoutLinking(t *testing.T) {
+	dir := testNewDirNode("Test.Movie.2024")
+	file := testNewFileNode("movie.mkv")
+	dir.AddChild(file)
+	tr := testNewTree(dir)
+
+	MovieAnnotate(tr, config.DefaultConfig(), "")
+
+	// Verify no destination paths are set when not linking
+	dm := core.GetMeta(dir)
+	if dm.DestinationPath != "" {
+		t.Errorf("MovieAnnotateWithoutLinking(directory) DestinationPath = %q, want empty", dm.DestinationPath)
+	}
+
+	fm := core.GetMeta(file)
+	if fm.DestinationPath != "" {
+		t.Errorf("MovieAnnotateWithoutLinking(file) DestinationPath = %q, want empty", fm.DestinationPath)
 	}
 }
 
@@ -114,7 +198,7 @@ func TestMovieAnnotate_ChildWithoutParentNewName(t *testing.T) {
 	dirMeta.Type = core.MediaMovie
 	// Don't set NewName - should cause child to be skipped
 
-	MovieAnnotate(tr, config.DefaultConfig())
+	MovieAnnotate(tr, config.DefaultConfig(), "")
 
 	// Child should not have been annotated
 	childMeta := core.GetMeta(child)

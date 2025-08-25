@@ -42,6 +42,7 @@ const (
 type MediaMeta struct {
 	Type              MediaType
 	NewName           string
+	DestinationPath   string // Full destination path when linking
 	RenameStatus      RenameStatus
 	RenameError       string
 	IsVirtual         bool

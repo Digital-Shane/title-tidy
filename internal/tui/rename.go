@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"iter"
 	"os"
 	"path/filepath"
 
@@ -38,7 +39,9 @@ func (m *RenameModel) prepareRenameProgress() {
 			continue
 		}
 		if mm.MarkedForDeletion {
-			m.deletionCount++
+			if !m.IsLinkMode { // Don't count deletions in link mode
+				m.deletionCount++
+			}
 			continue
 		}
 		if mm.NeedsDirectory && mm.IsVirtual {
@@ -51,8 +54,16 @@ func (m *RenameModel) prepareRenameProgress() {
 				continue
 			}
 		}
-		if mm.NewName != "" && mm.NewName != n.Name() {
-			m.renameCount++
+		if m.IsLinkMode {
+			// In link mode, count nodes with destination paths
+			if mm.DestinationPath != "" {
+				m.renameCount++
+			}
+		} else {
+			// In rename mode, count nodes that need renaming
+			if mm.NewName != "" && mm.NewName != n.Name() {
+				m.renameCount++
+			}
 		}
 	}
 
@@ -117,7 +128,9 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta
 	return successes, errs
 }
 
-// PerformRenames walks the tree bottom‑up executing pending rename operations.
+// PerformRenames walks the tree executing pending rename or link operations.
+// In rename mode, it uses bottom-up traversal. In link mode, it uses breadth-first
+// to ensure parent directories exist before linking children.
 // It skips children of virtual directories (handled by the virtual parent) and
 // aggregates success / error counts into a renameCompleteMsg.
 //
@@ -134,7 +147,7 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 		currentCount := 0
 
 		// Phase 1: Virtual directories
-		// These are processed first because child files will be moved into them
+		// These are processed first because child files will be moved/linked into them
 		if m.currentOpIndex < m.virtualDirCount {
 			// Iterate through tree to find the nth virtual directory
 			for info := range m.Tree.All(context.Background()) {
@@ -144,8 +157,14 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 					// Found a virtual directory
 					// check if it's the one we need to process
 					if currentCount == m.currentOpIndex {
-						// Create the directory and move its children into it
-						s, errs := CreateVirtualDir(node, mm)
+						// Create the directory and move/link its children into it
+						var s int
+						var errs []error
+						if m.IsLinkMode {
+							s, errs = LinkVirtualDir(node, mm, m.LinkPath)
+						} else {
+							s, errs = CreateVirtualDir(node, mm)
+						}
 						m.successCount += s
 						m.errorCount += len(errs)
 						m.completedOps++
@@ -157,35 +176,51 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 			}
 		} else if m.currentOpIndex < m.virtualDirCount+m.deletionCount {
 			// Phase 2: Deletions (NFO files, images, etc. marked for removal)
-			// Calculate which deletion we're looking for in this phase
-			targetIndex := m.currentOpIndex - m.virtualDirCount
-			for info := range m.Tree.All(context.Background()) {
-				node := info.Node
-				mm := core.GetMeta(node)
-				if mm != nil && mm.MarkedForDeletion {
-					// Found a file to delete
-					// check if it's the one we need to process
-					if currentCount == targetIndex {
-						// Attempt to delete the file
-						if err := os.Remove(node.Data().Path); err != nil {
-							mm.Fail(err)
-							m.errorCount++
-						} else {
-							mm.Success()
-							m.successCount++
+			// Skip deletions entirely in link mode - we never delete when linking
+			if !m.IsLinkMode {
+				// Calculate which deletion we're looking for in this phase
+				targetIndex := m.currentOpIndex - m.virtualDirCount
+				for info := range m.Tree.All(context.Background()) {
+					node := info.Node
+					mm := core.GetMeta(node)
+					if mm != nil && mm.MarkedForDeletion {
+						// Found a file to delete
+						// check if it's the one we need to process
+						if currentCount == targetIndex {
+							// Attempt to delete the file
+							if err := os.Remove(node.Data().Path); err != nil {
+								mm.Fail(err)
+								m.errorCount++
+							} else {
+								mm.Success()
+								m.successCount++
+							}
+							m.completedOps++
+							m.currentOpIndex++
+							break // Yield control back to UI
 						}
-						m.completedOps++
-						m.currentOpIndex++
-						break // Yield control back to UI
+						currentCount++
 					}
-					currentCount++
 				}
+			} else {
+				// In link mode, skip this phase entirely
+				m.currentOpIndex += m.deletionCount
+				m.completedOps += m.deletionCount
 			}
 		} else {
-			// Phase 3: Regular renames (standard file/folder renames)
-			// Process bottom-up so child renames happen before parent renames
+			// Phase 3: Regular renames/links (standard file/folder operations)
+			// In rename mode: use bottom-up so child renames happen before parent renames
+			// In link mode: use breadth-first so parent dirs are created before children
 			targetIndex := m.currentOpIndex - m.virtualDirCount - m.deletionCount
-			for info := range m.Tree.AllBottomUp(context.Background()) {
+			
+			var iterator iter.Seq2[treeview.NodeInfo[treeview.FileInfo], error]
+			if m.IsLinkMode {
+				iterator = m.Tree.BreadthFirst(context.Background())
+			} else {
+				iterator = m.Tree.AllBottomUp(context.Background())
+			}
+			
+			for info := range iterator {
 				node := info.Node
 				mm := core.GetMeta(node)
 				if mm == nil {
@@ -201,22 +236,52 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						continue
 					}
 				}
-				// Only process nodes that actually need renaming
-				if mm.NewName != "" && mm.NewName != node.Name() {
-					// Found a file to rename
-					// check if it's the one we need to process
-					if currentCount == targetIndex {
-						// Perform the filesystem rename operation
-						if renamed, err := RenameRegular(node, mm); err != nil {
-							m.errorCount++
-						} else if renamed {
-							m.successCount++
+				// Process differently based on mode
+				if m.IsLinkMode {
+					// In link mode, check if we need to create a directory or link a file
+					if mm.DestinationPath != "" {
+						if currentCount == targetIndex {
+							if node.Data().IsDir() {
+								// Create directory in destination
+								if err := os.MkdirAll(mm.DestinationPath, 0755); err != nil {
+									mm.Fail(err)
+									m.errorCount++
+								} else {
+									mm.Success()
+									m.successCount++
+								}
+							} else {
+								// Link file to destination
+								if linked, err := LinkRegular(node, mm); err != nil {
+									m.errorCount++
+								} else if linked {
+									m.successCount++
+								}
+							}
+							m.completedOps++
+							m.currentOpIndex++
+							break // Yield control back to UI
 						}
-						m.completedOps++
-						m.currentOpIndex++
-						break // Yield control back to UI
+						currentCount++
 					}
-					currentCount++
+				} else {
+					// Only process nodes that actually need renaming
+					if mm.NewName != "" && mm.NewName != node.Name() {
+						// Found a file to rename
+						// check if it's the one we need to process
+						if currentCount == targetIndex {
+							// Perform the filesystem rename operation
+							if renamed, err := RenameRegular(node, mm); err != nil {
+								m.errorCount++
+							} else if renamed {
+								m.successCount++
+							}
+							m.completedOps++
+							m.currentOpIndex++
+							break // Yield control back to UI
+						}
+						currentCount++
+					}
 				}
 			}
 		}
