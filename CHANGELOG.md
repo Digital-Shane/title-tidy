@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logging title-tidy operations to a file.
 - Configurable log retention.
 - Ability to undo a rename/relink instantly after it is performed.
-- `title-tidy undo` to undo rename/relink after the title tidy session has closed. 
+- `title-tidy undo` to undo rename/relink after the title tidy session has closed.
+- viewport support to stat panels to fix TUI distortion when terminal is too short.
 
 ## [v1.5.1] - 2025-08-26
 ### Fixed

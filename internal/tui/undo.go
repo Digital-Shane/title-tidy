@@ -6,6 +6,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/treeview"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -22,6 +23,10 @@ type UndoModel struct {
 	height           int
 	iconSet          map[string]string
 	splitRatio       float64 // ratio for left/right split
+	
+	// Session details scrolling
+	detailsViewport viewport.Model
+	detailsFocused  bool // whether the details panel is focused for scrolling
 }
 
 // NewUndoModel creates a new undo selection model
@@ -54,6 +59,12 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *UndoModel {
 		treeview.WithTuiKeyMap[log.SessionSummary](keyMap),
 	)
 	
+	// Initialize details viewport  
+	rightWidth := m.width - treeWidth
+	viewportHeight := m.height - 4 - 4 // Account for header, borders, and instructions
+	m.detailsViewport = viewport.New(rightWidth-6, viewportHeight) // Account for border and padding
+	m.detailsViewport.Style = lipgloss.NewStyle()
+	
 	return m
 }
 
@@ -74,12 +85,52 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		treeModel, cmd := m.TuiTreeModel.Update(resizeMsg)
 		m.TuiTreeModel = treeModel.(*treeview.TuiTreeModel[log.SessionSummary])
+		
+		// Update details viewport dimensions
+		rightWidth := m.width - treeWidth
+		viewportHeight := m.height - 4 - 4 // Account for header, borders, and instructions
+		m.detailsViewport.Width = rightWidth - 6 // Account for border and padding
+		m.detailsViewport.Height = viewportHeight
+		
 		return m, cmd
 		
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "esc":
 			return m, tea.Quit
+			
+		case "tab":
+			// Toggle between session list and details panel focus
+			m.detailsFocused = !m.detailsFocused
+			return m, nil
+			
+		case "up":
+			if m.detailsFocused {
+				// Scroll details panel up
+				m.detailsViewport.LineUp(1)
+				return m, nil
+			}
+			
+		case "down":
+			if m.detailsFocused {
+				// Scroll details panel down
+				m.detailsViewport.LineDown(1)
+				return m, nil
+			}
+			
+		case "pgup":
+			if m.detailsFocused {
+				// Page up in details panel
+				m.detailsViewport.HalfPageUp()
+				return m, nil
+			}
+			
+		case "pgdown":
+			if m.detailsFocused {
+				// Page down in details panel
+				m.detailsViewport.HalfPageDown()
+				return m, nil
+			}
 			
 		case "enter":
 			if m.confirmingUndo {
@@ -103,6 +154,25 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		
+	case tea.MouseMsg:
+		// Handle mouse wheel scrolling
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			if m.detailsFocused {
+				// Scroll details panel up
+				m.detailsViewport.LineUp(1)
+			}
+			// If tree is focused, let it handle the mouse wheel in the default handler below
+			return m, nil
+		case tea.MouseWheelDown:
+			if m.detailsFocused {
+				// Scroll details panel down
+				m.detailsViewport.LineDown(1)
+			}
+			// If tree is focused, let it handle the mouse wheel in the default handler below
+			return m, nil
+		}
+		
 	case UndoCompleteMsg:
 		m.undoInProgress = false
 		m.undoComplete = true
@@ -111,8 +181,8 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	
-	// Pass other messages to the tree model if not in special states
-	if !m.confirmingUndo && !m.undoInProgress {
+	// Pass other messages to the tree model if not in special states and tree is focused
+	if !m.confirmingUndo && !m.undoInProgress && !m.detailsFocused {
 		treeModel, cmd := m.TuiTreeModel.Update(msg)
 		m.TuiTreeModel = treeModel.(*treeview.TuiTreeModel[log.SessionSummary])
 		return m, cmd
@@ -205,7 +275,14 @@ func (m *UndoModel) renderMainView() string {
 	content := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 	
 	// Add instructions at the bottom
-	instruction := "↑↓ Navigate | Enter: Select | q: Quit"
+	focusInfo := ""
+	if m.detailsFocused {
+		focusInfo = "Tab: List Focus | "
+	} else {
+		focusInfo = "Tab: Details Focus | "
+	}
+	
+	instruction := focusInfo + "↑↓ Navigate | PgUp/PgDn: Page | Enter: Select | q: Quit"
 	instructionStyle := lipgloss.NewStyle().
 		Italic(true).
 		Width(m.width).
@@ -243,8 +320,22 @@ func (m *UndoModel) renderSessionList(width, height int) string {
 	return borderStyle.Render(content)
 }
 
-// renderSessionPreview renders the right panel with session details
+// renderSessionPreview renders the right panel with session details using a scrollable viewport
 func (m *UndoModel) renderSessionPreview(width, height int) string {
+	// Update viewport content when selection changes
+	focusedNode := m.TuiTreeModel.Tree.GetFocusedNode()
+	if focusedNode != nil {
+		summary := *focusedNode.Data()
+		content := m.formatSessionDetails(summary, m.detailsViewport.Width)
+		m.detailsViewport.SetContent(content)
+	} else {
+		emptyContent := lipgloss.NewStyle().
+			Italic(true).
+			Foreground(lipgloss.Color("240")).
+			Render("Select a session to view details")
+		m.detailsViewport.SetContent(emptyContent)
+	}
+	
 	// Create border style for right panel
 	borderStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -253,29 +344,31 @@ func (m *UndoModel) renderSessionPreview(width, height int) string {
 		Height(height).
 		Padding(0, 1)
 	
-	// Add title
-	title := lipgloss.NewStyle().
+	// Create title with scroll indicator
+	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(colorSecondary).
 		Width(width - 4).
-		Align(lipgloss.Center).
-		Render("Session Details")
+		Align(lipgloss.Center)
 	
-	// Get focused session
-	var content string
-	focusedNode := m.TuiTreeModel.Tree.GetFocusedNode()
-	if focusedNode != nil {
-		summary := *focusedNode.Data()
-		content = m.formatSessionDetails(summary, width-6)
-	} else {
-		content = lipgloss.NewStyle().
-			Italic(true).
-			Foreground(lipgloss.Color("240")).
-			Render("Select a session to view details")
+	scrollIndicator := ""
+	if m.detailsViewport.TotalLineCount() > m.detailsViewport.Height {
+		if m.detailsFocused {
+			scrollIndicator = " [Use Tab+↑↓]"
+		} else {
+			scrollIndicator = " [Tab to scroll]"
+		}
 	}
 	
-	// Combine title and content
-	fullContent := title + "\n\n" + content
+	title := titleStyle.Render("Session Details" + scrollIndicator)
+	
+	// Combine title and viewport
+	fullContent := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		"", // Empty line separator
+		m.detailsViewport.View(),
+	)
 	
 	return borderStyle.Render(fullContent)
 }
@@ -509,7 +602,7 @@ func init() {
 	emojiIcons["check"] = "✅"
 	emojiIcons["error"] = "❌"
 	emojiIcons["link"] = "🔗"
-	emojiIcons["delete"] = "🗑️"
+	emojiIcons["delete"] = "❌"
 	emojiIcons["folder"] = "📁"
 	emojiIcons["unknown"] = "❓"
 }
