@@ -199,3 +199,44 @@ func TestFirstIntFromRegexps_EmptySubmatch(t *testing.T) {
 		t.Errorf("firstIntFromRegexps with empty submatch = (%d,%v), want (123,true)", got, ok)
 	}
 }
+
+func TestExtractSubtitleSuffixEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "non_subtitle_file",
+			filename: "video.mp4",
+			expected: "",
+		},
+		{
+			name:     "subtitle_without_language",
+			filename: "movie.srt",
+			expected: ".srt",
+		},
+		{
+			name:     "subtitle_with_invalid_pattern",
+			filename: "movie.123.srt",
+			expected: ".srt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractSubtitleSuffix(tt.filename)
+			if result != tt.expected {
+				t.Errorf("extractSubtitleSuffix(%q) = %q, want %q", tt.filename, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseSeasonEpisode_NoEpisodeNumber(t *testing.T) {
+	filename := "random_file.mp4"
+	season, episode, ok := ParseSeasonEpisode(filename, nil)
+	if ok {
+		t.Errorf("ParseSeasonEpisode(%q, nil) = (%d, %d, true), want (0, 0, false)", filename, season, episode)
+	}
+}

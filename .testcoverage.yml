@@ -17,6 +17,12 @@ override:
     threshold: 70
   - path: ^internal/cmd/config\.go$
     threshold: 40
+  # Lower threshold for log/undo package (has filesystem access functions for TUI)
+  - path: ^internal/log/undo\.go$
+    threshold: 40
+  # Lower threshold for log package (has filesystem access functions)
+  - path: ^internal/log$
+    threshold: 60
 
 # Holds regexp rules which will exclude matched files or packages 
 # from coverage statistics.
@@ -29,3 +35,6 @@ exclude:
     - ^internal/tui/tui\.go$
     - ^internal/tui/rename\.go$
     - ^internal/tui/link\.go$
+    - ^internal/tui/undo\.go$  # TUI for undo operations
+    - ^internal/cmd/undo\.go$  # Launches TUI for undo
+    - ^internal/cmd/config\.go$  # TUI indexing and rename operations

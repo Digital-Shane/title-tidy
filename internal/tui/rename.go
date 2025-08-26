@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
+	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -81,11 +82,15 @@ func RenameRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (
 		return false, nil
 	}
 	if _, err := os.Stat(newPath); err == nil {
-		return false, mm.Fail(fmt.Errorf("destination already exists"))
-	}
-	if err := os.Rename(oldPath, newPath); err != nil {
+		err := fmt.Errorf("destination already exists")
+		log.LogRename(oldPath, newPath, false, err)
 		return false, mm.Fail(err)
 	}
+	if err := os.Rename(oldPath, newPath); err != nil {
+		log.LogRename(oldPath, newPath, false, err)
+		return false, mm.Fail(err)
+	}
+	log.LogRename(oldPath, newPath, true, nil)
 	mm.Success()
 	node.Data().Path = newPath
 	return true, nil
@@ -100,11 +105,13 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta
 
 	dirPath := filepath.Join(".", mm.NewName)
 	if err := os.Mkdir(dirPath, 0755); err != nil {
+		log.LogCreateDir(dirPath, false, err)
 		errs = append(errs, fmt.Errorf("create %s: %w", mm.NewName, mm.Fail(err)))
 		return successes, errs
 	}
 
 	// Directory created successfully
+	log.LogCreateDir(dirPath, true, nil)
 	successes++
 	mm.Success()
 	node.Data().Path = dirPath
@@ -118,9 +125,11 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta
 		oldChildPath := child.Data().Path
 		newChildPath := filepath.Join(dirPath, cm.NewName)
 		if err := os.Rename(oldChildPath, newChildPath); err != nil {
+			log.LogRename(oldChildPath, newChildPath, false, err)
 			errs = append(errs, fmt.Errorf("%s -> %s: %w", child.Name(), cm.NewName, cm.Fail(err)))
 			continue
 		}
+		log.LogRename(oldChildPath, newChildPath, true, nil)
 		successes++
 		cm.Success()
 		child.Data().Path = newChildPath
@@ -188,10 +197,13 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						// check if it's the one we need to process
 						if currentCount == targetIndex {
 							// Attempt to delete the file
-							if err := os.Remove(node.Data().Path); err != nil {
+							filePath := node.Data().Path
+							if err := os.Remove(filePath); err != nil {
+								log.LogDelete(filePath, false, err)
 								mm.Fail(err)
 								m.errorCount++
 							} else {
+								log.LogDelete(filePath, true, nil)
 								mm.Success()
 								m.successCount++
 							}
@@ -244,9 +256,11 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 							if node.Data().IsDir() {
 								// Create directory in destination
 								if err := os.MkdirAll(mm.DestinationPath, 0755); err != nil {
+									log.LogCreateDir(mm.DestinationPath, false, err)
 									mm.Fail(err)
 									m.errorCount++
 								} else {
+									log.LogCreateDir(mm.DestinationPath, true, nil)
 									mm.Success()
 									m.successCount++
 								}

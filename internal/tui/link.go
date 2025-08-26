@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
+	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -16,18 +17,23 @@ func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bo
 	destPath := mm.DestinationPath
 	
 	if destPath == "" {
-		return false, mm.Fail(fmt.Errorf("no destination path specified"))
+		err := fmt.Errorf("no destination path specified")
+		log.LogLink(srcPath, destPath, false, err)
+		return false, mm.Fail(err)
 	}
 	
 	// Create parent directory if it doesn't exist
 	destDir := filepath.Dir(destPath)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return false, mm.Fail(fmt.Errorf("failed to create directory %s: %w", destDir, err))
+		err := fmt.Errorf("failed to create directory %s: %w", destDir, err)
+		log.LogLink(srcPath, destPath, false, err)
+		return false, mm.Fail(err)
 	}
 	
 	// Check if destination already exists
 	if _, err := os.Stat(destPath); err == nil {
 		// File already exists - treat as success for incremental linking
+		log.LogLink(srcPath, destPath, true, nil)
 		mm.Success()
 		return false, nil // Return false because no new link was created
 	}
@@ -36,12 +42,15 @@ func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bo
 	if err := os.Link(srcPath, destPath); err != nil {
 		if os.IsExist(err) {
 			// File was created between our check and link attempt - treat as success
+			log.LogLink(srcPath, destPath, true, nil)
 			mm.Success()
 			return false, nil
 		}
+		log.LogLink(srcPath, destPath, false, err)
 		return false, mm.Fail(fmt.Errorf("failed to create hard link (possibly cross-filesystem or unsupported): %w", err))
 	}
 	
+	log.LogLink(srcPath, destPath, true, nil)
 	mm.Success()
 	return true, nil
 }
@@ -55,11 +64,13 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 	// Create directory in the destination
 	dirPath := filepath.Join(linkPath, mm.NewName)
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		log.LogCreateDir(dirPath, false, err)
 		errs = append(errs, fmt.Errorf("create %s: %w", mm.NewName, mm.Fail(err)))
 		return successes, errs
 	}
 	
 	// Directory created successfully (MkdirAll is idempotent, so existing dirs are OK)
+	log.LogCreateDir(dirPath, true, nil)
 	successes++
 	mm.Success()
 	
@@ -76,6 +87,7 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 		// Check if destination already exists
 		if _, err := os.Stat(destPath); err == nil {
 			// File already exists - treat as success for incremental linking
+			log.LogLink(srcPath, destPath, true, nil)
 			successes++
 			cm.Success()
 			cm.DestinationPath = destPath
@@ -85,16 +97,19 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 		if err := os.Link(srcPath, destPath); err != nil {
 			if os.IsExist(err) {
 				// File was created between our check and link attempt - treat as success
+				log.LogLink(srcPath, destPath, true, nil)
 				successes++
 				cm.Success()
 				cm.DestinationPath = destPath
 			} else {
+				log.LogLink(srcPath, destPath, false, err)
 				errs = append(errs, fmt.Errorf("%s -> %s: failed to create hard link (possibly cross-filesystem or unsupported): %w", child.Name(), cm.NewName, err))
 				cm.Fail(fmt.Errorf("failed to create hard link (possibly cross-filesystem or unsupported): %w", err))
 			}
 			continue
 		}
 		
+		log.LogLink(srcPath, destPath, true, nil)
 		successes++
 		cm.Success()
 		cm.DestinationPath = destPath

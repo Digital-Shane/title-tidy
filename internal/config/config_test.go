@@ -13,10 +13,12 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	want := &FormatConfig{
-		ShowFolder:   "{show} ({year})",
-		SeasonFolder: "{season_name}",
-		Episode:      "{season_code}{episode_code}",
-		Movie:        "{movie} ({year})",
+		ShowFolder:       "{show} ({year})",
+		SeasonFolder:     "{season_name}",
+		Episode:          "{season_code}{episode_code}",
+		Movie:            "{movie} ({year})",
+		LogRetentionDays: 30,
+		EnableLogging:    true,
 	}
 
 	if diff := cmp.Diff(want, cfg); diff != "" {
@@ -44,6 +46,196 @@ func TestConfigPath(t *testing.T) {
 	// Check that it ends with config.json
 	if filepath.Base(path) != "config.json" {
 		t.Errorf("ConfigPath() = %v, want path ending with config.json", path)
+	}
+}
+
+func TestLoad_NonExistentFile(t *testing.T) {
+	// Save original HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	
+	// Use temp directory as HOME
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+	
+	cfg, err := Load()
+	if err != nil {
+		t.Errorf("Load() with non-existent file error = %v, want nil", err)
+	}
+	
+	// Should return default config
+	want := DefaultConfig()
+	if diff := cmp.Diff(want, cfg); diff != "" {
+		t.Errorf("Load() with non-existent file mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoad_ValidFile(t *testing.T) {
+	// Save original HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	
+	// Use temp directory as HOME
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+	
+	// Create config directory and file
+	configDir := filepath.Join(tempDir, ".title-tidy")
+	err := os.MkdirAll(configDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+	
+	configFile := filepath.Join(configDir, "config.json")
+	configData := []byte(`{
+		"show_folder": "custom {show}",
+		"season_folder": "custom {season_name}",
+		"episode": "custom {episode_code}",
+		"movie": "custom {movie}",
+		"log_retention_days": 60,
+		"enable_logging": false
+	}`)
+	err = os.WriteFile(configFile, configData, 0644)
+	if err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+	
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	
+	want := &FormatConfig{
+		ShowFolder:       "custom {show}",
+		SeasonFolder:     "custom {season_name}",
+		Episode:          "custom {episode_code}",
+		Movie:            "custom {movie}",
+		LogRetentionDays: 60,
+		EnableLogging:    false,
+	}
+	
+	if diff := cmp.Diff(want, cfg); diff != "" {
+		t.Errorf("Load() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoad_PartialConfig(t *testing.T) {
+	// Save original HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	
+	// Use temp directory as HOME
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+	
+	// Create config directory and file with partial config
+	configDir := filepath.Join(tempDir, ".title-tidy")
+	err := os.MkdirAll(configDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+	
+	configFile := filepath.Join(configDir, "config.json")
+	configData := []byte(`{
+		"show_folder": "custom {show}",
+		"log_retention_days": 60
+	}`)
+	err = os.WriteFile(configFile, configData, 0644)
+	if err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+	
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	
+	// Should have custom showFolder but default values for missing fields
+	if cfg.ShowFolder != "custom {show}" {
+		t.Errorf("Load() ShowFolder = %q, want %q", cfg.ShowFolder, "custom {show}")
+	}
+	if cfg.SeasonFolder != "{season_name}" {
+		t.Errorf("Load() SeasonFolder = %q, want default %q", cfg.SeasonFolder, "{season_name}")
+	}
+	if cfg.Episode != "{season_code}{episode_code}" {
+		t.Errorf("Load() Episode = %q, want default %q", cfg.Episode, "{season_code}{episode_code}")
+	}
+	if cfg.Movie != "{movie} ({year})" {
+		t.Errorf("Load() Movie = %q, want default %q", cfg.Movie, "{movie} ({year})")
+	}
+	if cfg.LogRetentionDays != 60 {
+		t.Errorf("Load() LogRetentionDays = %d, want %d", cfg.LogRetentionDays, 60)
+	}
+}
+
+func TestLoad_InvalidJSON(t *testing.T) {
+	// Save original HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	
+	// Use temp directory as HOME
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+	
+	// Create config directory and invalid JSON file
+	configDir := filepath.Join(tempDir, ".title-tidy")
+	err := os.MkdirAll(configDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+	
+	configFile := filepath.Join(configDir, "config.json")
+	configData := []byte(`{invalid json}`)
+	err = os.WriteFile(configFile, configData, 0644)
+	if err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+	
+	_, err = Load()
+	if err == nil {
+		t.Error("Load() with invalid JSON error = nil, want error")
+	}
+}
+
+func TestSave(t *testing.T) {
+	// Save original HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	
+	// Use temp directory as HOME
+	tempDir := t.TempDir()
+	os.Setenv("HOME", tempDir)
+	
+	cfg := &FormatConfig{
+		ShowFolder:       "test {show}",
+		SeasonFolder:     "test {season_name}",
+		Episode:          "test {episode_code}",
+		Movie:            "test {movie}",
+		LogRetentionDays: 90,
+		EnableLogging:    false,
+	}
+	
+	err := cfg.Save()
+	if err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+	
+	// Verify file was created
+	configFile := filepath.Join(tempDir, ".title-tidy", "config.json")
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatalf("Failed to read saved config: %v", err)
+	}
+	
+	// Parse back to verify content
+	var saved FormatConfig
+	err = json.Unmarshal(data, &saved)
+	if err != nil {
+		t.Fatalf("Failed to parse saved config: %v", err)
+	}
+	
+	if diff := cmp.Diff(cfg, &saved); diff != "" {
+		t.Errorf("Saved config mismatch (-want +got):\n%s", diff)
 	}
 }
 
