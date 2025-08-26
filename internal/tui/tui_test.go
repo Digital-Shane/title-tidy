@@ -79,8 +79,8 @@ func buildMovieTestTree() *treeview.Tree[treeview.FileInfo] {
 func TestNewRenameModelInitialization(t *testing.T) {
 	t.Parallel()
 	m := NewRenameModel(buildTVTestTree())
-	if m.width != 80 || m.height != 24 || m.treeWidth != 48 || m.treeHeight != 21 || m.statsWidth != 32 || m.statsHeight != 21 {
-		t.Errorf("NewRenameModel defaults = (w=%d h=%d tw=%d th=%d sw=%d sh=%d), want (80 24 48 21 32 21)", m.width, m.height, m.treeWidth, m.treeHeight, m.statsWidth, m.statsHeight)
+	if m.width != 80 || m.height != 24 || m.treeWidth != 48 || m.treeHeight != 20 || m.statsWidth != 32 || m.statsHeight != 20 {
+		t.Errorf("NewRenameModel defaults = (w=%d h=%d tw=%d th=%d sw=%d sh=%d), want (80 24 48 20 32 20)", m.width, m.height, m.treeWidth, m.treeHeight, m.statsWidth, m.statsHeight)
 	}
 }
 
