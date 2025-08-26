@@ -152,8 +152,8 @@ func (m *RenameModel) getIcon(iconType string) string {
 func (m *RenameModel) CalculateLayout() {
 	// Set tree width to 60%
 	tw := m.width * 6 / 10
-	// Reserve space for header (1) + status bar (1) + spacing (1) = 3 lines
-	th := m.height - 3
+	// Reserve space for header (1) + newline after header (1) + newline before status (1) + status bar (1) = 4 lines
+	th := m.height - 4
 	// Ensure min height
 	if th < 5 {
 		th = 5
@@ -344,7 +344,7 @@ func (m *RenameModel) renderStatusBar() string {
 		statusText := textStyle.Render(fmt.Sprintf("%d/%d - %s", m.completedOps, m.totalRenameOps, operationText))
 		// Combine bar and styled text, then apply the full width style
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
-		return statusStyleBase.Width(m.width).Render(combined)
+		return statusStyleBase.Width(m.width - 1).Render(combined)
 	}
 	renameKey := "r: Rename"
 	if m.IsLinkMode {
@@ -354,7 +354,7 @@ func (m *RenameModel) renderStatusBar() string {
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
 		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
 		renameKey)
-	return statusStyleBase.Width(m.width).Render(statusText)
+	return statusStyleBase.Width(m.width - 1).Render(statusText)
 }
 
 // renderTwoPanelLayout joins the tree view and statistics panel horizontally.
