@@ -40,6 +40,15 @@ func main() {
 		return
 	}
 
+	// Handle undo command
+	if command == "undo" {
+		if err := cmd.RunUndoCommand(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Load config once for all operations
 	formatConfig, err := config.Load()
 	if err != nil {
@@ -88,6 +97,8 @@ func main() {
 	cfg.DeleteImages = *noImages
 	cfg.Config = formatConfig
 	cfg.LinkPath = *linkPath
+	cfg.Command = command
+	cfg.CommandArgs = os.Args[2:]
 
 	if err := cmd.RunCommand(cfg); err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -102,6 +113,7 @@ func printUsage() {
 	fmt.Printf("  title-tidy seasons   Rename season folders and episodes within\n")
 	fmt.Printf("  title-tidy episodes  Rename episode files in current directory\n")
 	fmt.Printf("  title-tidy movies    Rename movie files and folders\n")
+	fmt.Printf("  title-tidy undo      Undo recent rename operations\n")
 	fmt.Printf("  title-tidy config    Configure custom naming formats\n")
 	fmt.Printf("  title-tidy help      Show this help message\n\n")
 	fmt.Printf("Options:\n")

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
+	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 
 	"github.com/Digital-Shane/treeview"
@@ -16,6 +17,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
+
+// UndoCompleteMsg is emitted when undo operation completes
+type UndoCompleteMsg struct{ successCount, errorCount int }
+
+func (u UndoCompleteMsg) SuccessCount() int { return u.successCount }
+func (u UndoCompleteMsg) ErrorCount() int   { return u.errorCount }
 
 // Icon sets for different terminal capabilities
 var (
@@ -105,6 +112,17 @@ type RenameModel struct {
 
 	// Icon support
 	iconSet map[string]string
+	
+	// Command info for logging
+	Command      string
+	CommandArgs  []string
+	
+	// Undo support
+	undoAvailable  bool
+	undoInProgress bool
+	undoComplete   bool
+	undoSuccess    int
+	undoFailed     int
 }
 
 // NewRenameModel returns an initialized RenameModel for the provided tree with
@@ -226,9 +244,20 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if !m.renameInProgress {
 				m.renameInProgress = true
+				// Start logging session
+				if err := log.StartSession(m.Command, m.CommandArgs); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Failed to start operation log: %v\n", err)
+				}
 				m.prepareRenameProgress()
 				m.progressVisible = true
 				return m, m.PerformRenames()
+			}
+		case "u", "U":
+			if m.undoAvailable && !m.undoInProgress {
+				m.undoInProgress = true
+				m.undoAvailable = false
+				m.progressVisible = true
+				return m, m.performUndo()
 			}
 		case "pgup":
 			// Page up - move up by viewport height
@@ -261,6 +290,18 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.successCount = msg.successCount
 		m.errorCount = msg.errorCount
 		m.statsDirty = true
+		m.progressVisible = false
+		m.undoAvailable = msg.successCount > 0
+		// End logging session
+		if err := log.EndSession(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to save operation log: %v\n", err)
+		}
+		return m, nil
+	case UndoCompleteMsg:
+		m.undoInProgress = false
+		m.undoComplete = true
+		m.undoSuccess = msg.successCount
+		m.undoFailed = msg.errorCount
 		m.progressVisible = false
 		return m, nil
 	case renameProgressMsg:
@@ -346,14 +387,41 @@ func (m *RenameModel) renderStatusBar() string {
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
 		return statusStyleBase.Width(m.width - 1).Render(combined)
 	}
+	
+	if m.progressVisible && m.undoInProgress {
+		// show progress bar with undo text
+		bar := m.progressModel.View()
+		textStyle := lipgloss.NewStyle().
+			Background(colorSecondary).
+			Foreground(colorBackground).
+			Padding(0, 1)
+		statusText := textStyle.Render("Undoing operations...")
+		combined := fmt.Sprintf("%s  %s", bar, statusText)
+		return statusStyleBase.Width(m.width).Render(combined)
+	}
+	
 	renameKey := "r: Rename"
 	if m.IsLinkMode {
 		renameKey = "r: Link"
 	}
-	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  d: Remove  │  esc: Quit",
+	
+	// Add undo info if available or completed
+	undoInfo := ""
+	if m.undoAvailable {
+		undoInfo = "u: Undo  │  "
+	} else if m.undoComplete {
+		if m.undoFailed > 0 {
+			undoInfo = fmt.Sprintf("Undo: %d success, %d failed  │  ", m.undoSuccess, m.undoFailed)
+		} else {
+			undoInfo = fmt.Sprintf("Undo: %d operations reversed  │  ", m.undoSuccess)
+		}
+	}
+	
+	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  esc: Quit",
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
 		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
-		renameKey)
+		renameKey,
+		undoInfo)
 	return statusStyleBase.Width(m.width - 1).Render(statusText)
 }
 
@@ -587,4 +655,18 @@ func (m *RenameModel) removeRootNode(nodeToRemove *treeview.Node[treeview.FileIn
 		return n == nodeToRemove
 	})
 	m.TuiTreeModel.Tree.SetNodes(filteredRoots)
+}
+
+// performUndo undoes the most recent operation session
+func (m *RenameModel) performUndo() tea.Cmd {
+	return func() tea.Msg {
+		// Get the latest session and undo it
+		latestSession, _, err := log.FindLatestSession()
+		if err != nil {
+			return UndoCompleteMsg{successCount: 0, errorCount: 1}
+		}
+		
+		successful, failed, _ := log.UndoSession(latestSession)
+		return UndoCompleteMsg{successCount: successful, errorCount: failed}
+	}
 }

@@ -40,19 +40,23 @@ type FormatContext struct {
 
 // FormatConfig holds the format templates for different media types
 type FormatConfig struct {
-	ShowFolder   string `json:"show_folder"`
-	SeasonFolder string `json:"season_folder"`
-	Episode      string `json:"episode"`
-	Movie        string `json:"movie"`
+	ShowFolder        string `json:"show_folder"`
+	SeasonFolder      string `json:"season_folder"`
+	Episode           string `json:"episode"`
+	Movie             string `json:"movie"`
+	LogRetentionDays  int    `json:"log_retention_days"`
+	EnableLogging     bool   `json:"enable_logging"`
 }
 
 // DefaultConfig returns the default format configuration
 func DefaultConfig() *FormatConfig {
 	return &FormatConfig{
-		ShowFolder:   "{show} ({year})",
-		SeasonFolder: "{season_name}",
-		Episode:      "{season_code}{episode_code}",
-		Movie:        "{movie} ({year})",
+		ShowFolder:       "{show} ({year})",
+		SeasonFolder:     "{season_name}",
+		Episode:          "{season_code}{episode_code}",
+		Movie:            "{movie} ({year})",
+		LogRetentionDays: 30,
+		EnableLogging:    true,
 	}
 }
 

@@ -3,10 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
+	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 
@@ -35,9 +37,14 @@ type CommandConfig struct {
 	DeleteImages bool
 	Config       *config.FormatConfig
 	LinkPath     string
+	Command      string
+	CommandArgs  []string
 }
 
 func RunCommand(cfg CommandConfig) error {
+	// Initialize logging system with configuration
+	log.Initialize(cfg.Config.EnableLogging, cfg.Config.LogRetentionDays)
+	
 	// 1. Run indexing (filesystem scan + progress UI) once.
 	idxModel := tui.NewIndexProgressModel(".", tui.IndexConfig{
 		MaxDepth:    cfg.maxDepth,
@@ -83,15 +90,29 @@ func RunCommand(cfg CommandConfig) error {
 	model.DeleteImages = cfg.DeleteImages
 	model.LinkPath = cfg.LinkPath
 	model.IsLinkMode = cfg.LinkPath != ""
+	model.Command = cfg.Command
+	model.CommandArgs = cfg.CommandArgs
 
 	// If instant mode, perform renames immediately
 	if cfg.InstantMode {
+		// Start logging session
+		if err := log.StartSession(cfg.Command, cfg.CommandArgs); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to start operation log: %v\n", err)
+		}
+		
 		cmd := model.PerformRenames()
 		if cmd != nil {
 			msg := cmd()
 			if result, ok := msg.(tui.RenameCompleteMsg); ok && result.ErrorCount() > 0 {
+				// End session before returning error
+				log.EndSession()
 				return fmt.Errorf("%d errors occurred during renaming", result.ErrorCount())
 			}
+		}
+		
+		// End logging session
+		if err := log.EndSession(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to save operation log: %v\n", err)
 		}
 		return nil
 	}
