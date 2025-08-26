@@ -13,6 +13,7 @@ import (
 
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -37,7 +38,7 @@ var (
 		"subtitles":  "📄",
 		"needrename": "✓",
 		"nochange":   "=",
-		"delete":     "🗑",
+		"delete":     "❌",
 		"success":    "✅",
 		"error":      "❌",
 		"arrows":     "↑↓←→",
@@ -123,6 +124,10 @@ type RenameModel struct {
 	undoComplete   bool
 	undoSuccess    int
 	undoFailed     int
+	
+	// Stats panel scrolling
+	statsViewport viewport.Model
+	statsFocused  bool // whether the stats panel is focused for scrolling
 }
 
 // NewRenameModel returns an initialized RenameModel for the provided tree with
@@ -143,6 +148,11 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo]) *RenameModel {
 	m.progressModel.Width = 40
 	// establish initial layout metrics before building underlying model
 	m.CalculateLayout()
+	
+	// Initialize stats viewport
+	m.statsViewport = viewport.New(m.statsWidth, m.statsHeight)
+	m.statsViewport.Style = lipgloss.NewStyle()
+	
 	m.TuiTreeModel = m.createSizedTuiModel(tree)
 	return m
 }
@@ -185,6 +195,27 @@ func (m *RenameModel) CalculateLayout() {
 	// ensure a minimal positive stats height
 	if m.statsHeight < 1 {
 		m.statsHeight = 1
+	}
+	
+	// Update stats viewport dimensions if initialized
+	if m.statsViewport.Width > 0 || m.statsViewport.Height > 0 {
+		// Account for border and padding in viewport dimensions
+		// Border (2) + padding (2) = 4 total horizontal frame size
+		frameWidth := 4
+		frameHeight := 4
+		
+		viewportWidth := m.statsWidth - frameWidth
+		viewportHeight := m.statsHeight - frameHeight
+		
+		if viewportWidth < 1 {
+			viewportWidth = 1
+		}
+		if viewportHeight < 1 {
+			viewportHeight = 1
+		}
+		
+		m.statsViewport.Width = viewportWidth
+		m.statsViewport.Height = viewportHeight
 	}
 }
 
@@ -233,6 +264,11 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// Handle custom keys before passing to tree model
 		switch msg.String() {
+		case "tab":
+			// Toggle between tree and stats panel focus
+			m.statsFocused = !m.statsFocused
+			return m, nil
+			
 		case "delete", "d":
 			if focusedNode := m.TuiTreeModel.Tree.GetFocusedNode(); focusedNode != nil {
 				// Move focus up one position before deletion to maintain nearby focus
@@ -259,13 +295,35 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.progressVisible = true
 				return m, m.performUndo()
 			}
+		case "up":
+			if m.statsFocused {
+				// Scroll stats panel up
+				m.statsViewport.LineUp(1)
+				return m, nil
+			}
+		case "down":
+			if m.statsFocused {
+				// Scroll stats panel down
+				m.statsViewport.LineDown(1)
+				return m, nil
+			}
 		case "pgup":
-			// Page up - move up by viewport height
+			if m.statsFocused {
+				// Page up in stats panel
+				m.statsViewport.HalfPageUp()
+				return m, nil
+			}
+			// Page up - move up by viewport height in tree
 			pageSize := max(m.treeHeight, 10)
 			m.TuiTreeModel.Tree.Move(context.Background(), -pageSize)
 			return m, nil
 		case "pgdown":
-			// Page down - move down by viewport height
+			if m.statsFocused {
+				// Page down in stats panel
+				m.statsViewport.HalfPageDown()
+				return m, nil
+			}
+			// Page down - move down by viewport height in tree
 			pageSize := max(m.treeHeight, 10)
 			m.TuiTreeModel.Tree.Move(context.Background(), pageSize)
 			return m, nil
@@ -275,12 +333,22 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle mouse wheel scrolling
 		switch msg.Type {
 		case tea.MouseWheelUp:
-			// Scroll up by 1 line
-			m.TuiTreeModel.Tree.Move(context.Background(), -1)
+			if m.statsFocused {
+				// Scroll stats panel up
+				m.statsViewport.LineUp(1)
+			} else {
+				// Scroll tree up by 1 line
+				m.TuiTreeModel.Tree.Move(context.Background(), -1)
+			}
 			return m, nil
 		case tea.MouseWheelDown:
-			// Scroll down by 1 line
-			m.TuiTreeModel.Tree.Move(context.Background(), 1)
+			if m.statsFocused {
+				// Scroll stats panel down
+				m.statsViewport.LineDown(1)
+			} else {
+				// Scroll tree down by 1 line
+				m.TuiTreeModel.Tree.Move(context.Background(), 1)
+			}
 			return m, nil
 		}
 
@@ -417,7 +485,15 @@ func (m *RenameModel) renderStatusBar() string {
 		}
 	}
 	
-	statusText := fmt.Sprintf("%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  esc: Quit",
+	focusInfo := ""
+	if m.statsFocused {
+		focusInfo = "Tab: Tree Focus  │  "
+	} else {
+		focusInfo = "Tab: Stats Focus  │  "
+	}
+	
+	statusText := fmt.Sprintf("%s%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  esc: Quit",
+		focusInfo,
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
 		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
 		renameKey,
@@ -440,41 +516,57 @@ func (m *RenameModel) renderTwoPanelLayout() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, treeContainer, statsPanel)
 }
 
-// renderStatsPanel builds and formats the statistics panel content.
+// renderStatsPanel builds and formats the statistics panel content using a scrollable viewport.
 func (m *RenameModel) renderStatsPanel() string {
-	// Create base style with border and padding
+	// Update the viewport content when stats are dirty or viewport content is empty
+	if m.statsDirty || m.statsViewport.View() == "" {
+		m.updateStatsContent()
+	}
+	
+	// Create border style
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorAccent).
 		Padding(1)
-
-	// Calculate the actual content width needed after accounting for frame
-	// The frame includes border (2) + padding (2) = 4 horizontal chars
-	frameWidth := borderStyle.GetHorizontalFrameSize()
-	frameHeight := borderStyle.GetVerticalFrameSize()
-
-	contentWidth := m.statsWidth - frameWidth
-	contentHeight := m.statsHeight - frameHeight
-
-	if contentWidth < 1 {
-		contentWidth = 1
+	
+	// Create title with scroll indicator
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Underline(true).
+		MarginBottom(1)
+	
+	scrollIndicator := ""
+	if m.statsViewport.TotalLineCount() > m.statsViewport.Height {
+		if m.statsFocused {
+			scrollIndicator = " [Use Tab+↑↓]"
+		} else {
+			scrollIndicator = " [Tab to scroll]"
+		}
 	}
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	
+	title := titleStyle.Render(fmt.Sprintf("%s Statistics%s", m.getIcon("stats"), scrollIndicator))
+	
+	// Combine title and viewport
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		m.statsViewport.View(),
+	)
+	
+	// Apply the border and sizing
+	return borderStyle.
+		Width(m.statsWidth - borderStyle.GetHorizontalFrameSize()).
+		Height(m.statsHeight - borderStyle.GetVerticalFrameSize()).
+		Render(content)
+}
 
-	// Apply calculated dimensions to the style
-	// Width/Height in lipgloss is for the content area only when padding is used
-	style := borderStyle.
-		Width(contentWidth).
-		Height(contentHeight)
-
+// updateStatsContent generates the stats content and sets it in the viewport
+func (m *RenameModel) updateStatsContent() {
 	stats := m.calculateStats()
 	var b strings.Builder
 	b.Grow(512)
 
 	// Format stats content with appropriate icons based on terminal capabilities
-	fmt.Fprintf(&b, "%s Statistics\n\n", m.getIcon("stats"))
 	b.WriteString("Files Found:\n")
 	if m.IsMovieMode {
 		fmt.Fprintf(&b, "  %s %-12s %d\n", m.getIcon("movie"), "Movies:", stats.movieCount)
@@ -492,8 +584,8 @@ func (m *RenameModel) renderStatsPanel() string {
 	if m.IsLinkMode {
 		renameLabel = "To link:"
 	}
-	fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("needrename"), renameLabel, stats.needRenameCount)
-	fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("nochange"), "No change:", stats.noChangeCount)
+	fmt.Fprintf(&b, "  %s %-14s %d\n", m.getIcon("needrename"), " "+renameLabel, stats.needRenameCount)
+	fmt.Fprintf(&b, "  %s %-14s %d\n", m.getIcon("nochange"), " No change:", stats.noChangeCount)
 	if stats.toDeleteCount > 0 {
 		fmt.Fprintf(&b, "  %s %-13s %d\n", m.getIcon("delete"), "To delete:", stats.toDeleteCount)
 	}
@@ -534,7 +626,7 @@ func (m *RenameModel) renderStatsPanel() string {
 		}
 	}
 
-	return style.Render(b.String())
+	m.statsViewport.SetContent(b.String())
 }
 
 // Statistics aggregates counts derived from the current tree plus the most
