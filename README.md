@@ -11,6 +11,23 @@ The tool scans your current directory and displays an interactive preview showin
 reliably detects season and episode numbers across various formats (S01E01, 1x01, 101, etc.) and handles edge cases well.
 Green items indicate pending changes. You can navigate through the list and apply changes when ready.
 
+## Table of Contents
+
+- [Basic Usage](#basic-usage)
+- [Commands](#commands)
+  - [Config](#config)
+  - [Shows](#shows)
+  - [Seasons](#seasons)
+  - [Episodes](#episodes)
+  - [Movies](#movies)
+- [Installation](#installation)
+  - [Go Install (Recommended)](#go-install)
+  - [Docker](#docker)
+- [Built With](#built-with)
+- [Contributing](#contributing)
+- [License](#license)
+- [Star History](#star-history)
+
 ## How to Use It
 
 The tool provides four main commands, each designed for different scenarios. Run it in the directory containing your
@@ -179,7 +196,7 @@ Some Film (2022)/                                  → Some Film (2022)/
 
 ## Installation
 
-### Option 1: Go Install (Recommended)
+### Go Install
 
 The recommended way to install Title Tidy is using Go. This provides the best performance and easiest usage.
 
@@ -208,7 +225,7 @@ Once Go is installed, you can install Title Tidy with a single command:
 go install github.com/Digital-Shane/title-tidy@latest
 ```
 
-### Option 2: Docker
+### Docker
 
 For containerized environments or if you prefer not to install Go, you can use Docker:
 
