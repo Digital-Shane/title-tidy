@@ -6,6 +6,11 @@ on:
       - '**'
     tags:
       - '*'
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
 
 jobs:
   docker:
