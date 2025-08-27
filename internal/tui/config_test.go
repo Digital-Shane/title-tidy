@@ -43,12 +43,12 @@ func TestConfigScrolling(t *testing.T) {
 
 	// Test manual scrolling
 	originalY := m.variablesView.YOffset
-	m.variablesView.LineDown(1)
+	m.variablesView.ScrollDown(1)
 	if m.variablesView.YOffset == originalY && m.variablesView.TotalLineCount() > m.variablesView.Height {
 		t.Error("LineDown should change YOffset when content is scrollable")
 	}
 
-	m.variablesView.LineUp(1)
+	m.variablesView.ScrollUp(1)
 	if m.variablesView.YOffset != originalY {
 		t.Log("Scroll up/down working")
 	}

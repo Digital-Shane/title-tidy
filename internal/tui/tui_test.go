@@ -517,7 +517,7 @@ func TestMouseWheelScrolling(t *testing.T) {
 	m := NewRenameModel(buildTVTestTree())
 
 	// Test Mouse Wheel Up
-	updated, cmd := m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButton(4)})
 	if cmd != nil {
 		t.Errorf("Update(mouse wheel up) cmd = %v, want nil", cmd)
 	}
@@ -526,7 +526,7 @@ func TestMouseWheelScrolling(t *testing.T) {
 	}
 
 	// Test Mouse Wheel Down
-	updated, cmd = m.Update(tea.MouseMsg{Type: tea.MouseWheelDown})
+	updated, cmd = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButton(5)})
 	if cmd != nil {
 		t.Errorf("Update(mouse wheel down) cmd = %v, want nil", cmd)
 	}

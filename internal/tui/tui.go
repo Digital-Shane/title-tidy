@@ -113,18 +113,18 @@ type RenameModel struct {
 
 	// Icon support
 	iconSet map[string]string
-	
+
 	// Command info for logging
-	Command      string
-	CommandArgs  []string
-	
+	Command     string
+	CommandArgs []string
+
 	// Undo support
 	undoAvailable  bool
 	undoInProgress bool
 	undoComplete   bool
 	undoSuccess    int
 	undoFailed     int
-	
+
 	// Stats panel scrolling
 	statsViewport viewport.Model
 	statsFocused  bool // whether the stats panel is focused for scrolling
@@ -148,11 +148,11 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo]) *RenameModel {
 	m.progressModel.Width = 40
 	// establish initial layout metrics before building underlying model
 	m.CalculateLayout()
-	
+
 	// Initialize stats viewport
 	m.statsViewport = viewport.New(m.statsWidth, m.statsHeight)
 	m.statsViewport.Style = lipgloss.NewStyle()
-	
+
 	m.TuiTreeModel = m.createSizedTuiModel(tree)
 	return m
 }
@@ -196,24 +196,24 @@ func (m *RenameModel) CalculateLayout() {
 	if m.statsHeight < 1 {
 		m.statsHeight = 1
 	}
-	
+
 	// Update stats viewport dimensions if initialized
 	if m.statsViewport.Width > 0 || m.statsViewport.Height > 0 {
 		// Account for border and padding in viewport dimensions
 		// Border (2) + padding (2) = 4 total horizontal frame size
 		frameWidth := 4
 		frameHeight := 4
-		
+
 		viewportWidth := m.statsWidth - frameWidth
 		viewportHeight := m.statsHeight - frameHeight
-		
+
 		if viewportWidth < 1 {
 			viewportWidth = 1
 		}
 		if viewportHeight < 1 {
 			viewportHeight = 1
 		}
-		
+
 		m.statsViewport.Width = viewportWidth
 		m.statsViewport.Height = viewportHeight
 	}
@@ -268,7 +268,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle between tree and stats panel focus
 			m.statsFocused = !m.statsFocused
 			return m, nil
-			
+
 		case "delete", "d":
 			if focusedNode := m.TuiTreeModel.Tree.GetFocusedNode(); focusedNode != nil {
 				// Move focus up one position before deletion to maintain nearby focus
@@ -331,8 +331,8 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		// Handle mouse wheel scrolling
-		switch msg.Type {
-		case tea.MouseWheelUp:
+		switch {
+		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(4): // Mouse wheel up
 			if m.statsFocused {
 				// Scroll stats panel up
 				m.statsViewport.LineUp(1)
@@ -341,7 +341,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.TuiTreeModel.Tree.Move(context.Background(), -1)
 			}
 			return m, nil
-		case tea.MouseWheelDown:
+		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(5): // Mouse wheel down
 			if m.statsFocused {
 				// Scroll stats panel down
 				m.statsViewport.LineDown(1)
@@ -455,7 +455,7 @@ func (m *RenameModel) renderStatusBar() string {
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
 		return statusStyleBase.Width(m.width - 1).Render(combined)
 	}
-	
+
 	if m.progressVisible && m.undoInProgress {
 		// show progress bar with undo text
 		bar := m.progressModel.View()
@@ -467,12 +467,12 @@ func (m *RenameModel) renderStatusBar() string {
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
 		return statusStyleBase.Width(m.width).Render(combined)
 	}
-	
+
 	renameKey := "r: Rename"
 	if m.IsLinkMode {
 		renameKey = "r: Link"
 	}
-	
+
 	// Add undo info if available or completed
 	undoInfo := ""
 	if m.undoAvailable {
@@ -484,14 +484,14 @@ func (m *RenameModel) renderStatusBar() string {
 			undoInfo = fmt.Sprintf("Undo: %d operations reversed  │  ", m.undoSuccess)
 		}
 	}
-	
+
 	focusInfo := ""
 	if m.statsFocused {
 		focusInfo = "Tab: Tree Focus  │  "
 	} else {
 		focusInfo = "Tab: Stats Focus  │  "
 	}
-	
+
 	statusText := fmt.Sprintf("%s%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  esc: Quit",
 		focusInfo,
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
@@ -522,19 +522,19 @@ func (m *RenameModel) renderStatsPanel() string {
 	if m.statsDirty || m.statsViewport.View() == "" {
 		m.updateStatsContent()
 	}
-	
+
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colorAccent).
 		Padding(1)
-	
+
 	// Create title with scroll indicator
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Underline(true).
 		MarginBottom(1)
-	
+
 	scrollIndicator := ""
 	if m.statsViewport.TotalLineCount() > m.statsViewport.Height {
 		if m.statsFocused {
@@ -543,16 +543,16 @@ func (m *RenameModel) renderStatsPanel() string {
 			scrollIndicator = " [Tab to scroll]"
 		}
 	}
-	
+
 	title := titleStyle.Render(fmt.Sprintf("%s Statistics%s", m.getIcon("stats"), scrollIndicator))
-	
+
 	// Combine title and viewport
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
 		m.statsViewport.View(),
 	)
-	
+
 	// Apply the border and sizing
 	return borderStyle.
 		Width(m.statsWidth - borderStyle.GetHorizontalFrameSize()).
@@ -757,7 +757,7 @@ func (m *RenameModel) performUndo() tea.Cmd {
 		if err != nil {
 			return UndoCompleteMsg{successCount: 0, errorCount: 1}
 		}
-		
+
 		successful, failed, _ := log.UndoSession(latestSession)
 		return UndoCompleteMsg{successCount: successful, errorCount: failed}
 	}
