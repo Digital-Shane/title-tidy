@@ -20,6 +20,8 @@ Green items indicate pending changes. You can navigate through the list and appl
   - [Seasons](#seasons)
   - [Episodes](#episodes)
   - [Movies](#movies)
+  - [Undo](#undo)
+- [Logging](#logging)
 - [Installation](#installation)
   - [Go Install (Recommended)](#go-install)
   - [Docker](#docker)
@@ -30,8 +32,9 @@ Green items indicate pending changes. You can navigate through the list and appl
 
 ## How to Use It
 
-The tool provides four main commands, each designed for different scenarios. Run it in the directory containing your
-media files, and you'll see a preview of all proposed changes. Nothing gets renamed until you confirm.
+The tool provides five main commands: four for renaming different types of media, and one for undoing recent changes. Run it 
+in the directory containing your media files, and you'll see a preview of all proposed changes. Nothing gets renamed until 
+you confirm.
 
 ### Basic Usage
 
@@ -39,6 +42,15 @@ media files, and you'll see a preview of all proposed changes. Nothing gets rena
 title-tidy [command]
 ```
 
+**Available commands:**
+* `shows` - Rename TV show directories with seasons and episodes
+* `seasons` - Rename season folders and their episodes
+* `episodes` - Rename episode files in current directory
+* `movies` - Rename movie files and organize into folders
+* `undo` - Revert recent rename operations
+* `config` - Configure naming templates and logging settings
+
+**Flags for rename commands:**
 * Add the `-i` or `--instant` flag to apply changes immediately without the interactive preview.
 * The `--no-nfo` flag will delete nfo files during the rename process.
 * The `--no-img` flag will delete image files during the rename process.
@@ -52,15 +64,21 @@ title-tidy [command]
 title-tidy config
 ```
 
-Title Tidy allows you to completely customize how your media files are named using configurable templates:
+Title Tidy allows you to completely customize how your media files are named using configurable templates and logging settings:
 
-![config demo](https://vhs.charm.sh/vhs-2rOLUfADomJlkelyTqdLx1.gif)
+![config demo](https://vhs.charm.sh/vhs-3fSox2lKLDkQMKDDeANf6p.gif)
 
-This opens an interactive interface where you can customize the naming templates for:
+This opens an interactive interface where you can customize:
+
+**Naming templates for:**
 * **Show folders**: How TV show directories are named (default: `{show} ({year})`)
 * **Season folders**: How season directories are named (default: `{season_name}`)
 * **Episode files**: How individual episodes are named (default: `{season_code}{episode_code}`)
 * **Movie folders**: How movie directories are named (default: `{movie} ({year})`)
+
+**Logging settings:**
+* **Enable/Disable logging**: Toggle operation history tracking
+* **Retention days**: How long to keep log files (default: 30 days)
 
 **Available template variables:**
 * `{show}` - Show name (cleaned)
@@ -193,6 +211,35 @@ Great.Movie.2024.1080p.x265/                       → Great Movie (2024)/
 Some Film (2022)/                                  → Some Film (2022)/
 ├── Some.Film.2022.1080p.mkv                       → ├── Some Film (2022).mkv
 ```
+
+### Undo
+
+```bash
+title-tidy undo
+```
+
+Accidentally renamed something? The undo command lets you revert recent rename operations. It displays a list of recent
+rename sessions with details about what was changed, allowing you to select which session to undo.
+
+![undo demo](https://vhs.charm.sh/vhs-52ZWSlz5ogGyGOpYqgKvzw.gif)
+
+**Features:**
+* View recent rename sessions with timestamps and file counts
+* See detailed information about each session including command used and directory
+* Select which session to revert
+* Safe undo operation that only reverts successful renames
+* Automatic cleanup of old log files based on retention settings
+
+## Logging
+
+Title Tidy automatically tracks all rename operations to enable the undo functionality. Each rename session is logged with:
+* Timestamp of the operation
+* Command and arguments used
+* Working directory
+* Complete list of all file operations (renames, links, deletions, directory creations)
+* Success/failure status of each operation
+
+Logs are stored in `~/.title-tidy/logs/` as JSON files and are automatically cleaned up based on your retention settings.
 
 ## Installation
 

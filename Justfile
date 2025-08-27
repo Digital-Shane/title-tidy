@@ -39,7 +39,8 @@ _validate_mode mode:
 		se|seasons)  echo "seasons"  ;;
 		sw|shows)    echo "shows"    ;;
 		config)      echo "config"   ;;
-		*) echo "Invalid mode: {{mode}}" >&2; echo "Allowed: ep|episodes mv|movies se|seasons sw|shows config" >&2; exit 1 ;;
+		undo)        echo "undo"     ;;
+		*) echo "Invalid mode: {{mode}}" >&2; echo "Allowed: ep|episodes mv|movies se|seasons sw|shows config undo" >&2; exit 1 ;;
 	esac
 
 
@@ -54,8 +55,9 @@ _publish_gif gif_path:
 #   just demo se       # seasons demo
 #   just demo sw       # shows demo
 #   just demo config   # config demo
+#   just demo undo     # undo demo
 # Synonyms accepted:
-#   ep|episodes  mv|movies  se|seasons  sw|shows  config
+#   ep|episodes  mv|movies  se|seasons  sw|shows  config  undo
 # Steps performed:
 # 1. go install . (ensure latest binary in PATH)
 # 2. Run matching demo/make.sh to generate demo data under demo/data
@@ -89,6 +91,7 @@ demo target:
 # Generate a gif for a specific demo mode
 # Usage: just create-gif episodes
 # Usage: just create-gif config
+# Usage: just create-gif undo
 create-gif mode:
 	#!/usr/bin/env bash
 	set -euo pipefail
@@ -110,6 +113,7 @@ create-gif mode:
 # Generate, publish and update README for a specific demo
 # Usage: just update-gif episodes
 # Usage: just update-gif config
+# Usage: just update-gif undo
 update-gif mode:
 	#!/usr/bin/env bash
 	set -euo pipefail
@@ -139,6 +143,7 @@ update-gif mode:
 		seasons)  section_header="### Seasons"  ;;
 		shows)    section_header="### Shows"    ;;
 		config)   section_header="### Config"   ;;
+		undo)     section_header="### Undo"     ;;
 	esac
 	# Update the gif URL in the line following the section header
 	# This matches the pattern ![text](url) and replaces the URL part
@@ -159,4 +164,5 @@ update-gif mode:
 	just update-gif movies
 	just update-gif seasons
 	just update-gif shows
+	just update-gif undo
 	echo "All demo gifs updated!"
