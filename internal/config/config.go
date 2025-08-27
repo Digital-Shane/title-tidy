@@ -40,12 +40,12 @@ type FormatContext struct {
 
 // FormatConfig holds the format templates for different media types
 type FormatConfig struct {
-	ShowFolder        string `json:"show_folder"`
-	SeasonFolder      string `json:"season_folder"`
-	Episode           string `json:"episode"`
-	Movie             string `json:"movie"`
-	LogRetentionDays  int    `json:"log_retention_days"`
-	EnableLogging     bool   `json:"enable_logging"`
+	ShowFolder       string `json:"show_folder"`
+	SeasonFolder     string `json:"season_folder"`
+	Episode          string `json:"episode"`
+	Movie            string `json:"movie"`
+	LogRetentionDays int    `json:"log_retention_days"`
+	EnableLogging    bool   `json:"enable_logging"`
 }
 
 // DefaultConfig returns the default format configuration

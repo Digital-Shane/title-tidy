@@ -224,14 +224,14 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 			// In rename mode: use bottom-up so child renames happen before parent renames
 			// In link mode: use breadth-first so parent dirs are created before children
 			targetIndex := m.currentOpIndex - m.virtualDirCount - m.deletionCount
-			
+
 			var iterator iter.Seq2[treeview.NodeInfo[treeview.FileInfo], error]
 			if m.IsLinkMode {
 				iterator = m.Tree.BreadthFirst(context.Background())
 			} else {
 				iterator = m.Tree.AllBottomUp(context.Background())
 			}
-			
+
 			for info := range iterator {
 				node := info.Node
 				mm := core.GetMeta(node)

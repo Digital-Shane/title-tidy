@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"context"
-	"path/filepath"
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/treeview"
+	"path/filepath"
 )
 
 // EpisodesCommand processes a flat directory of episode files (no parent season folder).
@@ -35,7 +35,7 @@ var EpisodesCommand = CommandConfig{
 
 			// Apply template and add extension - Episodes command has no show/year context
 			m.NewName = cfg.ApplyEpisodeTemplate("", "", season, episode) + ext
-			
+
 			// Set destination path if linking
 			if linkPath != "" {
 				m.DestinationPath = filepath.Join(linkPath, m.NewName)

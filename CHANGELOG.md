@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 ### Fixed
 - Remove deprecated bubble tea api usage.
+- go fmt
 
 ## [v1.6.0] - 2025-08-26
 ### Added

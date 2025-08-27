@@ -34,7 +34,7 @@ func TestShowsCommandAnnotate(t *testing.T) {
 
 func TestShowsCommandAnnotateWithLinking(t *testing.T) {
 	show := testNewDirNode("Some.Show.2024")
-	season := testNewDirNode("Season 2") 
+	season := testNewDirNode("Season 2")
 	ep1 := testNewFileNode("S02E03.mkv")
 	ep2 := testNewFileNode("S02E04.en.srt")
 	season.AddChild(ep1)
@@ -89,7 +89,7 @@ func TestShowsCommandAnnotateWithLinking(t *testing.T) {
 			wantDest: "/test/destination/Some Show (2024)/Season 02/S02E03.mkv",
 		},
 		{
-			name:     "subtitle episode", 
+			name:     "subtitle episode",
 			node:     ep2,
 			wantDest: "/test/destination/Some Show (2024)/Season 02/S02E04.en.srt",
 		},
