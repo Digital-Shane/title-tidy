@@ -133,7 +133,7 @@ func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig
 			formatted, year := config.ExtractNameAndYear(ni.Node.Name())
 			// Apply movie template
 			m.NewName = cfg.ApplyMovieTemplate(formatted, year)
-			
+
 			// Set destination path if linking
 			if linkPath != "" {
 				m.DestinationPath = filepath.Join(linkPath, m.NewName)
@@ -149,7 +149,7 @@ func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig
 		m := core.EnsureMeta(ni.Node)
 		m.Type = core.MediaMovieFile
 		m.NewName = pm.NewName + media.ExtractExtension(ni.Node.Name())
-		
+
 		// Set destination path if linking
 		if linkPath != "" && p != nil {
 			parentPath := parentPaths[p]

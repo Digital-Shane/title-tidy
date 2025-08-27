@@ -30,13 +30,13 @@ type OperationLog struct {
 }
 
 type SessionMetadata struct {
-	CommandArgs    []string  `json:"command_args"`
-	WorkingDir     string    `json:"working_dir"`
-	Timestamp      time.Time `json:"timestamp"`
-	SessionID      string    `json:"session_id"`
-	TotalOps       int       `json:"total_operations"`
-	SuccessfulOps  int       `json:"successful_operations"`
-	FailedOps      int       `json:"failed_operations"`
+	CommandArgs   []string  `json:"command_args"`
+	WorkingDir    string    `json:"working_dir"`
+	Timestamp     time.Time `json:"timestamp"`
+	SessionID     string    `json:"session_id"`
+	TotalOps      int       `json:"total_operations"`
+	SuccessfulOps int       `json:"successful_operations"`
+	FailedOps     int       `json:"failed_operations"`
 }
 
 type LogSession struct {
@@ -55,19 +55,19 @@ var (
 func StartSession(command string, args []string) error {
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
-	
+
 	if !loggingEnabled {
 		return nil
 	}
-	
+
 	wd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
-	
+
 	now := time.Now()
 	sessionID := fmt.Sprintf("%s_%s", now.Format("20060102_150405"), fmt.Sprintf("%03d", now.Nanosecond()/1000000))
-	
+
 	currentSession = &LogSession{
 		Metadata: SessionMetadata{
 			CommandArgs: append([]string{command}, args...),
@@ -77,7 +77,7 @@ func StartSession(command string, args []string) error {
 		},
 		Operations: []OperationLog{},
 	}
-	
+
 	return nil
 }
 
@@ -85,7 +85,7 @@ func StartSession(command string, args []string) error {
 func EndSession() error {
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
-	
+
 	if !loggingEnabled || currentSession == nil {
 		return nil
 	}
@@ -120,11 +120,11 @@ func LogCreateDir(dirPath string, success bool, err error) {
 func LogOperation(opType OperationType, sourcePath, destPath string, success bool, err error) {
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
-	
+
 	if !loggingEnabled || currentSession == nil {
 		return
 	}
-	
+
 	op := OperationLog{
 		ID:         fmt.Sprintf("%s_%d", currentSession.Metadata.SessionID, len(currentSession.Operations)),
 		Timestamp:  time.Now(),
@@ -133,11 +133,11 @@ func LogOperation(opType OperationType, sourcePath, destPath string, success boo
 		DestPath:   destPath,
 		Success:    success,
 	}
-	
+
 	if err != nil {
 		op.Error = err.Error()
 	}
-	
+
 	currentSession.Operations = append(currentSession.Operations, op)
 }
 
@@ -146,10 +146,10 @@ func updateStats() {
 	if currentSession == nil {
 		return
 	}
-	
+
 	successful := 0
 	failed := 0
-	
+
 	for _, op := range currentSession.Operations {
 		if op.Success {
 			successful++
@@ -157,7 +157,7 @@ func updateStats() {
 			failed++
 		}
 	}
-	
+
 	currentSession.Metadata.TotalOps = len(currentSession.Operations)
 	currentSession.Metadata.SuccessfulOps = successful
 	currentSession.Metadata.FailedOps = failed
@@ -167,9 +167,9 @@ func updateStats() {
 func Initialize(enabled bool, retentionDays int) {
 	sessionMutex.Lock()
 	defer sessionMutex.Unlock()
-	
+
 	loggingEnabled = enabled
-	
+
 	if enabled {
 		// Clean up old logs on initialization
 		if err := cleanupOldLogsUnsafe(retentionDays); err != nil {
@@ -183,17 +183,17 @@ func GetLogPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	logDir := filepath.Join(homeDir, ".title-tidy", "logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create log directory: %w", err)
 	}
-	
+
 	now := time.Now()
 	filename := fmt.Sprintf("%s.%03d.json",
 		now.Format("2006-01-02_150405"),
 		now.Nanosecond()/1000000)
-	
+
 	return filepath.Join(logDir, filename), nil
 }
 
@@ -201,21 +201,21 @@ func WriteSession(session *LogSession) error {
 	if session == nil {
 		return nil
 	}
-	
+
 	logPath, err := GetLogPath()
 	if err != nil {
 		return fmt.Errorf("failed to get log path: %w", err)
 	}
-	
+
 	data, err := json.MarshalIndent(session, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
-	
+
 	if err := os.WriteFile(logPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write log file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -224,12 +224,12 @@ func ReadSession(logPath string) (*LogSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read log file: %w", err)
 	}
-	
+
 	var session LogSession
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal session: %w", err)
 	}
-	
+
 	return &session, nil
 }
 
@@ -238,27 +238,27 @@ func ReadSessions(limit int) ([]*LogSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	logDir := filepath.Join(homeDir, ".title-tidy", "logs")
-	
+
 	// Check if log directory exists
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
 		return []*LogSession{}, nil
 	}
-	
+
 	files, err := filepath.Glob(filepath.Join(logDir, "*.json"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list log files: %w", err)
 	}
-	
+
 	// Sort files by name (which includes timestamp) in descending order
 	sort.Sort(sort.Reverse(sort.StringSlice(files)))
-	
+
 	// Apply limit
 	if limit > 0 && len(files) > limit {
 		files = files[:limit]
 	}
-	
+
 	sessions := make([]*LogSession, 0, len(files))
 	for _, file := range files {
 		session, err := ReadSession(file)
@@ -268,7 +268,7 @@ func ReadSessions(limit int) ([]*LogSession, error) {
 		}
 		sessions = append(sessions, session)
 	}
-	
+
 	return sessions, nil
 }
 
@@ -278,27 +278,27 @@ func cleanupOldLogsUnsafe(retentionDays int) error {
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	logDir := filepath.Join(homeDir, ".title-tidy", "logs")
-	
+
 	// Check if log directory exists
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
 		return nil
 	}
-	
+
 	files, err := filepath.Glob(filepath.Join(logDir, "*.json"))
 	if err != nil {
 		return fmt.Errorf("failed to list log files: %w", err)
 	}
-	
+
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
-	
+
 	for _, file := range files {
 		info, err := os.Stat(file)
 		if err != nil {
 			continue
 		}
-		
+
 		if info.ModTime().Before(cutoff) {
 			if err := os.Remove(file); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to remove old log file %s: %v\n", file, err)
@@ -306,6 +306,6 @@ func cleanupOldLogsUnsafe(retentionDays int) error {
 			}
 		}
 	}
-	
+
 	return nil
 }

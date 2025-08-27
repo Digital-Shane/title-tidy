@@ -28,21 +28,21 @@ const (
 
 // Model is the Bubble Tea model for the configuration UI
 type Model struct {
-	config            *config.FormatConfig
-	originalConfig    *config.FormatConfig // for reset functionality
-	activeSection     Section
-	inputs            map[Section]string
-	cursorPos         map[Section]int
-	loggingEnabled    bool   // current state of logging toggle
-	loggingRetention  string // retention days as string for input
-	loggingSubfocus   int    // 0=enabled toggle, 1=retention input
-	width             int
-	height            int
-	saveStatus        string
-	err               error
-	variablesView     viewport.Model // viewport for scrolling variables list
-	autoScroll        bool           // whether auto-scrolling is enabled
-	scrollPaused      bool           // whether scrolling is temporarily paused
+	config           *config.FormatConfig
+	originalConfig   *config.FormatConfig // for reset functionality
+	activeSection    Section
+	inputs           map[Section]string
+	cursorPos        map[Section]int
+	loggingEnabled   bool   // current state of logging toggle
+	loggingRetention string // retention days as string for input
+	loggingSubfocus  int    // 0=enabled toggle, 1=retention input
+	width            int
+	height           int
+	saveStatus       string
+	err              error
+	variablesView    viewport.Model // viewport for scrolling variables list
+	autoScroll       bool           // whether auto-scrolling is enabled
+	scrollPaused     bool           // whether scrolling is temporarily paused
 }
 
 // New creates a new configuration UI model
@@ -63,9 +63,9 @@ func New() (*Model, error) {
 	}
 
 	m := &Model{
-		config:           cfg,
-		originalConfig:   originalCfg,
-		activeSection:    SectionShowFolder,
+		config:         cfg,
+		originalConfig: originalCfg,
+		activeSection:  SectionShowFolder,
 		inputs: map[Section]string{
 			SectionShowFolder:   cfg.ShowFolder,
 			SectionSeasonFolder: cfg.SeasonFolder,
@@ -290,7 +290,7 @@ func (m *Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
 	}
-	
+
 	// Handle very small terminal sizes
 	if m.width < 30 || m.height < 10 {
 		return "Terminal too small. Please resize to at least 30x10."
@@ -334,7 +334,7 @@ func (m *Model) View() string {
 	panelHeight := m.height - 10 // Account for title, tabs, status
 	leftWidth := m.width / 3
 	rightWidth := m.width - leftWidth - 4 // Account for borders
-	
+
 	// Ensure minimum dimensions
 	if panelHeight < 1 {
 		panelHeight = 1
@@ -428,7 +428,7 @@ func (m *Model) renderVariablesViewport() string {
 func (m *Model) buildRightPanel(width, height int) string {
 	inputHeight := 3
 	previewHeight := height - inputHeight - 1
-	
+
 	// Ensure minimum dimensions
 	if previewHeight < 0 {
 		previewHeight = 0
@@ -538,10 +538,10 @@ func (m *Model) buildLoggingInputField(width int) string {
 	// Build retention input
 	var retentionField string
 	retentionLabel := "Retention Days: "
-	
+
 	if m.loggingSubfocus == 1 {
 		// Show cursor in retention field
-		retentionField = retentionLabel + focusedStyle.Render(m.loggingRetention + " ")
+		retentionField = retentionLabel + focusedStyle.Render(m.loggingRetention+" ")
 	} else {
 		retentionField = retentionLabel + retentionStyle.Render(m.loggingRetention)
 	}
@@ -731,7 +731,7 @@ func (m *Model) nextSection() {
 
 func (m *Model) prevSection() {
 	m.activeSection = (m.activeSection + 4) % 5 // +4 is same as -1 mod 5
-	m.loggingSubfocus = 0 // Reset subfocus when changing sections
+	m.loggingSubfocus = 0                       // Reset subfocus when changing sections
 }
 
 func (m *Model) insertText(text string) {
@@ -776,7 +776,7 @@ func (m *Model) save() {
 	m.config.SeasonFolder = m.inputs[SectionSeasonFolder]
 	m.config.Episode = m.inputs[SectionEpisode]
 	m.config.Movie = m.inputs[SectionMovie]
-	
+
 	// Update logging config
 	m.config.EnableLogging = m.loggingEnabled
 	if retentionDays, err := strconv.Atoi(m.loggingRetention); err == nil {

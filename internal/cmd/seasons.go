@@ -16,7 +16,7 @@ var SeasonsCommand = CommandConfig{
 	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
 		// Track parent paths for building destination hierarchy
 		parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
-		
+
 		for ni := range t.All(context.Background()) {
 			m := core.EnsureMeta(ni.Node)
 			if ni.Depth == 0 {
@@ -28,7 +28,7 @@ var SeasonsCommand = CommandConfig{
 				}
 				// For seasons command, we don't have the show name context
 				m.NewName = cfg.ApplySeasonFolderTemplate("", "", season)
-				
+
 				// Set destination path if linking
 				if linkPath != "" {
 					m.DestinationPath = filepath.Join(linkPath, m.NewName)
@@ -47,7 +47,7 @@ var SeasonsCommand = CommandConfig{
 
 				// Apply template and add extension - no show/year context
 				m.NewName = cfg.ApplyEpisodeTemplate("", "", season, episode) + ext
-				
+
 				// Set destination path if linking
 				if linkPath != "" && ni.Node.Parent() != nil {
 					parentPath := parentPaths[ni.Node.Parent()]

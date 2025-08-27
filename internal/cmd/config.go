@@ -44,7 +44,7 @@ type CommandConfig struct {
 func RunCommand(cfg CommandConfig) error {
 	// Initialize logging system with configuration
 	log.Initialize(cfg.Config.EnableLogging, cfg.Config.LogRetentionDays)
-	
+
 	// 1. Run indexing (filesystem scan + progress UI) once.
 	idxModel := tui.NewIndexProgressModel(".", tui.IndexConfig{
 		MaxDepth:    cfg.maxDepth,
@@ -99,7 +99,7 @@ func RunCommand(cfg CommandConfig) error {
 		if err := log.StartSession(cfg.Command, cfg.CommandArgs); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to start operation log: %v\n", err)
 		}
-		
+
 		cmd := model.PerformRenames()
 		if cmd != nil {
 			msg := cmd()
@@ -109,7 +109,7 @@ func RunCommand(cfg CommandConfig) error {
 				return fmt.Errorf("%d errors occurred during renaming", result.ErrorCount())
 			}
 		}
-		
+
 		// End logging session
 		if err := log.EndSession(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to save operation log: %v\n", err)
