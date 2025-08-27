@@ -104,6 +104,9 @@ func Load() (*FormatConfig, error) {
 	if cfg.Movie == "" {
 		cfg.Movie = defaults.Movie
 	}
+	if cfg.LogRetentionDays == 0 {
+		cfg.LogRetentionDays = defaults.LogRetentionDays
+	}
 
 	return &cfg, nil
 }

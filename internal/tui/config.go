@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,22 +23,26 @@ const (
 	SectionSeasonFolder
 	SectionEpisode
 	SectionMovie
+	SectionLogging
 )
 
 // Model is the Bubble Tea model for the configuration UI
 type Model struct {
-	config         *config.FormatConfig
-	originalConfig *config.FormatConfig // for reset functionality
-	activeSection  Section
-	inputs         map[Section]string
-	cursorPos      map[Section]int
-	width          int
-	height         int
-	saveStatus     string
-	err            error
-	variablesView  viewport.Model // viewport for scrolling variables list
-	autoScroll     bool           // whether auto-scrolling is enabled
-	scrollPaused   bool           // whether scrolling is temporarily paused
+	config            *config.FormatConfig
+	originalConfig    *config.FormatConfig // for reset functionality
+	activeSection     Section
+	inputs            map[Section]string
+	cursorPos         map[Section]int
+	loggingEnabled    bool   // current state of logging toggle
+	loggingRetention  string // retention days as string for input
+	loggingSubfocus   int    // 0=enabled toggle, 1=retention input
+	width             int
+	height            int
+	saveStatus        string
+	err               error
+	variablesView     viewport.Model // viewport for scrolling variables list
+	autoScroll        bool           // whether auto-scrolling is enabled
+	scrollPaused      bool           // whether scrolling is temporarily paused
 }
 
 // New creates a new configuration UI model
@@ -49,16 +54,18 @@ func New() (*Model, error) {
 
 	// Create a copy for reset functionality
 	originalCfg := &config.FormatConfig{
-		ShowFolder:   cfg.ShowFolder,
-		SeasonFolder: cfg.SeasonFolder,
-		Episode:      cfg.Episode,
-		Movie:        cfg.Movie,
+		ShowFolder:       cfg.ShowFolder,
+		SeasonFolder:     cfg.SeasonFolder,
+		Episode:          cfg.Episode,
+		Movie:            cfg.Movie,
+		LogRetentionDays: cfg.LogRetentionDays,
+		EnableLogging:    cfg.EnableLogging,
 	}
 
 	m := &Model{
-		config:         cfg,
-		originalConfig: originalCfg,
-		activeSection:  SectionShowFolder,
+		config:           cfg,
+		originalConfig:   originalCfg,
+		activeSection:    SectionShowFolder,
 		inputs: map[Section]string{
 			SectionShowFolder:   cfg.ShowFolder,
 			SectionSeasonFolder: cfg.SeasonFolder,
@@ -71,8 +78,11 @@ func New() (*Model, error) {
 			SectionEpisode:      len(cfg.Episode),
 			SectionMovie:        len(cfg.Movie),
 		},
-		variablesView: viewport.New(0, 0),
-		autoScroll:    true,
+		loggingEnabled:   cfg.EnableLogging,
+		loggingRetention: fmt.Sprintf("%d", cfg.LogRetentionDays),
+		loggingSubfocus:  0,
+		variablesView:    viewport.New(0, 0),
+		autoScroll:       true,
 	}
 
 	return m, nil
@@ -121,6 +131,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
+			if m.activeSection == SectionLogging {
+				// Within logging section, up arrow switches between enable/retention
+				m.loggingSubfocus = (m.loggingSubfocus + 1) % 2
+				return m, nil
+			}
 			// Manual scroll up in variables view
 			m.scrollPaused = true
 			m.variablesView.LineUp(1)
@@ -132,6 +147,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyDown:
+			if m.activeSection == SectionLogging {
+				// Within logging section, down arrow switches between enable/retention
+				m.loggingSubfocus = (m.loggingSubfocus + 1) % 2
+				return m, nil
+			}
 			// Manual scroll down in variables view
 			m.scrollPaused = true
 			m.variablesView.LineDown(1)
@@ -173,7 +193,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyBackspace:
-			m.deleteChar()
+			if m.activeSection == SectionLogging && m.loggingSubfocus == 1 && m.loggingEnabled {
+				// Backspace in logging retention field when logging is enabled
+				m.deleteLoggingChar()
+			} else if m.activeSection != SectionLogging {
+				m.deleteChar()
+			}
 			return m, nil
 
 		case tea.KeyLeft:
@@ -215,18 +240,44 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case tea.KeyEnter:
+			if m.activeSection == SectionLogging && m.loggingSubfocus == 0 {
+				// Enter toggles logging enabled in logging section
+				m.loggingEnabled = !m.loggingEnabled
+			}
+			return m, nil
+
 		case tea.KeySpace:
 			if msg.Alt {
 				// Alt+Space toggles auto-scroll
 				m.autoScroll = !m.autoScroll
 				return m, nil
 			}
+			if m.activeSection == SectionLogging && m.loggingSubfocus == 0 {
+				// Space toggles logging enabled in logging section
+				m.loggingEnabled = !m.loggingEnabled
+				return m, nil
+			}
 			// Regular space for text input
+			if m.activeSection == SectionLogging && m.loggingSubfocus == 1 {
+				// No spaces in retention field
+				return m, nil
+			}
 			m.insertText(" ")
 			return m, nil
 
 		case tea.KeyRunes:
-			m.insertText(string(msg.Runes))
+			if m.activeSection == SectionLogging && m.loggingSubfocus == 1 && m.loggingEnabled {
+				// Only allow digits in retention field when logging is enabled
+				runes := string(msg.Runes)
+				for _, r := range runes {
+					if r >= '0' && r <= '9' {
+						m.insertLoggingText(string(r))
+					}
+				}
+			} else if m.activeSection != SectionLogging {
+				m.insertText(string(msg.Runes))
+			}
 			return m, nil
 		}
 	}
@@ -238,6 +289,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Loading..."
+	}
+	
+	// Handle very small terminal sizes
+	if m.width < 30 || m.height < 10 {
+		return "Terminal too small. Please resize to at least 30x10."
 	}
 
 	// Styles
@@ -263,7 +319,7 @@ func (m *Model) View() string {
 
 	// Tabs
 	tabs := []string{}
-	for i, label := range []string{"Show Folder", "Season Folder", "Episode", "Movie"} {
+	for i, label := range []string{"Show Folder", "Season Folder", "Episode", "Movie", "Logging"} {
 		style := tabStyle
 		if Section(i) == m.activeSection {
 			label = "[ " + label + " ]"
@@ -278,6 +334,17 @@ func (m *Model) View() string {
 	panelHeight := m.height - 10 // Account for title, tabs, status
 	leftWidth := m.width / 3
 	rightWidth := m.width - leftWidth - 4 // Account for borders
+	
+	// Ensure minimum dimensions
+	if panelHeight < 1 {
+		panelHeight = 1
+	}
+	if leftWidth < 1 {
+		leftWidth = 1
+	}
+	if rightWidth < 1 {
+		rightWidth = 1
+	}
 
 	// Left panel: Available components with viewport
 	leftContent := m.renderVariablesViewport()
@@ -361,6 +428,11 @@ func (m *Model) renderVariablesViewport() string {
 func (m *Model) buildRightPanel(width, height int) string {
 	inputHeight := 3
 	previewHeight := height - inputHeight - 1
+	
+	// Ensure minimum dimensions
+	if previewHeight < 0 {
+		previewHeight = 0
+	}
 
 	// Input section
 	input := m.buildInputField(width)
@@ -377,6 +449,10 @@ func (m *Model) buildRightPanel(width, height int) string {
 }
 
 func (m *Model) buildInputField(width int) string {
+	if m.activeSection == SectionLogging {
+		return m.buildLoggingInputField(width)
+	}
+
 	labelStyle := lipgloss.NewStyle().
 		Bold(true).
 		MarginBottom(1)
@@ -418,6 +494,72 @@ func (m *Model) buildInputField(width int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, label, display)
 }
 
+func (m *Model) buildLoggingInputField(width int) string {
+	labelStyle := lipgloss.NewStyle().
+		Bold(true).
+		MarginBottom(1)
+
+	enabledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#10b981"))
+
+	disabledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ef4444"))
+
+	focusedStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#7c3aed")).
+		Foreground(lipgloss.Color("#ffffff"))
+
+	retentionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff"))
+
+	label := labelStyle.Render("Logging Configuration:")
+
+	// Build logging enabled toggle
+	var enabledToggle string
+	enabledText := "Enabled"
+	if !m.loggingEnabled {
+		enabledText = "Disabled"
+	}
+
+	if m.loggingSubfocus == 0 {
+		if m.loggingEnabled {
+			enabledToggle = focusedStyle.Render("[✓] " + enabledText)
+		} else {
+			enabledToggle = focusedStyle.Render("[ ] " + enabledText)
+		}
+	} else {
+		if m.loggingEnabled {
+			enabledToggle = enabledStyle.Render("[✓] " + enabledText)
+		} else {
+			enabledToggle = disabledStyle.Render("[ ] " + enabledText)
+		}
+	}
+
+	// Build retention input
+	var retentionField string
+	retentionLabel := "Retention Days: "
+	
+	if m.loggingSubfocus == 1 {
+		// Show cursor in retention field
+		retentionField = retentionLabel + focusedStyle.Render(m.loggingRetention + " ")
+	} else {
+		retentionField = retentionLabel + retentionStyle.Render(m.loggingRetention)
+	}
+
+	// Disable retention field visually if logging is disabled
+	if !m.loggingEnabled {
+		retentionField = disabledStyle.Render(retentionLabel + m.loggingRetention + " (disabled)")
+	}
+
+	lines := []string{
+		label,
+		enabledToggle,
+		retentionField,
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func (m *Model) buildPreview(width, maxHeight int) string {
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -450,7 +592,7 @@ func (m *Model) buildPreview(width, maxHeight int) string {
 	}
 
 	// Truncate if too tall
-	if len(lines) > maxHeight {
+	if maxHeight > 0 && len(lines) > maxHeight {
 		lines = lines[:maxHeight]
 	}
 
@@ -534,6 +676,12 @@ func (m *Model) getVariablesForSection() []variable {
 			{"{movie}", "Movie name", "The Matrix"},
 			{"{year}", "Year", "1999"},
 		}
+	case SectionLogging:
+		return []variable{
+			{"Space/Enter", "Toggle logging on/off", ""},
+			{"↑/↓ arrows", "Switch to fields", ""},
+			{"Retention", "Auto-cleanup old logs", "Days to keep log files"},
+		}
 	}
 	return nil
 }
@@ -545,6 +693,21 @@ type preview struct {
 }
 
 func (m *Model) generatePreviews() []preview {
+	if m.activeSection == SectionLogging {
+		// Show logging configuration status
+		enabledStatus := "Disabled"
+		if m.loggingEnabled {
+			enabledStatus = "Enabled"
+		}
+
+		return []preview{
+			{"✓", "Logging", enabledStatus},
+			{"📅", "Retention", m.loggingRetention + " days"},
+			{"📁", "Log Location", "~/.title-tidy/logs/"},
+			{"📄", "Log Format", "JSON session files"},
+		}
+	}
+
 	// Use current input values to generate previews
 	cfg := &config.FormatConfig{
 		ShowFolder:   m.inputs[SectionShowFolder],
@@ -562,11 +725,13 @@ func (m *Model) generatePreviews() []preview {
 }
 
 func (m *Model) nextSection() {
-	m.activeSection = (m.activeSection + 1) % 4
+	m.activeSection = (m.activeSection + 1) % 5
+	m.loggingSubfocus = 0 // Reset subfocus when changing sections
 }
 
 func (m *Model) prevSection() {
-	m.activeSection = (m.activeSection + 3) % 4 // +3 is same as -1 mod 4
+	m.activeSection = (m.activeSection + 4) % 5 // +4 is same as -1 mod 5
+	m.loggingSubfocus = 0 // Reset subfocus when changing sections
 }
 
 func (m *Model) insertText(text string) {
@@ -593,12 +758,32 @@ func (m *Model) deleteChar() {
 	m.cursorPos[m.activeSection] = pos - 1
 }
 
+func (m *Model) insertLoggingText(text string) {
+	current := m.loggingRetention
+	m.loggingRetention = current + text
+}
+
+func (m *Model) deleteLoggingChar() {
+	if len(m.loggingRetention) == 0 {
+		return
+	}
+	m.loggingRetention = m.loggingRetention[:len(m.loggingRetention)-1]
+}
+
 func (m *Model) save() {
 	// Update config from inputs
 	m.config.ShowFolder = m.inputs[SectionShowFolder]
 	m.config.SeasonFolder = m.inputs[SectionSeasonFolder]
 	m.config.Episode = m.inputs[SectionEpisode]
 	m.config.Movie = m.inputs[SectionMovie]
+	
+	// Update logging config
+	m.config.EnableLogging = m.loggingEnabled
+	if retentionDays, err := strconv.Atoi(m.loggingRetention); err == nil {
+		if retentionDays > 0 {
+			m.config.LogRetentionDays = retentionDays
+		}
+	}
 
 	// Save to disk
 	if err := m.config.Save(); err != nil {
@@ -612,6 +797,8 @@ func (m *Model) save() {
 		m.originalConfig.SeasonFolder = m.config.SeasonFolder
 		m.originalConfig.Episode = m.config.Episode
 		m.originalConfig.Movie = m.config.Movie
+		m.originalConfig.EnableLogging = m.config.EnableLogging
+		m.originalConfig.LogRetentionDays = m.config.LogRetentionDays
 	}
 }
 
@@ -627,6 +814,11 @@ func (m *Model) reset() {
 	m.cursorPos[SectionSeasonFolder] = len(m.originalConfig.SeasonFolder)
 	m.cursorPos[SectionEpisode] = len(m.originalConfig.Episode)
 	m.cursorPos[SectionMovie] = len(m.originalConfig.Movie)
+
+	// Reset logging fields
+	m.loggingEnabled = m.originalConfig.EnableLogging
+	m.loggingRetention = fmt.Sprintf("%d", m.originalConfig.LogRetentionDays)
+	m.loggingSubfocus = 0
 
 	m.saveStatus = "Reset to saved values"
 	m.err = nil

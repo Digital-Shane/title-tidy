@@ -285,7 +285,16 @@ func TestLoad(t *testing.T) {
 			t.Errorf("Load() error = %v, want nil", err)
 		}
 
-		if diff := cmp.Diff(testConfig, cfg); diff != "" {
+		// Expected config should include default LogRetentionDays
+		expectedConfig := &FormatConfig{
+			ShowFolder:       "{show} - {year}",
+			SeasonFolder:     "S{season}",
+			Episode:          "{code} {show}",
+			Movie:            "{movie} [{year}]",
+			LogRetentionDays: 30, // Default value filled in by Load()
+		}
+
+		if diff := cmp.Diff(expectedConfig, cfg); diff != "" {
 			t.Errorf("Load() mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -316,10 +325,11 @@ func TestLoad(t *testing.T) {
 
 		// Should fill in missing fields with defaults
 		want := &FormatConfig{
-			ShowFolder:   "{show}",
-			SeasonFolder: "{season_name}", // default
-			Episode:      "{code}",
-			Movie:        "{movie} ({year})", // default
+			ShowFolder:       "{show}",
+			SeasonFolder:     "{season_name}", // default
+			Episode:          "{code}",
+			Movie:            "{movie} ({year})", // default
+			LogRetentionDays: 30,              // default
 		}
 
 		if diff := cmp.Diff(want, cfg); diff != "" {
