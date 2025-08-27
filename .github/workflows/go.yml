@@ -25,6 +25,14 @@ jobs:
         go-version-file: 'go.mod'
     - name: Install dependencies
       run: go get .
+    - name: Check formatting
+      run: |
+        go fmt ./...
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Code is not properly formatted. Please run 'go fmt ./...' and commit the changes."
+          git diff
+          exit 1
+        fi
     - name: Build
       run: go build -v ./...
     - name: generate test coverage
