@@ -107,14 +107,14 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.detailsFocused {
 				// Scroll details panel up
-				m.detailsViewport.LineUp(1)
+				m.detailsViewport.ScrollUp(1)
 				return m, nil
 			}
 
 		case "down":
 			if m.detailsFocused {
 				// Scroll details panel down
-				m.detailsViewport.LineDown(1)
+				m.detailsViewport.ScrollDown(1)
 				return m, nil
 			}
 
@@ -160,14 +160,14 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(4): // Mouse wheel up
 			if m.detailsFocused {
 				// Scroll details panel up
-				m.detailsViewport.LineUp(1)
+				m.detailsViewport.ScrollUp(1)
 			}
 			// If tree is focused, let it handle the mouse wheel in the default handler below
 			return m, nil
 		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(5): // Mouse wheel down
 			if m.detailsFocused {
 				// Scroll details panel down
-				m.detailsViewport.LineDown(1)
+				m.detailsViewport.ScrollDown(1)
 			}
 			// If tree is focused, let it handle the mouse wheel in the default handler below
 			return m, nil
