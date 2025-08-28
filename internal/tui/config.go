@@ -1,14 +1,13 @@
 package tui
 
 import (
-	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -813,7 +812,7 @@ func (m *Model) getVariablesForSection() []variable {
 		return []variable{
 			{"Space/Enter", "Toggle TMDB lookup", ""},
 			{"↑/↓ arrows", "Switch between fields", ""},
-			{"API Key", "TMDB API key (32 hex chars)", "Get from themoviedb.org"},
+			{"API Key", "TMDB API key (32 hex chars)", "Get from themoviedb.org (NOT Read Token)"},
 			{"Language", "Content language", "en-US, fr-FR, etc."},
 			{"Prefer Local", "Use local metadata first", "Falls back to TMDB if needed"},
 		}
@@ -1170,26 +1169,28 @@ func validateTMDBAPIKey(apiKey string) tea.Cmd {
 			return tmdbValidationMsg{apiKey: "", valid: false}
 		}
 
-		// Create request to TMDB authentication endpoint
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.themoviedb.org/3/authentication", nil)
+		// Try to create a TMDB provider with the API key
+		tmdbProvider, err := provider.NewTMDBProvider(apiKey, "en-US")
 		if err != nil {
+			// If provider creation fails (e.g., invalid API key format), it's invalid
 			return tmdbValidationMsg{apiKey: apiKey, valid: false}
 		}
 
-		req.Header.Add("accept", "application/json")
-		req.Header.Add("Authorization", "Bearer "+apiKey)
-
-		resp, err := http.DefaultClient.Do(req)
+		// Try to search for a well-known movie to validate the API key
+		// Using "The Matrix" as it's a popular movie that should always return results
+		_, err = tmdbProvider.SearchMovie("The Matrix", "1999")
 		if err != nil {
+			// Check if the error is specifically an invalid API key error
+			if err == provider.ErrInvalidAPIKey {
+				return tmdbValidationMsg{apiKey: apiKey, valid: false}
+			}
+			// For other errors (network, etc.), we'll consider it invalid
+			// to be safe, but you could handle this differently if needed
 			return tmdbValidationMsg{apiKey: apiKey, valid: false}
 		}
-		defer resp.Body.Close()
 
-		// TMDB API returns 200 for valid tokens, 401 for invalid ones
-		return tmdbValidationMsg{apiKey: apiKey, valid: resp.StatusCode == 200}
+		// If we successfully searched for a movie, the API key is valid
+		return tmdbValidationMsg{apiKey: apiKey, valid: true}
 	})
 }
 
