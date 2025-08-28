@@ -13,12 +13,16 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	want := &FormatConfig{
-		ShowFolder:       "{show} ({year})",
-		SeasonFolder:     "{season_name}",
-		Episode:          "{season_code}{episode_code}",
-		Movie:            "{movie} ({year})",
-		LogRetentionDays: 30,
-		EnableLogging:    true,
+		ShowFolder:          "{show} ({year})",
+		SeasonFolder:        "{season_name}",
+		Episode:             "{season_code}{episode_code}",
+		Movie:               "{movie} ({year})",
+		LogRetentionDays:    30,
+		EnableLogging:       true,
+		TMDBAPIKey:          "",
+		EnableTMDBLookup:    false,
+		TMDBLanguage:        "en-US",
+		PreferLocalMetadata: true,
 	}
 
 	if diff := cmp.Diff(want, cfg); diff != "" {
@@ -106,12 +110,16 @@ func TestLoad_ValidFile(t *testing.T) {
 	}
 
 	want := &FormatConfig{
-		ShowFolder:       "custom {show}",
-		SeasonFolder:     "custom {season_name}",
-		Episode:          "custom {episode_code}",
-		Movie:            "custom {movie}",
-		LogRetentionDays: 60,
-		EnableLogging:    false,
+		ShowFolder:          "custom {show}",
+		SeasonFolder:        "custom {season_name}",
+		Episode:             "custom {episode_code}",
+		Movie:               "custom {movie}",
+		LogRetentionDays:    60,
+		EnableLogging:       false,
+		TMDBAPIKey:          "",
+		EnableTMDBLookup:    false,
+		TMDBLanguage:        "en-US", // Filled in by Load() with default
+		PreferLocalMetadata: false,
 	}
 
 	if diff := cmp.Diff(want, cfg); diff != "" {
@@ -285,13 +293,18 @@ func TestLoad(t *testing.T) {
 			t.Errorf("Load() error = %v, want nil", err)
 		}
 
-		// Expected config should include default LogRetentionDays
+		// Expected config should include default values filled in by Load()
 		expectedConfig := &FormatConfig{
-			ShowFolder:       "{show} - {year}",
-			SeasonFolder:     "S{season}",
-			Episode:          "{code} {show}",
-			Movie:            "{movie} [{year}]",
-			LogRetentionDays: 30, // Default value filled in by Load()
+			ShowFolder:          "{show} - {year}",
+			SeasonFolder:        "S{season}",
+			Episode:             "{code} {show}",
+			Movie:               "{movie} [{year}]",
+			LogRetentionDays:    30,    // Default value filled in by Load()
+			EnableLogging:       false, // Not set in JSON, so false
+			TMDBAPIKey:          "",
+			EnableTMDBLookup:    false,
+			TMDBLanguage:        "en-US", // Default value filled in by Load()
+			PreferLocalMetadata: false,   // Not set in JSON, so false
 		}
 
 		if diff := cmp.Diff(expectedConfig, cfg); diff != "" {
@@ -325,11 +338,16 @@ func TestLoad(t *testing.T) {
 
 		// Should fill in missing fields with defaults
 		want := &FormatConfig{
-			ShowFolder:       "{show}",
-			SeasonFolder:     "{season_name}", // default
-			Episode:          "{code}",
-			Movie:            "{movie} ({year})", // default
-			LogRetentionDays: 30,                 // default
+			ShowFolder:          "{show}",
+			SeasonFolder:        "{season_name}", // default
+			Episode:             "{code}",
+			Movie:               "{movie} ({year})", // default
+			LogRetentionDays:    30,                 // default
+			EnableLogging:       false,              // Not set in JSON, so false
+			TMDBAPIKey:          "",
+			EnableTMDBLookup:    false,
+			TMDBLanguage:        "en-US", // default
+			PreferLocalMetadata: false,   // Not set in JSON, so false
 		}
 
 		if diff := cmp.Diff(want, cfg); diff != "" {

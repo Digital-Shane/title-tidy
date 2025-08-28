@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,17 @@ import (
 // scrollTickMsg is sent periodically to enable auto-scrolling
 type scrollTickMsg struct{}
 
+// tmdbValidationMsg carries the result of TMDB API validation
+type tmdbValidationMsg struct {
+	apiKey string
+	valid  bool
+}
+
+// tmdbValidateCmd is sent to trigger API validation after debounce delay
+type tmdbValidateCmd struct {
+	apiKey string
+}
+
 // Section represents a configuration section
 type Section int
 
@@ -24,6 +37,7 @@ const (
 	SectionEpisode
 	SectionMovie
 	SectionLogging
+	SectionTMDB
 )
 
 // Model is the Bubble Tea model for the configuration UI
@@ -36,6 +50,13 @@ type Model struct {
 	loggingEnabled   bool   // current state of logging toggle
 	loggingRetention string // retention days as string for input
 	loggingSubfocus  int    // 0=enabled toggle, 1=retention input
+	tmdbAPIKey       string // TMDB API key (masked)
+	tmdbEnabled      bool   // TMDB lookup enabled
+	tmdbLanguage     string // TMDB language code
+	tmdbPreferLocal  bool   // Prefer local metadata
+	tmdbSubfocus     int    // 0=enabled, 1=api key, 2=language, 3=prefer local
+	tmdbValidation   string // API key validation status: "", "validating", "valid", "invalid"
+	tmdbValidatedKey string // Last API key that was validated
 	width            int
 	height           int
 	saveStatus       string
@@ -54,12 +75,16 @@ func New() (*Model, error) {
 
 	// Create a copy for reset functionality
 	originalCfg := &config.FormatConfig{
-		ShowFolder:       cfg.ShowFolder,
-		SeasonFolder:     cfg.SeasonFolder,
-		Episode:          cfg.Episode,
-		Movie:            cfg.Movie,
-		LogRetentionDays: cfg.LogRetentionDays,
-		EnableLogging:    cfg.EnableLogging,
+		ShowFolder:          cfg.ShowFolder,
+		SeasonFolder:        cfg.SeasonFolder,
+		Episode:             cfg.Episode,
+		Movie:               cfg.Movie,
+		LogRetentionDays:    cfg.LogRetentionDays,
+		EnableLogging:       cfg.EnableLogging,
+		TMDBAPIKey:          cfg.TMDBAPIKey,
+		EnableTMDBLookup:    cfg.EnableTMDBLookup,
+		TMDBLanguage:        cfg.TMDBLanguage,
+		PreferLocalMetadata: cfg.PreferLocalMetadata,
 	}
 
 	m := &Model{
@@ -81,6 +106,11 @@ func New() (*Model, error) {
 		loggingEnabled:   cfg.EnableLogging,
 		loggingRetention: fmt.Sprintf("%d", cfg.LogRetentionDays),
 		loggingSubfocus:  0,
+		tmdbAPIKey:       cfg.TMDBAPIKey,
+		tmdbEnabled:      cfg.EnableTMDBLookup,
+		tmdbLanguage:     cfg.TMDBLanguage,
+		tmdbPreferLocal:  cfg.PreferLocalMetadata,
+		tmdbSubfocus:     0,
 		variablesView:    viewport.New(0, 0),
 		autoScroll:       true,
 	}
@@ -105,16 +135,40 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case scrollTickMsg:
 		if m.autoScroll && !m.scrollPaused {
-			// Auto-scroll slowly
-			if m.variablesView.AtBottom() {
-				// Reset to top when we reach the bottom
-				m.variablesView.GotoTop()
-			} else {
-				// Scroll down by 1 config item
-				m.variablesView.LineDown(4)
+			// Only auto-scroll if content doesn't fit in viewport
+			// Add some buffer to prevent unnecessary scrolling when content barely fits
+			if m.variablesView.TotalLineCount() > m.variablesView.Height+1 {
+				// Auto-scroll slowly
+				if m.variablesView.AtBottom() {
+					// Reset to top when we reach the bottom
+					m.variablesView.GotoTop()
+				} else {
+					// Scroll down by 1 config item
+					m.variablesView.LineDown(4)
+				}
 			}
 		}
 		return m, m.tickCmd()
+
+	case tmdbValidationMsg:
+		// Only update if this validation is for the current API key
+		if msg.apiKey == m.tmdbAPIKey {
+			if msg.valid {
+				m.tmdbValidation = "valid"
+			} else {
+				m.tmdbValidation = "invalid"
+			}
+			m.tmdbValidatedKey = msg.apiKey
+		}
+		return m, nil
+
+	case tmdbValidateCmd:
+		// Only validate if the API key hasn't changed since the command was issued
+		if msg.apiKey == m.tmdbAPIKey && msg.apiKey != "" && msg.apiKey != m.tmdbValidatedKey {
+			m.tmdbValidation = "validating"
+			return m, validateTMDBAPIKey(msg.apiKey)
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -136,6 +190,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loggingSubfocus = (m.loggingSubfocus + 1) % 2
 				return m, nil
 			}
+			if m.activeSection == SectionTMDB {
+				// Within TMDB section, up arrow switches between fields
+				if m.tmdbEnabled {
+					// All fields are active when TMDB is enabled
+					if m.tmdbSubfocus > 0 {
+						m.tmdbSubfocus--
+					}
+				} else {
+					// When TMDB is disabled, don't allow navigation away from enabled toggle
+					// The only active field is the enabled toggle (0)
+				}
+				return m, nil
+			}
 			// Manual scroll up in variables view
 			m.scrollPaused = true
 			m.variablesView.LineUp(1)
@@ -150,6 +217,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeSection == SectionLogging {
 				// Within logging section, down arrow switches between enable/retention
 				m.loggingSubfocus = (m.loggingSubfocus + 1) % 2
+				return m, nil
+			}
+			if m.activeSection == SectionTMDB {
+				// Within TMDB section, down arrow switches between fields
+				if m.tmdbEnabled {
+					// All fields are active when TMDB is enabled
+					if m.tmdbSubfocus < 3 {
+						m.tmdbSubfocus++
+					}
+				} else {
+					// When TMDB is disabled, don't allow navigation away from enabled toggle
+					// The only active field is the enabled toggle (0)
+				}
 				return m, nil
 			}
 			// Manual scroll down in variables view
@@ -183,20 +263,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyTab:
-			m.nextSection()
+			cmd := m.nextSection()
 			m.updateVariablesContent() // Update content when section changes
-			return m, nil
+			return m, cmd
 
 		case tea.KeyShiftTab:
-			m.prevSection()
+			cmd := m.prevSection()
 			m.updateVariablesContent() // Update content when section changes
-			return m, nil
+			return m, cmd
 
 		case tea.KeyBackspace:
 			if m.activeSection == SectionLogging && m.loggingSubfocus == 1 && m.loggingEnabled {
 				// Backspace in logging retention field when logging is enabled
 				m.deleteLoggingChar()
-			} else if m.activeSection != SectionLogging {
+			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 1 {
+				// Backspace in TMDB API key field
+				m.deleteTMDBChar()
+				// Trigger debounced validation after deletion
+				return m, debouncedTMDBValidate(m.tmdbAPIKey)
+			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 2 {
+				// Backspace in TMDB language field
+				m.deleteTMDBChar()
+			} else if m.activeSection != SectionLogging && m.activeSection != SectionTMDB {
 				m.deleteChar()
 			}
 			return m, nil
@@ -245,6 +333,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Enter toggles logging enabled in logging section
 				m.loggingEnabled = !m.loggingEnabled
 			}
+			if m.activeSection == SectionTMDB && m.tmdbSubfocus == 0 {
+				// Enter toggles TMDB enabled
+				m.tmdbEnabled = !m.tmdbEnabled
+			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 3 && m.tmdbEnabled {
+				// Enter toggles prefer local metadata (only when TMDB is enabled)
+				m.tmdbPreferLocal = !m.tmdbPreferLocal
+			}
 			return m, nil
 
 		case tea.KeySpace:
@@ -258,9 +353,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loggingEnabled = !m.loggingEnabled
 				return m, nil
 			}
+			if m.activeSection == SectionTMDB && m.tmdbSubfocus == 0 {
+				// Space toggles TMDB enabled
+				m.tmdbEnabled = !m.tmdbEnabled
+				return m, nil
+			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 3 && m.tmdbEnabled {
+				// Space toggles prefer local metadata (only when TMDB is enabled)
+				m.tmdbPreferLocal = !m.tmdbPreferLocal
+				return m, nil
+			}
 			// Regular space for text input
 			if m.activeSection == SectionLogging && m.loggingSubfocus == 1 {
 				// No spaces in retention field
+				return m, nil
+			}
+			if m.activeSection == SectionTMDB && m.tmdbSubfocus == 1 {
+				// No spaces in API key field
 				return m, nil
 			}
 			m.insertText(" ")
@@ -275,7 +383,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.insertLoggingText(string(r))
 					}
 				}
-			} else if m.activeSection != SectionLogging {
+			} else if m.activeSection == SectionTMDB {
+				// Handle TMDB input based on subfocus
+				runes := string(msg.Runes)
+				if m.tmdbSubfocus == 1 {
+					// API key field - accept any characters the user enters
+					m.insertTMDBAPIKey(runes)
+					// Trigger debounced validation
+					return m, debouncedTMDBValidate(m.tmdbAPIKey)
+				} else if m.tmdbSubfocus == 2 {
+					// Language field - allow letters, hyphen for codes like "en-US"
+					for _, r := range runes {
+						if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '-' {
+							m.insertTMDBLanguage(string(r))
+						}
+					}
+				}
+			} else if m.activeSection != SectionLogging && m.activeSection != SectionTMDB {
 				m.insertText(string(msg.Runes))
 			}
 			return m, nil
@@ -319,7 +443,7 @@ func (m *Model) View() string {
 
 	// Tabs
 	tabs := []string{}
-	for i, label := range []string{"Show Folder", "Season Folder", "Episode", "Movie", "Logging"} {
+	for i, label := range []string{"Show Folder", "Season Folder", "Episode", "Movie", "Logging", "TMDB"} {
 		style := tabStyle
 		if Section(i) == m.activeSection {
 			label = "[ " + label + " ]"
@@ -404,7 +528,7 @@ func (m *Model) renderVariablesViewport() string {
 		MarginBottom(1)
 
 	scrollIndicator := ""
-	if m.variablesView.TotalLineCount() > m.variablesView.Height {
+	if m.variablesView.TotalLineCount() > m.variablesView.Height+1 {
 		if m.autoScroll {
 			if m.scrollPaused {
 				scrollIndicator = " [Paused]"
@@ -451,6 +575,9 @@ func (m *Model) buildRightPanel(width, height int) string {
 func (m *Model) buildInputField(width int) string {
 	if m.activeSection == SectionLogging {
 		return m.buildLoggingInputField(width)
+	}
+	if m.activeSection == SectionTMDB {
+		return m.buildTMDBInputField(width)
 	}
 
 	labelStyle := lipgloss.NewStyle().
@@ -624,7 +751,7 @@ func (m *Model) buildStatusBar() string {
 	}
 
 	// Add scroll help if content is scrollable
-	if m.variablesView.TotalLineCount() > m.variablesView.Height {
+	if m.variablesView.TotalLineCount() > m.variablesView.Height+1 {
 		help = append(help, keyStyle.Render("↑↓")+": Scroll", keyStyle.Render("Alt+Space")+": Toggle auto")
 	}
 
@@ -682,6 +809,14 @@ func (m *Model) getVariablesForSection() []variable {
 			{"↑/↓ arrows", "Switch to fields", ""},
 			{"Retention", "Auto-cleanup old logs", "Days to keep log files"},
 		}
+	case SectionTMDB:
+		return []variable{
+			{"Space/Enter", "Toggle TMDB lookup", ""},
+			{"↑/↓ arrows", "Switch between fields", ""},
+			{"API Key", "TMDB API key (32 hex chars)", "Get from themoviedb.org"},
+			{"Language", "Content language", "en-US, fr-FR, etc."},
+			{"Prefer Local", "Use local metadata first", "Falls back to TMDB if needed"},
+		}
 	}
 	return nil
 }
@@ -708,6 +843,40 @@ func (m *Model) generatePreviews() []preview {
 		}
 	}
 
+	if m.activeSection == SectionTMDB {
+		// Show TMDB configuration status
+		enabledStatus := "Disabled"
+		if m.tmdbEnabled {
+			enabledStatus = "Enabled"
+		}
+
+		apiStatus := "Not configured"
+		if len(m.tmdbAPIKey) > 0 {
+			switch m.tmdbValidation {
+			case "validating":
+				apiStatus = "Validating..."
+			case "valid":
+				apiStatus = "Valid"
+			case "invalid":
+				apiStatus = "Invalid"
+			default:
+				apiStatus = "Configured"
+			}
+		}
+
+		preferStatus := "TMDB first"
+		if m.tmdbPreferLocal {
+			preferStatus = "Local first"
+		}
+
+		return []preview{
+			{"🎬", "TMDB Lookup", enabledStatus},
+			{"🔑", "API Key", apiStatus},
+			{"🌐", "Language", m.tmdbLanguage},
+			{"📊", "Priority", preferStatus},
+		}
+	}
+
 	// Use current input values to generate previews
 	cfg := &config.FormatConfig{
 		ShowFolder:   m.inputs[SectionShowFolder],
@@ -724,14 +893,30 @@ func (m *Model) generatePreviews() []preview {
 	}
 }
 
-func (m *Model) nextSection() {
-	m.activeSection = (m.activeSection + 1) % 5
+func (m *Model) nextSection() tea.Cmd {
+	oldSection := m.activeSection
+	m.activeSection = (m.activeSection + 1) % 6
 	m.loggingSubfocus = 0 // Reset subfocus when changing sections
+	m.tmdbSubfocus = 0    // Reset TMDB subfocus when changing sections
+
+	// Validate API key when switching to TMDB section
+	if m.activeSection == SectionTMDB && oldSection != SectionTMDB {
+		return m.validateTMDBOnSectionSwitch()
+	}
+	return nil
 }
 
-func (m *Model) prevSection() {
-	m.activeSection = (m.activeSection + 4) % 5 // +4 is same as -1 mod 5
+func (m *Model) prevSection() tea.Cmd {
+	oldSection := m.activeSection
+	m.activeSection = (m.activeSection + 5) % 6 // +5 is same as -1 mod 6
 	m.loggingSubfocus = 0                       // Reset subfocus when changing sections
+	m.tmdbSubfocus = 0                          // Reset TMDB subfocus when changing sections
+
+	// Validate API key when switching to TMDB section
+	if m.activeSection == SectionTMDB && oldSection != SectionTMDB {
+		return m.validateTMDBOnSectionSwitch()
+	}
+	return nil
 }
 
 func (m *Model) insertText(text string) {
@@ -770,6 +955,141 @@ func (m *Model) deleteLoggingChar() {
 	m.loggingRetention = m.loggingRetention[:len(m.loggingRetention)-1]
 }
 
+func (m *Model) buildTMDBInputField(width int) string {
+	labelStyle := lipgloss.NewStyle().
+		Bold(true).
+		MarginBottom(1)
+
+	enabledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#10b981"))
+
+	disabledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ef4444"))
+
+	focusedStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#7c3aed")).
+		Foreground(lipgloss.Color("#ffffff"))
+
+	normalStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff"))
+
+	label := labelStyle.Render("TMDB Configuration:")
+
+	// Build enabled toggle
+	var enabledToggle string
+	enabledText := "Enabled"
+	if !m.tmdbEnabled {
+		enabledText = "Disabled"
+	}
+
+	if m.tmdbSubfocus == 0 {
+		if m.tmdbEnabled {
+			enabledToggle = focusedStyle.Render("[✓] " + enabledText)
+		} else {
+			enabledToggle = focusedStyle.Render("[ ] " + enabledText)
+		}
+	} else {
+		if m.tmdbEnabled {
+			enabledToggle = enabledStyle.Render("[✓] " + enabledText)
+		} else {
+			enabledToggle = disabledStyle.Render("[ ] " + enabledText)
+		}
+	}
+
+	// Build API key field (masked)
+	var apiKeyField string
+	apiKeyLabel := "API Key: "
+	maskedKey := ""
+	if len(m.tmdbAPIKey) > 0 {
+		// Show first 4 and last 4 characters, mask the middle
+		if len(m.tmdbAPIKey) <= 8 {
+			maskedKey = strings.Repeat("*", len(m.tmdbAPIKey))
+		} else {
+			maskedKey = m.tmdbAPIKey[:4] + strings.Repeat("*", len(m.tmdbAPIKey)-8) + m.tmdbAPIKey[len(m.tmdbAPIKey)-4:]
+		}
+	}
+
+	if !m.tmdbEnabled {
+		// When TMDB is disabled, always show as disabled regardless of focus
+		apiKeyField = disabledStyle.Render(apiKeyLabel + maskedKey + " (disabled)")
+	} else if m.tmdbSubfocus == 1 {
+		// Only show focus when TMDB is enabled - show cursor after the text
+		apiKeyField = apiKeyLabel + normalStyle.Render(maskedKey) + focusedStyle.Render(" ")
+	} else {
+		apiKeyField = apiKeyLabel + normalStyle.Render(maskedKey)
+	}
+
+	// Build language field
+	var languageField string
+	languageLabel := "Language: "
+
+	if !m.tmdbEnabled {
+		// When TMDB is disabled, always show as disabled regardless of focus
+		languageField = disabledStyle.Render(languageLabel + m.tmdbLanguage + " (disabled)")
+	} else if m.tmdbSubfocus == 2 {
+		// Only show focus when TMDB is enabled - show cursor after the text
+		languageField = languageLabel + normalStyle.Render(m.tmdbLanguage) + focusedStyle.Render(" ")
+	} else {
+		languageField = languageLabel + normalStyle.Render(m.tmdbLanguage)
+	}
+
+	// Build prefer local metadata toggle
+	var preferLocalToggle string
+	preferLocalText := "Prefer Local Metadata"
+
+	if !m.tmdbEnabled {
+		// When TMDB is disabled, always show as disabled regardless of focus
+		preferLocalToggle = disabledStyle.Render("[ ] " + preferLocalText + " (disabled)")
+	} else if m.tmdbSubfocus == 3 {
+		// Only show focus when TMDB is enabled
+		if m.tmdbPreferLocal {
+			preferLocalToggle = focusedStyle.Render("[✓] " + preferLocalText)
+		} else {
+			preferLocalToggle = focusedStyle.Render("[ ] " + preferLocalText)
+		}
+	} else {
+		if m.tmdbPreferLocal {
+			preferLocalToggle = enabledStyle.Render("[✓] " + preferLocalText)
+		} else {
+			preferLocalToggle = disabledStyle.Render("[ ] " + preferLocalText)
+		}
+	}
+
+	lines := []string{
+		label,
+		enabledToggle,
+		apiKeyField,
+		languageField,
+		preferLocalToggle,
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) insertTMDBAPIKey(text string) {
+	// Accept whatever the user enters, validation will occur once typing stops
+	m.tmdbAPIKey += text
+	m.tmdbValidation = ""
+	m.tmdbValidatedKey = ""
+}
+
+func (m *Model) insertTMDBLanguage(text string) {
+	if len(m.tmdbLanguage) < 5 { // Language codes are max 5 chars (e.g., "en-US")
+		m.tmdbLanguage += text
+	}
+}
+
+func (m *Model) deleteTMDBChar() {
+	if m.tmdbSubfocus == 1 && len(m.tmdbAPIKey) > 0 {
+		m.tmdbAPIKey = m.tmdbAPIKey[:len(m.tmdbAPIKey)-1]
+		// Reset validation state when key changes
+		m.tmdbValidation = ""
+		m.tmdbValidatedKey = ""
+	} else if m.tmdbSubfocus == 2 && len(m.tmdbLanguage) > 0 {
+		m.tmdbLanguage = m.tmdbLanguage[:len(m.tmdbLanguage)-1]
+	}
+}
+
 func (m *Model) save() {
 	// Update config from inputs
 	m.config.ShowFolder = m.inputs[SectionShowFolder]
@@ -785,6 +1105,14 @@ func (m *Model) save() {
 		}
 	}
 
+	// Update TMDB config
+	m.config.TMDBAPIKey = m.tmdbAPIKey
+	m.config.EnableTMDBLookup = m.tmdbEnabled
+	m.config.TMDBLanguage = m.tmdbLanguage
+	m.config.PreferLocalMetadata = m.tmdbPreferLocal
+
+	// Skip TMDB validation - trust what the user enters
+
 	// Save to disk
 	if err := m.config.Save(); err != nil {
 		m.err = err
@@ -799,6 +1127,10 @@ func (m *Model) save() {
 		m.originalConfig.Movie = m.config.Movie
 		m.originalConfig.EnableLogging = m.config.EnableLogging
 		m.originalConfig.LogRetentionDays = m.config.LogRetentionDays
+		m.originalConfig.TMDBAPIKey = m.config.TMDBAPIKey
+		m.originalConfig.EnableTMDBLookup = m.config.EnableTMDBLookup
+		m.originalConfig.TMDBLanguage = m.config.TMDBLanguage
+		m.originalConfig.PreferLocalMetadata = m.config.PreferLocalMetadata
 	}
 }
 
@@ -820,6 +1152,60 @@ func (m *Model) reset() {
 	m.loggingRetention = fmt.Sprintf("%d", m.originalConfig.LogRetentionDays)
 	m.loggingSubfocus = 0
 
+	// Reset TMDB fields
+	m.tmdbAPIKey = m.originalConfig.TMDBAPIKey
+	m.tmdbEnabled = m.originalConfig.EnableTMDBLookup
+	m.tmdbLanguage = m.originalConfig.TMDBLanguage
+	m.tmdbPreferLocal = m.originalConfig.PreferLocalMetadata
+	m.tmdbSubfocus = 0
+
 	m.saveStatus = "Reset to saved values"
 	m.err = nil
+}
+
+// validateTMDBAPIKey validates an API key against the TMDB API
+func validateTMDBAPIKey(apiKey string) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if apiKey == "" {
+			return tmdbValidationMsg{apiKey: "", valid: false}
+		}
+
+		// Create request to TMDB authentication endpoint
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.themoviedb.org/3/authentication", nil)
+		if err != nil {
+			return tmdbValidationMsg{apiKey: apiKey, valid: false}
+		}
+
+		req.Header.Add("accept", "application/json")
+		req.Header.Add("Authorization", "Bearer "+apiKey)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return tmdbValidationMsg{apiKey: apiKey, valid: false}
+		}
+		defer resp.Body.Close()
+
+		// TMDB API returns 200 for valid tokens, 401 for invalid ones
+		return tmdbValidationMsg{apiKey: apiKey, valid: resp.StatusCode == 200}
+	})
+}
+
+// debouncedTMDBValidate creates a command that validates after a delay
+func debouncedTMDBValidate(apiKey string) tea.Cmd {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		return tmdbValidateCmd{apiKey: apiKey}
+	})
+}
+
+// validateTMDBOnSectionSwitch validates the API key immediately when switching to TMDB section
+func (m *Model) validateTMDBOnSectionSwitch() tea.Cmd {
+	// Only validate if there's an API key and it hasn't been validated recently
+	if len(m.tmdbAPIKey) > 0 && m.tmdbAPIKey != m.tmdbValidatedKey {
+		m.tmdbValidation = "validating"
+		return validateTMDBAPIKey(m.tmdbAPIKey)
+	}
+	return nil
 }

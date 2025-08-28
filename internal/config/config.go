@@ -46,17 +46,27 @@ type FormatConfig struct {
 	Movie            string `json:"movie"`
 	LogRetentionDays int    `json:"log_retention_days"`
 	EnableLogging    bool   `json:"enable_logging"`
+
+	// TMDB Integration settings
+	TMDBAPIKey          string `json:"tmdb_api_key"`
+	EnableTMDBLookup    bool   `json:"enable_tmdb_lookup"`
+	TMDBLanguage        string `json:"tmdb_language"`
+	PreferLocalMetadata bool   `json:"prefer_local_metadata"`
 }
 
 // DefaultConfig returns the default format configuration
 func DefaultConfig() *FormatConfig {
 	return &FormatConfig{
-		ShowFolder:       "{show} ({year})",
-		SeasonFolder:     "{season_name}",
-		Episode:          "{season_code}{episode_code}",
-		Movie:            "{movie} ({year})",
-		LogRetentionDays: 30,
-		EnableLogging:    true,
+		ShowFolder:          "{show} ({year})",
+		SeasonFolder:        "{season_name}",
+		Episode:             "{season_code}{episode_code}",
+		Movie:               "{movie} ({year})",
+		LogRetentionDays:    30,
+		EnableLogging:       true,
+		TMDBAPIKey:          "",
+		EnableTMDBLookup:    false,
+		TMDBLanguage:        "en-US",
+		PreferLocalMetadata: true,
 	}
 }
 
@@ -106,6 +116,11 @@ func Load() (*FormatConfig, error) {
 	}
 	if cfg.LogRetentionDays == 0 {
 		cfg.LogRetentionDays = defaults.LogRetentionDays
+	}
+
+	// Fill in missing TMDB fields with defaults
+	if cfg.TMDBLanguage == "" {
+		cfg.TMDBLanguage = defaults.TMDBLanguage
 	}
 
 	return &cfg, nil

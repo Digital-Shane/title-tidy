@@ -298,13 +298,13 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.statsFocused {
 				// Scroll stats panel up
-				m.statsViewport.LineUp(1)
+				m.statsViewport.ScrollUp(1)
 				return m, nil
 			}
 		case "down":
 			if m.statsFocused {
 				// Scroll stats panel down
-				m.statsViewport.LineDown(1)
+				m.statsViewport.ScrollDown(1)
 				return m, nil
 			}
 		case "pgup":
@@ -335,7 +335,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(4): // Mouse wheel up
 			if m.statsFocused {
 				// Scroll stats panel up
-				m.statsViewport.LineUp(1)
+				m.statsViewport.ScrollUp(1)
 			} else {
 				// Scroll tree up by 1 line
 				m.TuiTreeModel.Tree.Move(context.Background(), -1)
@@ -344,7 +344,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(5): // Mouse wheel down
 			if m.statsFocused {
 				// Scroll stats panel down
-				m.statsViewport.LineDown(1)
+				m.statsViewport.ScrollDown(1)
 			} else {
 				// Scroll tree down by 1 line
 				m.TuiTreeModel.Tree.Move(context.Background(), 1)
