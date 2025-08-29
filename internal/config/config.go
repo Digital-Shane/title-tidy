@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -33,6 +34,9 @@ type FormatContext struct {
 	// File information
 	OriginalName string
 	Node         *treeview.Node[treeview.FileInfo]
+
+	// External metadata (from providers like TMDB, TVDB, etc.)
+	Metadata *provider.EnrichedMetadata
 
 	// Configuration
 	Config *FormatConfig
@@ -126,6 +130,20 @@ func Load() (*FormatConfig, error) {
 	return &cfg, nil
 }
 
+// NeedsMetadata checks if any template uses variables that would benefit from metadata
+func (cfg *FormatConfig) NeedsMetadata() bool {
+	// Pattern matches any metadata-related variable
+	// Includes both metadata-only vars and vars that benefit from metadata
+	metadataVarPattern := `\{(?:episode_title|air_date|rating|genres|overview|runtime|tagline|title)\}`
+	re := regexp.MustCompile(metadataVarPattern)
+
+	// Combine all templates to check
+	allTemplates := cfg.ShowFolder + cfg.SeasonFolder + cfg.Episode + cfg.Movie
+
+	// Check if any template contains metadata variables
+	return re.MatchString(allTemplates)
+}
+
 // Save writes the configuration to disk
 func (cfg *FormatConfig) Save() error {
 	path, err := ConfigPath()
@@ -191,32 +209,179 @@ func applyEpisodeVariables(template string, episode int) string {
 	return result
 }
 
-// ApplyShowFolderTemplate applies the show folder template with the given variables
-func (cfg *FormatConfig) ApplyShowFolderTemplate(show, year string) string {
-	result := applyShowVariables(cfg.ShowFolder, show, year)
+// resolveVariable resolves a single variable using metadata if available, falling back to local data
+func resolveVariable(varName string, ctx *FormatContext) string {
+	// Check if we should prefer local metadata
+	preferLocal := ctx.Config != nil && ctx.Config.PreferLocalMetadata
+
+	switch varName {
+	case "{show}":
+		if !preferLocal && ctx.Metadata != nil && ctx.Metadata.ShowName != "" {
+			return ctx.Metadata.ShowName
+		}
+		return ctx.ShowName
+
+	case "{movie}":
+		if !preferLocal && ctx.Metadata != nil && ctx.Metadata.Title != "" {
+			return ctx.Metadata.Title
+		}
+		return ctx.MovieName
+
+	case "{title}":
+		// Generic title - works for both movies and shows
+		if !preferLocal && ctx.Metadata != nil {
+			if ctx.Metadata.Title != "" {
+				return ctx.Metadata.Title
+			}
+			if ctx.Metadata.ShowName != "" {
+				return ctx.Metadata.ShowName
+			}
+		}
+		if ctx.MovieName != "" {
+			return ctx.MovieName
+		}
+		return ctx.ShowName
+
+	case "{year}":
+		if !preferLocal && ctx.Metadata != nil && ctx.Metadata.Year != "" {
+			return ctx.Metadata.Year
+		}
+		return ctx.Year
+
+	case "{season}":
+		if ctx.Season > 0 {
+			return fmt.Sprintf("%02d", ctx.Season)
+		}
+		return ""
+
+	case "{season_code}":
+		if ctx.Season > 0 {
+			return fmt.Sprintf("S%02d", ctx.Season)
+		}
+		return ""
+
+	case "{season_name}":
+		if ctx.Metadata != nil && ctx.Metadata.SeasonName != "" && !preferLocal {
+			return ctx.Metadata.SeasonName
+		}
+		if ctx.Season > 0 {
+			return fmt.Sprintf("Season %02d", ctx.Season)
+		}
+		return ""
+
+	case "{episode}":
+		if ctx.Episode > 0 {
+			return fmt.Sprintf("%02d", ctx.Episode)
+		}
+		return ""
+
+	case "{episode_code}":
+		if ctx.Episode > 0 {
+			return fmt.Sprintf("E%02d", ctx.Episode)
+		}
+		return ""
+
+	case "{episode_title}":
+		if ctx.Metadata != nil && ctx.Metadata.EpisodeName != "" {
+			return ctx.Metadata.EpisodeName
+		}
+		return ""
+
+	case "{air_date}":
+		if ctx.Metadata != nil && ctx.Metadata.EpisodeAir != "" {
+			return ctx.Metadata.EpisodeAir
+		}
+		return ""
+
+	case "{rating}":
+		if ctx.Metadata != nil && ctx.Metadata.Rating > 0 {
+			return fmt.Sprintf("%.1f", ctx.Metadata.Rating)
+		}
+		return ""
+
+	case "{genres}":
+		if ctx.Metadata != nil && len(ctx.Metadata.Genres) > 0 {
+			return strings.Join(ctx.Metadata.Genres, ", ")
+		}
+		return ""
+
+	case "{overview}":
+		if ctx.Metadata != nil && ctx.Metadata.Overview != "" {
+			// Truncate to reasonable length for filenames
+			overview := ctx.Metadata.Overview
+			if len(overview) > 100 {
+				overview = overview[:97] + "..."
+			}
+			return overview
+		}
+		return ""
+
+	case "{runtime}":
+		if ctx.Metadata != nil && ctx.Metadata.Runtime > 0 {
+			return fmt.Sprintf("%d", ctx.Metadata.Runtime)
+		}
+		return ""
+
+	case "{tagline}":
+		if ctx.Metadata != nil && ctx.Metadata.Tagline != "" {
+			return ctx.Metadata.Tagline
+		}
+		return ""
+	}
+
+	return varName // Return unchanged if not recognized
+}
+
+// applyMetadataVariables replaces all variables in a template using metadata-aware resolution
+func applyMetadataVariables(template string, ctx *FormatContext, cfg *FormatConfig) string {
+	// Ensure config is set
+	if ctx.Config == nil {
+		ctx.Config = cfg
+	}
+
+	result := template
+
+	// List of all supported variables
+	variables := []string{
+		"{show}", "{movie}", "{title}", "{year}",
+		"{season}", "{season_code}", "{season_name}",
+		"{episode}", "{episode_code}", "{episode_title}",
+		"{air_date}", "{rating}", "{genres}",
+		"{overview}", "{runtime}", "{tagline}",
+	}
+
+	// Replace each variable
+	for _, varName := range variables {
+		if strings.Contains(result, varName) {
+			value := resolveVariable(varName, ctx)
+			result = strings.ReplaceAll(result, varName, value)
+		}
+	}
+
+	return result
+}
+
+// ApplyShowFolderTemplate applies the show folder template using the provided context
+func (cfg *FormatConfig) ApplyShowFolderTemplate(ctx *FormatContext) string {
+	result := applyMetadataVariables(cfg.ShowFolder, ctx, cfg)
 	return CleanName(result)
 }
 
-// ApplySeasonFolderTemplate applies the season folder template with the given variables
-func (cfg *FormatConfig) ApplySeasonFolderTemplate(show, year string, season int) string {
-	result := applyShowVariables(cfg.SeasonFolder, show, year)
-	result = applySeasonVariables(result, season)
+// ApplySeasonFolderTemplate applies the season folder template using the provided context
+func (cfg *FormatConfig) ApplySeasonFolderTemplate(ctx *FormatContext) string {
+	result := applyMetadataVariables(cfg.SeasonFolder, ctx, cfg)
 	return CleanName(result)
 }
 
-// ApplyEpisodeTemplate applies the episode template with the given variables
-func (cfg *FormatConfig) ApplyEpisodeTemplate(show, year string, season, episode int) string {
-	result := applyShowVariables(cfg.Episode, show, year)
-	result = applySeasonVariables(result, season)
-	result = applyEpisodeVariables(result, episode)
+// ApplyEpisodeTemplate applies the episode template using the provided context
+func (cfg *FormatConfig) ApplyEpisodeTemplate(ctx *FormatContext) string {
+	result := applyMetadataVariables(cfg.Episode, ctx, cfg)
 	return CleanName(result)
 }
 
-// ApplyMovieTemplate applies the movie template with the given variables
-func (cfg *FormatConfig) ApplyMovieTemplate(movie, year string) string {
-	result := cfg.Movie
-	result = strings.ReplaceAll(result, "{movie}", movie)
-	result = strings.ReplaceAll(result, "{year}", year)
+// ApplyMovieTemplate applies the movie template using the provided context
+func (cfg *FormatConfig) ApplyMovieTemplate(ctx *FormatContext) string {
+	result := applyMetadataVariables(cfg.Movie, ctx, cfg)
 	return CleanName(result)
 }
 

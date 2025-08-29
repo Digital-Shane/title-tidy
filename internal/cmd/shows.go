@@ -29,7 +29,11 @@ var ShowsCommand = CommandConfig{
 					continue
 				}
 				// Apply show template
-				m.NewName = cfg.ApplyShowFolderTemplate(formatted, year)
+				ctx := &config.FormatContext{
+					ShowName: formatted,
+					Year:     year,
+				}
+				m.NewName = cfg.ApplyShowFolderTemplate(ctx)
 
 				// Set destination path if linking
 				if linkPath != "" {
@@ -52,7 +56,12 @@ var ShowsCommand = CommandConfig{
 				}
 
 				// Apply season template with full context
-				m.NewName = cfg.ApplySeasonFolderTemplate(showName, year, season)
+				ctx := &config.FormatContext{
+					ShowName: showName,
+					Year:     year,
+					Season:   season,
+				}
+				m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
 
 				// Set destination path if linking
 				if linkPath != "" && ni.Node.Parent() != nil {
@@ -83,7 +92,13 @@ var ShowsCommand = CommandConfig{
 				ext := media.ExtractExtension(ni.Node.Name())
 
 				// Apply episode template with full context and add extension
-				m.NewName = cfg.ApplyEpisodeTemplate(showName, year, season, episode) + ext
+				ctx := &config.FormatContext{
+					ShowName: showName,
+					Year:     year,
+					Season:   season,
+					Episode:  episode,
+				}
+				m.NewName = cfg.ApplyEpisodeTemplate(ctx) + ext
 
 				// Set destination path if linking
 				if linkPath != "" && ni.Node.Parent() != nil {

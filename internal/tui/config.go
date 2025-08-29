@@ -779,14 +779,20 @@ func (m *Model) getVariablesForSection() []variable {
 	case SectionShowFolder:
 		return []variable{
 			{"{show}", "Show name", "Breaking Bad"},
+			{"{title}", "Generic title", "Breaking Bad"},
 			{"{year}", "Year", "2008"},
+			{"{rating}", "Rating", "8.5"},
+			{"{genres}", "Genres", "Drama, Crime"},
+			{"{tagline}", "Tagline", "All Hail the King"},
 		}
 	case SectionSeasonFolder:
 		return []variable{
 			{"{show}", "Show name", "Breaking Bad"},
 			{"{season}", "Season number", "01"},
 			{"{season_code}", "Season code", "S01"},
-			{"{season_name}", "Full season name", "Season 01"},
+			{"{season_name}", "Season name ", "Season 01"},
+			{"{rating}", "Rating", "8.5"},
+			{"{genres}", "Genres", "Drama, Crime"},
 		}
 	case SectionEpisode:
 		return []variable{
@@ -796,11 +802,21 @@ func (m *Model) getVariablesForSection() []variable {
 			{"{episode}", "Episode number", "05"},
 			{"{season_code}", "Season code", "S01"},
 			{"{episode_code}", "Episode code", "E05"},
+			{"{episode_title}", "Episode title", "Gray Matter"},
+			{"{air_date}", "Air date", "2008-02-24"},
+			{"{rating}", "Rating", "8.3"},
+			{"{runtime}", "Runtime in minutes", "48"},
 		}
 	case SectionMovie:
 		return []variable{
 			{"{movie}", "Movie name", "The Matrix"},
+			{"{title}", "Generic title", "The Matrix"},
 			{"{year}", "Year", "1999"},
+			{"{rating}", "Rating", "8.7"},
+			{"{genres}", "Genres", "Action, Sci-Fi"},
+			{"{runtime}", "Runtime in minutes", "136"},
+			{"{tagline}", "Tagline", "Welcome to the Real World"},
+			{"{overview}", "Overview (truncated)", "A computer hacker learns..."},
 		}
 	case SectionLogging:
 		return []variable{
@@ -885,10 +901,10 @@ func (m *Model) generatePreviews() []preview {
 	}
 
 	return []preview{
-		{"📺", "Show", cfg.ApplyShowFolderTemplate("Breaking Bad", "2008")},
-		{"📁", "Season", cfg.ApplySeasonFolderTemplate("Breaking Bad", "2008", 1)},
-		{"🎬", "Episode", cfg.ApplyEpisodeTemplate("Breaking Bad", "2008", 1, 7) + ".mkv"},
-		{"🎭", "Movie", cfg.ApplyMovieTemplate("The Matrix", "1999")},
+		{"📺", "Show", cfg.ApplyShowFolderTemplate(&config.FormatContext{ShowName: "Breaking Bad", Year: "2008"})},
+		{"📁", "Season", cfg.ApplySeasonFolderTemplate(&config.FormatContext{ShowName: "Breaking Bad", Year: "2008", Season: 1})},
+		{"🎬", "Episode", cfg.ApplyEpisodeTemplate(&config.FormatContext{ShowName: "Breaking Bad", Year: "2008", Season: 1, Episode: 7}) + ".mkv"},
+		{"🎭", "Movie", cfg.ApplyMovieTemplate(&config.FormatContext{MovieName: "The Matrix", Year: "1999"})},
 	}
 }
 

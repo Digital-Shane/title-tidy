@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -467,7 +468,11 @@ func TestApplyShowFolderTemplate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &FormatConfig{ShowFolder: tt.template}
-			got := cfg.ApplyShowFolderTemplate(tt.show, tt.year)
+			ctx := &FormatContext{
+				ShowName: tt.show,
+				Year:     tt.year,
+			}
+			got := cfg.ApplyShowFolderTemplate(ctx)
 			if got != tt.want {
 				t.Errorf("ApplyShowFolderTemplate(%q, %q) = %q, want %q", tt.show, tt.year, got, tt.want)
 			}
@@ -553,7 +558,12 @@ func TestApplySeasonFolderTemplate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &FormatConfig{SeasonFolder: tt.template}
-			got := cfg.ApplySeasonFolderTemplate(tt.show, tt.year, tt.season)
+			ctx := &FormatContext{
+				ShowName: tt.show,
+				Year:     tt.year,
+				Season:   tt.season,
+			}
+			got := cfg.ApplySeasonFolderTemplate(ctx)
 			if got != tt.want {
 				t.Errorf("ApplySeasonFolderTemplate(%q, %q, %d) = %q, want %q", tt.show, tt.year, tt.season, got, tt.want)
 			}
@@ -630,7 +640,13 @@ func TestApplyEpisodeTemplate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &FormatConfig{Episode: tt.template}
-			got := cfg.ApplyEpisodeTemplate(tt.show, tt.year, tt.season, tt.episode)
+			ctx := &FormatContext{
+				ShowName: tt.show,
+				Year:     tt.year,
+				Season:   tt.season,
+				Episode:  tt.episode,
+			}
+			got := cfg.ApplyEpisodeTemplate(ctx)
 			if got != tt.want {
 				t.Errorf("ApplyEpisodeTemplate(%q, %q, %d, %d) = %q, want %q",
 					tt.show, tt.year, tt.season, tt.episode, got, tt.want)
@@ -701,7 +717,11 @@ func TestApplyMovieTemplate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &FormatConfig{Movie: tt.template}
-			got := cfg.ApplyMovieTemplate(tt.movie, tt.year)
+			ctx := &FormatContext{
+				MovieName: tt.movie,
+				Year:      tt.year,
+			}
+			got := cfg.ApplyMovieTemplate(ctx)
 			if got != tt.want {
 				t.Errorf("ApplyMovieTemplate(%q, %q) = %q, want %q", tt.movie, tt.year, got, tt.want)
 			}
@@ -822,6 +842,372 @@ func TestCleanName(t *testing.T) {
 			got := CleanName(tt.input)
 			if got != tt.want {
 				t.Errorf("CleanName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNeedsMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *FormatConfig
+		expected bool
+	}{
+		{
+			name: "no_metadata_variables",
+			config: &FormatConfig{
+				ShowFolder:   "{show} ({year})",
+				SeasonFolder: "{season_name}",
+				Episode:      "{season_code}{episode_code}",
+				Movie:        "{movie} ({year})",
+			},
+			expected: false,
+		},
+		{
+			name: "has_episode_title",
+			config: &FormatConfig{
+				ShowFolder:   "{show} ({year})",
+				SeasonFolder: "{season_name}",
+				Episode:      "{season_code}{episode_code} - {episode_title}",
+				Movie:        "{movie} ({year})",
+			},
+			expected: true,
+		},
+		{
+			name: "has_rating",
+			config: &FormatConfig{
+				ShowFolder:   "{show} ({year}) [{rating}]",
+				SeasonFolder: "{season_name}",
+				Episode:      "{season_code}{episode_code}",
+				Movie:        "{movie} ({year})",
+			},
+			expected: true,
+		},
+		{
+			name: "has_genres",
+			config: &FormatConfig{
+				ShowFolder:   "{show} ({year})",
+				SeasonFolder: "{season_name}",
+				Episode:      "{season_code}{episode_code}",
+				Movie:        "{movie} ({year}) - {genres}",
+			},
+			expected: true,
+		},
+		{
+			name: "has_title_variable",
+			config: &FormatConfig{
+				ShowFolder:   "{title} ({year})",
+				SeasonFolder: "{season_name}",
+				Episode:      "{season_code}{episode_code}",
+				Movie:        "{movie} ({year})",
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.config.NeedsMetadata()
+			if got != tt.expected {
+				t.Errorf("NeedsMetadata() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestApplyTemplateWithMetadata(t *testing.T) {
+	cfg := &FormatConfig{
+		ShowFolder:          "{show} ({year}) [{rating}]",
+		SeasonFolder:        "{season_name} - {genres}",
+		Episode:             "{season_code}{episode_code} - {episode_title}",
+		Movie:               "{movie} ({year}) - {tagline}",
+		PreferLocalMetadata: false,
+	}
+
+	metadata := &provider.EnrichedMetadata{
+		Title:       "The Matrix Reloaded",
+		ShowName:    "Breaking Bad",
+		Year:        "2003",
+		Rating:      8.7,
+		Genres:      []string{"Action", "Sci-Fi"},
+		EpisodeName: "Ozymandias",
+		Tagline:     "Free your mind",
+	}
+
+	t.Run("ShowFolderWithMetadata", func(t *testing.T) {
+		ctx := &FormatContext{
+			ShowName: "Breaking Bad",
+			Year:     "2008",
+			Metadata: metadata,
+			Config:   cfg,
+		}
+		got := cfg.ApplyShowFolderTemplate(ctx)
+		want := "Breaking Bad (2003) [8.7]"
+		if got != want {
+			t.Errorf("ApplyShowFolderTemplateWithContext() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("EpisodeWithMetadata", func(t *testing.T) {
+		ctx := &FormatContext{
+			ShowName: "Breaking Bad",
+			Year:     "2008",
+			Season:   5,
+			Episode:  14,
+			Metadata: metadata,
+			Config:   cfg,
+		}
+		got := cfg.ApplyEpisodeTemplate(ctx)
+		want := "S05E14 - Ozymandias"
+		if got != want {
+			t.Errorf("ApplyEpisodeTemplateWithContext() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("MovieWithMetadata", func(t *testing.T) {
+		ctx := &FormatContext{
+			MovieName: "The Matrix",
+			Year:      "1999",
+			Metadata:  metadata,
+			Config:    cfg,
+		}
+		got := cfg.ApplyMovieTemplate(ctx)
+		want := "The Matrix Reloaded (2003) - Free your mind"
+		if got != want {
+			t.Errorf("ApplyMovieTemplateWithContext() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("FallbackToLocalWhenNoMetadata", func(t *testing.T) {
+		ctx := &FormatContext{
+			ShowName: "Breaking Bad",
+			Year:     "2008",
+			Season:   5,
+			Episode:  14,
+			Metadata: nil,
+			Config:   cfg,
+		}
+		got := cfg.ApplyEpisodeTemplate(ctx)
+		want := "S05E14" // CleanName removes the trailing " -"
+		if got != want {
+			t.Errorf("ApplyEpisodeTemplateWithContext() without metadata = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("PreferLocalMetadata", func(t *testing.T) {
+		cfgLocal := &FormatConfig{
+			ShowFolder:          "{show} ({year})",
+			PreferLocalMetadata: true,
+		}
+		ctx := &FormatContext{
+			ShowName: "Local Show",
+			Year:     "2020",
+			Metadata: metadata,
+			Config:   cfgLocal,
+		}
+		got := cfgLocal.ApplyShowFolderTemplate(ctx)
+		want := "Local Show (2020)"
+		if got != want {
+			t.Errorf("ApplyShowFolderTemplateWithContext() with PreferLocal = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestResolveVariableComprehensive(t *testing.T) {
+	metadata := &provider.EnrichedMetadata{
+		Title:       "The Matrix",
+		ShowName:    "Breaking Bad",
+		Year:        "2003",
+		Rating:      8.7,
+		Genres:      []string{"Action", "Sci-Fi"},
+		EpisodeName: "Ozymandias",
+		EpisodeAir:  "2013-09-15",
+		SeasonName:  "Season Five",
+		Runtime:     136,
+		Tagline:     "Free your mind",
+		Overview:    "A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.",
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		ctx      *FormatContext
+		want     string
+	}{
+		{
+			name:     "all_movie_variables",
+			template: "{movie} - {title} - {year} - {rating} - {genres} - {runtime} - {tagline}",
+			ctx: &FormatContext{
+				MovieName: "Local Movie",
+				Year:      "1999",
+				Metadata:  metadata,
+			},
+			want: "The Matrix - The Matrix - 2003 - 8.7 - Action, Sci-Fi - 136 - Free your mind",
+		},
+		{
+			name:     "all_show_variables",
+			template: "{show} - {title} - {year} - {season_name}",
+			ctx: &FormatContext{
+				ShowName: "Local Show",
+				Year:     "2008",
+				Season:   5,
+				Metadata: metadata,
+			},
+			want: "Breaking Bad - The Matrix - 2003 - Season Five",
+		},
+		{
+			name:     "all_episode_variables",
+			template: "{episode_title} - {air_date} - {runtime}",
+			ctx: &FormatContext{
+				Episode:  14,
+				Metadata: metadata,
+			},
+			want: "Ozymandias - 2013-09-15 - 136",
+		},
+		{
+			name:     "overview_truncation",
+			template: "{overview}",
+			ctx: &FormatContext{
+				Metadata: metadata,
+			},
+			want: "A computer hacker learns from mysterious rebels about the true nature of his reality and his role...",
+		},
+		{
+			name:     "empty_metadata_fields",
+			template: "{episode_title} - {air_date} - {tagline}",
+			ctx: &FormatContext{
+				Metadata: &provider.EnrichedMetadata{},
+			},
+			want: "",
+		},
+		{
+			name:     "season_codes",
+			template: "{season} - {season_code} - {episode} - {episode_code}",
+			ctx: &FormatContext{
+				Season:  5,
+				Episode: 14,
+			},
+			want: "05 - S05 - 14 - E14",
+		},
+		{
+			name:     "zero_values",
+			template: "{season} - {episode} - {rating}",
+			ctx: &FormatContext{
+				Season:   0,
+				Episode:  0,
+				Metadata: &provider.EnrichedMetadata{Rating: 0},
+			},
+			want: "",
+		},
+		{
+			name:     "title_fallback_to_movie",
+			template: "{title}",
+			ctx: &FormatContext{
+				MovieName: "Fallback Movie",
+				Metadata:  &provider.EnrichedMetadata{},
+			},
+			want: "Fallback Movie",
+		},
+		{
+			name:     "title_fallback_to_show",
+			template: "{title}",
+			ctx: &FormatContext{
+				ShowName: "Fallback Show",
+				Metadata: &provider.EnrichedMetadata{},
+			},
+			want: "Fallback Show",
+		},
+		{
+			name:     "prefer_local_metadata",
+			template: "{show} - {year}",
+			ctx: &FormatContext{
+				ShowName: "Local Show",
+				Year:     "2020",
+				Metadata: metadata,
+				Config:   &FormatConfig{PreferLocalMetadata: true},
+			},
+			want: "Local Show - 2020",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &FormatConfig{
+				ShowFolder:   tt.template,
+				SeasonFolder: tt.template,
+				Episode:      tt.template,
+				Movie:        tt.template,
+			}
+			// Use the appropriate template function based on context
+			var got string
+			if tt.ctx.MovieName != "" {
+				got = cfg.ApplyMovieTemplate(tt.ctx)
+			} else if tt.ctx.Episode > 0 {
+				got = cfg.ApplyEpisodeTemplate(tt.ctx)
+			} else if tt.ctx.Season > 0 {
+				got = cfg.ApplySeasonFolderTemplate(tt.ctx)
+			} else {
+				got = cfg.ApplyShowFolderTemplate(tt.ctx)
+			}
+
+			if got != tt.want {
+				t.Errorf("Template resolution = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractNameAndYear(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantName string
+		wantYear string
+	}{
+		{
+			name:     "movie_with_year",
+			input:    "The Matrix (1999)",
+			wantName: "The Matrix",
+			wantYear: "1999",
+		},
+		{
+			name:     "movie_with_year_brackets",
+			input:    "The Matrix [1999]",
+			wantName: "The Matrix",
+			wantYear: "1999",
+		},
+		{
+			name:     "movie_no_year",
+			input:    "The Matrix",
+			wantName: "The Matrix",
+			wantYear: "",
+		},
+		{
+			name:     "year_only",
+			input:    "(2020)",
+			wantName: "",
+			wantYear: "2020",
+		},
+		{
+			name:     "complex_name",
+			input:    "The.Matrix.1999.1080p.BluRay",
+			wantName: "The Matrix",
+			wantYear: "1999",
+		},
+		{
+			name:     "dots_and_underscores",
+			input:    "The_Matrix_1999",
+			wantName: "The Matrix 1999",
+			wantYear: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotName, gotYear := ExtractNameAndYear(tt.input)
+			if gotName != tt.wantName || gotYear != tt.wantYear {
+				t.Errorf("ExtractNameAndYear(%q) = (%q, %q), want (%q, %q)",
+					tt.input, gotName, gotYear, tt.wantName, tt.wantYear)
 			}
 		})
 	}
