@@ -47,7 +47,11 @@ func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 			// Extract year if present for movie formatting
 			formatted, year := config.ExtractNameAndYear(base)
 			// Apply movie template
-			vm.NewName = cfg.ApplyMovieTemplate(formatted, year)
+			ctx := &config.FormatContext{
+				MovieName: formatted,
+				Year:      year,
+			}
+			vm.NewName = cfg.ApplyMovieTemplate(ctx)
 
 			vm.IsVirtual = true
 			vm.NeedsDirectory = true
@@ -132,7 +136,11 @@ func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig
 			// Extract year if present for movie formatting
 			formatted, year := config.ExtractNameAndYear(ni.Node.Name())
 			// Apply movie template
-			m.NewName = cfg.ApplyMovieTemplate(formatted, year)
+			ctx := &config.FormatContext{
+				MovieName: formatted,
+				Year:      year,
+			}
+			m.NewName = cfg.ApplyMovieTemplate(ctx)
 
 			// Set destination path if linking
 			if linkPath != "" {

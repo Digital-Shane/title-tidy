@@ -34,7 +34,11 @@ var EpisodesCommand = CommandConfig{
 			ext := media.ExtractExtension(ni.Node.Name())
 
 			// Apply template and add extension - Episodes command has no show/year context
-			m.NewName = cfg.ApplyEpisodeTemplate("", "", season, episode) + ext
+			ctx := &config.FormatContext{
+				Season:  season,
+				Episode: episode,
+			}
+			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + ext
 
 			// Set destination path if linking
 			if linkPath != "" {

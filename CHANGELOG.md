@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Ability to configure TMDB settings.
 - TMDB provider for pulling metadata.
+- Template system extended to use metadata providers.
 ### Fixed
 - Remove deprecated bubble tea api usage.
 - go fmt
