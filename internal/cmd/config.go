@@ -10,6 +10,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/media"
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 
 	"github.com/Digital-Shane/treeview"
@@ -183,4 +184,17 @@ func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, delete
 			meta.MarkedForDeletion = true
 		}
 	}
+}
+
+// initializeTMDBProvider creates a TMDB provider if enabled and needed
+func initializeTMDBProvider(cfg *config.FormatConfig) *provider.TMDBProvider {
+	if cfg.EnableTMDBLookup && cfg.NeedsMetadata() && cfg.TMDBAPIKey != "" {
+		tmdbProvider, err := provider.NewTMDBProvider(cfg.TMDBAPIKey, cfg.TMDBLanguage)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to initialize TMDB provider: %v\n", err)
+			return nil
+		}
+		return tmdbProvider
+	}
+	return nil
 }

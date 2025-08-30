@@ -56,6 +56,12 @@ var (
 
 	// imageRe matches common image file extensions.
 	imageRe = regexp.MustCompile(`(?i)\.(jpg|jpeg|png|gif|bmp|webp|tiff?|ico|svg)$`)
+
+	// seasonEpisodePatterns are used to find where season/episode info starts in a filename
+	seasonEpisodePatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)[sx]?\d+[ex]\d+`),          // S01E01, 1x01, s1e1
+		regexp.MustCompile(`(?i)\b(?:s|season)\.? *\d+\b`), // Season 01, S01
+	}
 )
 
 // IsVideo reports whether filename has a recognized video extension.
@@ -190,4 +196,20 @@ func tryEpisodeFromContext(input string, node *treeview.Node[treeview.FileInfo])
 		return 0, 0, false
 	}
 	return season, episode, true
+}
+
+// FindSeasonEpisodeIndex finds the index where season/episode information starts in a filename.
+// Returns -1 if no pattern is found.
+func FindSeasonEpisodeIndex(filename string) int {
+	earliestIndex := -1
+
+	for _, pattern := range seasonEpisodePatterns {
+		if matches := pattern.FindStringIndex(filename); matches != nil {
+			if earliestIndex == -1 || matches[0] < earliestIndex {
+				earliestIndex = matches[0]
+			}
+		}
+	}
+
+	return earliestIndex
 }
