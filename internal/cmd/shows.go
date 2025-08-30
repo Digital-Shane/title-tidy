@@ -37,7 +37,7 @@ var ShowsCommand = CommandConfig{
 				}
 
 				// Apply show rename and get metadata
-				newName, metadata := applyShowRename(cfg, tmdbProvider, showName, year)
+				newName, metadata := applyRename(cfg, tmdbProvider, showName, year, false)
 				m.NewName = newName
 
 				// Store metadata for children

@@ -37,7 +37,7 @@ var EpisodesCommand = CommandConfig{
 			showName, year := extractShowNameFromPath(ni.Node.Name(), true)
 
 			// Fetch show metadata if available
-			showMeta := fetchShowMetadata(tmdbProvider, showName)
+			showMeta := fetchMetadata(tmdbProvider, showName, "", false)
 
 			// Apply episode rename
 			m.NewName = applyEpisodeRename(ni.Node, cfg, tmdbProvider, showMeta, showName, year, season, episode)

@@ -43,7 +43,7 @@ var SeasonsCommand = CommandConfig{
 				seasonYear = year
 
 				// Fetch show metadata if available
-				showMeta := fetchShowMetadata(tmdbProvider, showName)
+				showMeta := fetchMetadata(tmdbProvider, showName, "", false)
 				seasonShowMeta = showMeta
 
 				// Apply season rename

@@ -67,18 +67,24 @@ func TestExtractShowNameFromPath(t *testing.T) {
 	}
 }
 
-func TestFetchShowMetadata(t *testing.T) {
+func TestFetchMetadata(t *testing.T) {
 	// Test with nil provider
-	result := fetchShowMetadata(nil, "Breaking Bad")
+	result := fetchMetadata(nil, "Breaking Bad", "", false)
 	if result != nil {
-		t.Errorf("fetchShowMetadata(nil, \"Breaking Bad\") = %v, want nil", result)
+		t.Errorf("fetchMetadata(nil, \"Breaking Bad\") = %v, want nil", result)
 	}
 
-	// Test with empty show name
+	// Test with empty name
 	provider := &provider.TMDBProvider{}
-	result = fetchShowMetadata(provider, "")
+	result = fetchMetadata(provider, "", "", false)
 	if result != nil {
-		t.Errorf("fetchShowMetadata(provider, \"\") = %v, want nil", result)
+		t.Errorf("fetchMetadata(provider, \"\") = %v, want nil", result)
+	}
+
+	// Test movie mode
+	result = fetchMetadata(provider, "", "", true)
+	if result != nil {
+		t.Errorf("fetchMetadata(provider, \"\", \"\", true) = %v, want nil", result)
 	}
 }
 
@@ -217,18 +223,29 @@ func TestApplySeasonRename(t *testing.T) {
 	}
 }
 
-func TestApplyShowRename(t *testing.T) {
+func TestApplyRename(t *testing.T) {
 	cfg := &config.FormatConfig{
 		ShowFolder: "{show} ({year})",
+		Movie:      "{movie} ({year})",
 	}
 
-	// Test without TMDB provider
-	result, metadata := applyShowRename(cfg, nil, "Test Show", "2023")
+	// Test show rename without TMDB provider
+	result, metadata := applyRename(cfg, nil, "Test Show", "2023", false)
 	expected := "Test Show (2023)"
 	if result != expected {
-		t.Errorf("applyShowRename result = %q, want %q", result, expected)
+		t.Errorf("applyRename show result = %q, want %q", result, expected)
 	}
 	if metadata != nil {
-		t.Errorf("applyShowRename metadata = %v, want nil", metadata)
+		t.Errorf("applyRename show metadata = %v, want nil", metadata)
+	}
+
+	// Test movie rename without TMDB provider
+	result, metadata = applyRename(cfg, nil, "Test Movie", "2023", true)
+	expected = "Test Movie (2023)"
+	if result != expected {
+		t.Errorf("applyRename movie result = %q, want %q", result, expected)
+	}
+	if metadata != nil {
+		t.Errorf("applyRename movie metadata = %v, want nil", metadata)
 	}
 }

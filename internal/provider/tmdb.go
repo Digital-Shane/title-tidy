@@ -3,8 +3,11 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -47,9 +50,13 @@ type TMDBClient interface {
 
 // TMDBProvider implements the MetadataProvider interface using TMDB
 type TMDBProvider struct {
-	client   TMDBClient
-	cache    *cache.Cache
-	language string
+	client    TMDBClient
+	cache     *cache.Cache
+	cacheFile string
+	language  string
+
+	// Rate limiting
+	rateLimiter *rateLimiter
 }
 
 // NewTMDBProvider creates a new TMDB provider instance
@@ -70,10 +77,33 @@ func NewTMDBProvider(apiKey, language string) (*TMDBProvider, error) {
 
 	client := tmdb.Init(config)
 
+	// Set up cache file path
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	cacheDir := filepath.Join(homeDir, ".title-tidy", "tmdb_cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	cacheFile := filepath.Join(cacheDir, "tmdb_cache.gob")
+
+	// Create cache with 7 day expiration, 10 minute cleanup interval
+	c := cache.New(7*24*time.Hour, 10*time.Minute)
+
+	// Try to load existing cache from disk
+	if _, err := os.Stat(cacheFile); err == nil {
+		_ = c.LoadFile(cacheFile)
+	}
+
 	return &TMDBProvider{
-		client:   client,                               // tmdb.TMDb implements TMDBClient directly
-		cache:    cache.New(time.Hour, 10*time.Minute), // 1 hour default expiration, 10 minute cleanup interval
-		language: language,
+		client:      client, // tmdb.TMDb implements TMDBClient directly
+		cache:       c,
+		cacheFile:   cacheFile,
+		language:    language,
+		rateLimiter: newRateLimiter(40, 10*time.Second), // 40 requests per 10 seconds
 	}, nil
 }
 
@@ -84,6 +114,8 @@ func (p *TMDBProvider) SearchMovie(name, year string) (*EnrichedMetadata, error)
 	}
 
 	cacheKey := fmt.Sprintf("movie:%s:%s:%s", name, year, p.language)
+
+	// Check memory cache first
 	if cached, found := p.cache.Get(cacheKey); found {
 		if meta, ok := cached.(*EnrichedMetadata); ok {
 			return meta, nil
@@ -95,6 +127,11 @@ func (p *TMDBProvider) SearchMovie(name, year string) (*EnrichedMetadata, error)
 	}
 	if year != "" {
 		options["year"] = year
+	}
+
+	// Apply rate limiting
+	if err := p.rateLimiter.wait(); err != nil {
+		return nil, err
 	}
 
 	results, err := p.client.SearchMovie(name, options)
@@ -110,15 +147,22 @@ func (p *TMDBProvider) SearchMovie(name, year string) (*EnrichedMetadata, error)
 	movie := results.Results[0]
 
 	// Get full movie details
+	// Apply rate limiting
+	if err := p.rateLimiter.wait(); err != nil {
+		return nil, err
+	}
+
 	fullMovie, err := p.client.GetMovieInfo(movie.ID, options)
 	if err != nil {
 		// Fall back to search result data
 		meta := p.movieSearchResultToMetadata(&movie, name, year)
+		// Store in cache
 		p.cache.Set(cacheKey, meta, cache.DefaultExpiration)
 		return meta, nil
 	}
 
 	meta := p.movieToMetadata(fullMovie, name, year)
+	// Store in cache
 	p.cache.Set(cacheKey, meta, cache.DefaultExpiration)
 	return meta, nil
 }
@@ -130,6 +174,8 @@ func (p *TMDBProvider) SearchTVShow(name string) (*EnrichedMetadata, error) {
 	}
 
 	cacheKey := fmt.Sprintf("tvshow:%s:%s", name, p.language)
+
+	// Check memory cache first
 	if cached, found := p.cache.Get(cacheKey); found {
 		if meta, ok := cached.(*EnrichedMetadata); ok {
 			return meta, nil
@@ -138,6 +184,11 @@ func (p *TMDBProvider) SearchTVShow(name string) (*EnrichedMetadata, error) {
 
 	options := map[string]string{
 		"language": p.language,
+	}
+
+	// Apply rate limiting
+	if err := p.rateLimiter.wait(); err != nil {
+		return nil, err
 	}
 
 	results, err := p.client.SearchTv(name, options)
@@ -153,15 +204,22 @@ func (p *TMDBProvider) SearchTVShow(name string) (*EnrichedMetadata, error) {
 	show := results.Results[0]
 
 	// Get full show details
+	// Apply rate limiting
+	if err := p.rateLimiter.wait(); err != nil {
+		return nil, err
+	}
+
 	fullShow, err := p.client.GetTvInfo(show.ID, options)
 	if err != nil {
 		// Fall back to search result data
 		meta := p.tvSearchResultToMetadata((*tvSearchResult)(&show), name)
+		// Store in cache
 		p.cache.Set(cacheKey, meta, cache.DefaultExpiration)
 		return meta, nil
 	}
 
 	meta := p.tvToMetadata(fullShow, name)
+	// Store in cache
 	p.cache.Set(cacheKey, meta, cache.DefaultExpiration)
 	return meta, nil
 }
@@ -173,6 +231,8 @@ func (p *TMDBProvider) GetSeasonInfo(showID, seasonNum int) (*EnrichedMetadata, 
 	}
 
 	cacheKey := fmt.Sprintf("season:%d:%d:%s", showID, seasonNum, p.language)
+
+	// Check memory cache first
 	if cached, found := p.cache.Get(cacheKey); found {
 		if meta, ok := cached.(*EnrichedMetadata); ok {
 			return meta, nil
@@ -181,6 +241,11 @@ func (p *TMDBProvider) GetSeasonInfo(showID, seasonNum int) (*EnrichedMetadata, 
 
 	options := map[string]string{
 		"language": p.language,
+	}
+
+	// Apply rate limiting
+	if err := p.rateLimiter.wait(); err != nil {
+		return nil, err
 	}
 
 	season, err := p.client.GetTvSeasonInfo(showID, seasonNum, options)
@@ -193,6 +258,7 @@ func (p *TMDBProvider) GetSeasonInfo(showID, seasonNum int) (*EnrichedMetadata, 
 	}
 
 	meta := p.seasonToMetadata(season, showID)
+	// Store in cache
 	p.cache.Set(cacheKey, meta, cache.DefaultExpiration)
 	return meta, nil
 }
@@ -204,6 +270,8 @@ func (p *TMDBProvider) GetEpisodeInfo(showID, season, episode int) (*EnrichedMet
 	}
 
 	cacheKey := fmt.Sprintf("episode:%d:%d:%d:%s", showID, season, episode, p.language)
+
+	// Check memory cache first
 	if cached, found := p.cache.Get(cacheKey); found {
 		if meta, ok := cached.(*EnrichedMetadata); ok {
 			return meta, nil
@@ -212,6 +280,11 @@ func (p *TMDBProvider) GetEpisodeInfo(showID, season, episode int) (*EnrichedMet
 
 	options := map[string]string{
 		"language": p.language,
+	}
+
+	// Apply rate limiting
+	if err := p.rateLimiter.wait(); err != nil {
+		return nil, err
 	}
 
 	ep, err := p.client.GetTvEpisodeInfo(showID, season, episode, options)
@@ -224,9 +297,14 @@ func (p *TMDBProvider) GetEpisodeInfo(showID, season, episode int) (*EnrichedMet
 	}
 
 	// Also get show info for the series name
-	show, _ := p.client.GetTvInfo(showID, options)
+	// Apply rate limiting for the second request
+	var show *tmdb.TV
+	if err := p.rateLimiter.wait(); err == nil {
+		show, _ = p.client.GetTvInfo(showID, options)
+	}
 
 	meta := p.episodeToMetadata(ep, show, showID)
+	// Store in cache
 	p.cache.Set(cacheKey, meta, cache.DefaultExpiration)
 	return meta, nil
 }
@@ -380,6 +458,15 @@ func (p *TMDBProvider) SetClient(client TMDBClient) {
 	p.client = client
 }
 
+// SaveCache persists the cache to disk
+func (p *TMDBProvider) SaveCache() error {
+	if p.cacheFile == "" {
+		return nil // No cache file configured
+	}
+
+	return p.cache.SaveFile(p.cacheFile)
+}
+
 // GetIDFromMetadata extracts the TMDB ID from metadata or performs a search
 func (p *TMDBProvider) GetIDFromMetadata(meta *EnrichedMetadata, mediaType string) (int, error) {
 	if meta.ID > 0 {
@@ -408,4 +495,78 @@ func (p *TMDBProvider) GetIDFromMetadata(meta *EnrichedMetadata, mediaType strin
 func ParseYear(s string) string {
 	match := yearRegex.FindString(s)
 	return match
+}
+
+// rateLimiter implements a token bucket rate limiter
+type rateLimiter struct {
+	mu            sync.Mutex
+	requests      []time.Time
+	maxRequests   int
+	window        time.Duration
+	retryCount    int
+	maxRetries    int
+	backoffFactor time.Duration
+}
+
+// newRateLimiter creates a new rate limiter
+func newRateLimiter(maxRequests int, window time.Duration) *rateLimiter {
+	return &rateLimiter{
+		maxRequests:   maxRequests,
+		window:        window,
+		requests:      make([]time.Time, 0, maxRequests),
+		maxRetries:    4,
+		backoffFactor: time.Second,
+	}
+}
+
+// wait blocks until a request can be made within rate limits
+func (r *rateLimiter) wait() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := time.Now()
+
+	// Clean up old requests outside the window
+	cutoff := now.Add(-r.window)
+	validRequests := make([]time.Time, 0, r.maxRequests)
+	for _, req := range r.requests {
+		if req.After(cutoff) {
+			validRequests = append(validRequests, req)
+		}
+	}
+	r.requests = validRequests
+
+	// Check if we can make a request
+	if len(r.requests) < r.maxRequests {
+		r.requests = append(r.requests, now)
+		r.retryCount = 0
+		return nil
+	}
+
+	// We're rate limited, calculate wait time
+	oldestRequest := r.requests[0]
+	waitTime := r.window - now.Sub(oldestRequest)
+
+	// Apply exponential backoff if we're repeatedly hitting limits
+	if r.retryCount > 0 {
+		backoff := r.backoffFactor * time.Duration(1<<uint(r.retryCount-1))
+		if backoff > waitTime {
+			waitTime = backoff
+		}
+		if r.retryCount >= r.maxRetries {
+			return ErrRateLimited
+		}
+	}
+
+	r.retryCount++
+
+	// Wait and then allow the request
+	r.mu.Unlock()
+	time.Sleep(waitTime)
+	r.mu.Lock()
+
+	// Record the request after waiting
+	r.requests = append(r.requests, time.Now())
+
+	return nil
 }

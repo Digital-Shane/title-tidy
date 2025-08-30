@@ -37,18 +37,26 @@ func extractShowNameFromPath(path string, removeExtension bool) (showName, year 
 	return showName, year
 }
 
-// fetchShowMetadata searches for a TV show and returns its metadata
-func fetchShowMetadata(provider *provider.TMDBProvider, showName string) *provider.EnrichedMetadata {
-	if provider == nil || showName == "" {
+// fetchMetadata searches for metadata from TMDB (supports both shows and movies)
+func fetchMetadata(tmdbProvider *provider.TMDBProvider, name, year string, isMovie bool) *provider.EnrichedMetadata {
+	if tmdbProvider == nil || name == "" {
 		return nil
 	}
 
-	showMeta, err := provider.SearchTVShow(showName)
-	if err != nil || showMeta == nil {
+	var meta *provider.EnrichedMetadata
+	var err error
+
+	if isMovie {
+		meta, err = tmdbProvider.SearchMovie(name, year)
+	} else {
+		meta, err = tmdbProvider.SearchTVShow(name)
+	}
+
+	if err != nil || meta == nil {
 		return nil
 	}
 
-	return showMeta
+	return meta
 }
 
 // fetchSeasonMetadata gets season-specific metadata if show metadata is available
@@ -159,14 +167,26 @@ func applySeasonRename(cfg *config.FormatConfig, tmdbProvider *provider.TMDBProv
 	return cfg.ApplySeasonFolderTemplate(ctx)
 }
 
-// applyShowRename handles the common show renaming logic
-func applyShowRename(cfg *config.FormatConfig, tmdbProvider *provider.TMDBProvider, showName, year string) (string, *provider.EnrichedMetadata) {
-	// Try to fetch show metadata
-	showMeta := fetchShowMetadata(tmdbProvider, showName)
+// applyRename handles the common renaming logic for both shows and movies
+func applyRename(cfg *config.FormatConfig, tmdbProvider *provider.TMDBProvider, name, year string, isMovie bool) (string, *provider.EnrichedMetadata) {
+	// Try to fetch metadata
+	meta := fetchMetadata(tmdbProvider, name, year, isMovie)
 
 	// Create context
-	ctx := createFormatContext(cfg, showName, "", year, 0, 0, showMeta)
+	var ctx *config.FormatContext
+	if isMovie {
+		ctx = createFormatContext(cfg, "", name, year, 0, 0, meta)
+	} else {
+		ctx = createFormatContext(cfg, name, "", year, 0, 0, meta)
+	}
 
-	// Apply template
-	return cfg.ApplyShowFolderTemplate(ctx), showMeta
+	// Apply appropriate template
+	var newName string
+	if isMovie {
+		newName = cfg.ApplyMovieTemplate(ctx)
+	} else {
+		newName = cfg.ApplyShowFolderTemplate(ctx)
+	}
+
+	return newName, meta
 }
