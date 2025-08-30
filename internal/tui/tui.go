@@ -25,6 +25,19 @@ type UndoCompleteMsg struct{ successCount, errorCount int }
 func (u UndoCompleteMsg) SuccessCount() int { return u.successCount }
 func (u UndoCompleteMsg) ErrorCount() int   { return u.errorCount }
 
+// MetadataProgressMsg updates metadata fetching progress
+type MetadataProgressMsg struct {
+	Total     int
+	Completed int
+	Errors    int
+	Status    string
+}
+
+// MetadataCompleteMsg signals metadata fetching is complete
+type MetadataCompleteMsg struct {
+	Errors int
+}
+
 // Icon sets for different terminal capabilities
 var (
 	// High-quality emoji icons (for modern terminals)
@@ -128,6 +141,13 @@ type RenameModel struct {
 	// Stats panel scrolling
 	statsViewport viewport.Model
 	statsFocused  bool // whether the stats panel is focused for scrolling
+
+	// Metadata fetching progress
+	metadataFetching  bool
+	metadataTotal     int
+	metadataCompleted int
+	metadataErrors    int
+	metadataStatus    string
 }
 
 // NewRenameModel returns an initialized RenameModel for the provided tree with
@@ -352,6 +372,22 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case MetadataProgressMsg:
+		m.metadataFetching = true
+		m.metadataTotal = msg.Total
+		m.metadataCompleted = msg.Completed
+		m.metadataErrors = msg.Errors
+		m.metadataStatus = msg.Status
+		return m, nil
+
+	case MetadataCompleteMsg:
+		m.metadataFetching = false
+		m.metadataStatus = ""
+		if msg.Errors > 0 {
+			m.metadataStatus = fmt.Sprintf("Metadata fetching complete (%d errors)", msg.Errors)
+		}
+		return m, nil
+
 	case RenameCompleteMsg:
 		m.renameInProgress = false
 		m.renameComplete = true
@@ -438,6 +474,22 @@ func (m *RenameModel) renderHeader() string {
 
 // renderStatusBar renders a single line of key hints and actions.
 func (m *RenameModel) renderStatusBar() string {
+	// Show metadata fetching progress if active
+	if m.metadataFetching {
+		textStyle := lipgloss.NewStyle().
+			Background(colorSecondary).
+			Foreground(colorBackground).
+			Padding(0, 1)
+		statusMsg := "Fetching metadata..."
+		if m.metadataTotal > 0 {
+			statusMsg = fmt.Sprintf("Fetching metadata... (%d/%d)", m.metadataCompleted, m.metadataTotal)
+		}
+		if m.metadataStatus != "" {
+			statusMsg = m.metadataStatus
+		}
+		return statusStyleBase.Width(m.width).Render(textStyle.Render(statusMsg))
+	}
+
 	if m.progressVisible && m.renameInProgress {
 		// show progress bar with styled text
 		bar := m.progressModel.View()

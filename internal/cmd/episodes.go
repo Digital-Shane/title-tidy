@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"context"
+
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/treeview"
-	"path/filepath"
 )
 
 // EpisodesCommand processes a flat directory of episode files (no parent season folder).
@@ -16,8 +16,11 @@ var EpisodesCommand = CommandConfig{
 	maxDepth:    1,
 	includeDirs: false,
 	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
+		// Initialize TMDB provider if enabled and needed
+		tmdbProvider := initializeTMDBProvider(cfg)
+
 		for ni := range t.All(context.Background()) {
-			// Only operate on leaf nodes (files) at depth 0; directories are excluded by includeDirs=false.
+			// Only operate on leaf nodes (files) at depth 0
 			if ni.Node.Data().IsDir() {
 				continue
 			}
@@ -30,20 +33,17 @@ var EpisodesCommand = CommandConfig{
 				continue
 			}
 
-			// Preserve the file extension (with language code for subtitles)
-			ext := media.ExtractExtension(ni.Node.Name())
+			// Extract show name from filename
+			showName, year := extractShowNameFromPath(ni.Node.Name(), true)
 
-			// Apply template and add extension - Episodes command has no show/year context
-			ctx := &config.FormatContext{
-				Season:  season,
-				Episode: episode,
-			}
-			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + ext
+			// Fetch show metadata if available
+			showMeta := fetchShowMetadata(tmdbProvider, showName)
+
+			// Apply episode rename
+			m.NewName = applyEpisodeRename(ni.Node, cfg, tmdbProvider, showMeta, showName, year, season, episode)
 
 			// Set destination path if linking
-			if linkPath != "" {
-				m.DestinationPath = filepath.Join(linkPath, m.NewName)
-			}
+			setDestinationPath(ni.Node, linkPath, "", m.NewName)
 		}
 	},
 }
