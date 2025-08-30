@@ -214,8 +214,8 @@ func TestSearchMovie(t *testing.T) {
 		},
 		{
 			name:      "api_error",
-			movieName: "The Matrix",
-			movieYear: "1999",
+			movieName: "ErrorMovie",
+			movieYear: "2025",
 			mockFunc: func(query string, options map[string]string) (*tmdb.MovieSearchResults, error) {
 				return nil, errors.New("401 Unauthorized")
 			},
@@ -245,7 +245,7 @@ func TestSearchMovie(t *testing.T) {
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("SearchMovie(%q, %q) error = nil, want error", tt.movieName, tt.movieYear)
+					t.Errorf("SearchMovie(%q, %q) error = nil, want error (got = %+v)", tt.movieName, tt.movieYear, got)
 				}
 			} else {
 				if err != nil {
@@ -389,7 +389,7 @@ func TestSearchTVShow(t *testing.T) {
 		},
 		{
 			name:     "api_error",
-			showName: "Test Show",
+			showName: "ErrorShow",
 			mockFunc: func(query string, options map[string]string) (*tmdb.TvSearchResults, error) {
 				return nil, errors.New("503 Service Unavailable")
 			},
@@ -492,9 +492,9 @@ func TestGetEpisodeInfo(t *testing.T) {
 		},
 		{
 			name:    "api_error",
-			showID:  1396,
-			season:  1,
-			episode: 1,
+			showID:  999999,
+			season:  99,
+			episode: 99,
 			mockFunc: func(tvID int, seasonNumber int, episodeNumber int, options map[string]string) (*tmdb.TvEpisode, error) {
 				return nil, errors.New("404 Not Found")
 			},
@@ -577,7 +577,10 @@ func TestErrorMapping(t *testing.T) {
 }
 
 func TestCaching(t *testing.T) {
-	provider, _ := NewTMDBProvider("test-api-key", "en-US")
+	provider, _ := NewTMDBProvider("cache-test-api-key", "en-US")
+
+	// Clear any existing caches for a clean test
+	provider.cache.Flush()
 
 	callCount := 0
 	mockClient := &mockTMDBClient{
@@ -587,7 +590,7 @@ func TestCaching(t *testing.T) {
 				Results: []tmdb.MovieShort{
 					{
 						ID:          603,
-						Title:       "The Matrix",
+						Title:       query, // Return the query as title
 						ReleaseDate: "1999-03-31",
 						Overview:    "A computer hacker learns about the true nature of reality",
 						VoteAverage: 8.2,
@@ -602,7 +605,7 @@ func TestCaching(t *testing.T) {
 	provider.SetClient(mockClient)
 
 	// First call should hit the API
-	result1, err := provider.SearchMovie("The Matrix", "1999")
+	result1, err := provider.SearchMovie("CacheTest", "2024")
 	if err != nil {
 		t.Errorf("First SearchMovie call failed: %v", err)
 	}
@@ -611,7 +614,7 @@ func TestCaching(t *testing.T) {
 	}
 
 	// Second call should hit the cache
-	result2, err := provider.SearchMovie("The Matrix", "1999")
+	result2, err := provider.SearchMovie("CacheTest", "2024")
 	if err != nil {
 		t.Errorf("Second SearchMovie call failed: %v", err)
 	}
@@ -625,7 +628,7 @@ func TestCaching(t *testing.T) {
 	}
 
 	// Different parameters should hit the API again
-	_, err = provider.SearchMovie("The Matrix", "2000")
+	_, err = provider.SearchMovie("CacheTest", "2025")
 	if err != nil {
 		t.Errorf("Third SearchMovie call failed: %v", err)
 	}
@@ -683,8 +686,8 @@ func TestGetSeasonInfo(t *testing.T) {
 		},
 		{
 			name:      "api_error",
-			showID:    1396,
-			seasonNum: 1,
+			showID:    888888,
+			seasonNum: 88,
 			mockFunc: func(showID, seasonID int, options map[string]string) (*tmdb.TvSeason, error) {
 				return nil, errors.New("404 Not Found")
 			},
@@ -693,8 +696,8 @@ func TestGetSeasonInfo(t *testing.T) {
 		},
 		{
 			name:      "no_season_data",
-			showID:    1396,
-			seasonNum: 1,
+			showID:    777777,
+			seasonNum: 77,
 			mockFunc: func(showID, seasonID int, options map[string]string) (*tmdb.TvSeason, error) {
 				return nil, nil
 			},
