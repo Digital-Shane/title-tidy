@@ -778,8 +778,7 @@ func (m *Model) getVariablesForSection() []variable {
 	switch m.activeSection {
 	case SectionShowFolder:
 		return []variable{
-			{"{show}", "Show name", "Breaking Bad"},
-			{"{title}", "Generic title", "Breaking Bad"},
+			{"{title}", "Show title", "Breaking Bad"},
 			{"{year}", "Year", "2008"},
 			{"{rating}", "Rating", "8.5"},
 			{"{genres}", "Genres", "Drama, Crime"},
@@ -787,21 +786,15 @@ func (m *Model) getVariablesForSection() []variable {
 		}
 	case SectionSeasonFolder:
 		return []variable{
-			{"{show}", "Show name", "Breaking Bad"},
+			{"{title}", "Show title", "Breaking Bad"},
 			{"{season}", "Season number", "01"},
-			{"{season_code}", "Season code", "S01"},
-			{"{season_name}", "Season name ", "Season 01"},
-			{"{rating}", "Rating", "8.5"},
-			{"{genres}", "Genres", "Drama, Crime"},
 		}
 	case SectionEpisode:
 		return []variable{
-			{"{show}", "Show name", "Breaking Bad"},
+			{"{title}", "Show title", "Breaking Bad"},
 			{"{year}", "Year", "2008"},
 			{"{season}", "Season number", "01"},
 			{"{episode}", "Episode number", "05"},
-			{"{season_code}", "Season code", "S01"},
-			{"{episode_code}", "Episode code", "E05"},
 			{"{episode_title}", "Episode title", "Gray Matter"},
 			{"{air_date}", "Air date", "2008-02-24"},
 			{"{rating}", "Rating", "8.3"},
@@ -809,14 +802,12 @@ func (m *Model) getVariablesForSection() []variable {
 		}
 	case SectionMovie:
 		return []variable{
-			{"{movie}", "Movie name", "The Matrix"},
-			{"{title}", "Generic title", "The Matrix"},
+			{"{title}", "Movie title", "The Matrix"},
 			{"{year}", "Year", "1999"},
 			{"{rating}", "Rating", "8.7"},
 			{"{genres}", "Genres", "Action, Sci-Fi"},
 			{"{runtime}", "Runtime in minutes", "136"},
 			{"{tagline}", "Tagline", "Welcome to the Real World"},
-			{"{overview}", "Overview (truncated)", "A computer hacker learns..."},
 		}
 	case SectionLogging:
 		return []variable{
@@ -900,11 +891,54 @@ func (m *Model) generatePreviews() []preview {
 		Movie:        m.inputs[SectionMovie],
 	}
 
+	// Create demo metadata for shows (Breaking Bad)
+	showMetadata := &provider.EnrichedMetadata{
+		Title:       "Breaking Bad",
+		ShowName:    "Breaking Bad",
+		Year:        "2008",
+		Rating:      8.5,
+		Genres:      []string{"Drama", "Crime"},
+		Runtime:     48,
+		Tagline:     "All Hail the King",
+		SeasonName:  "Season 01",
+		EpisodeName: "Gray Matter",
+		EpisodeAir:  "2008-02-24",
+	}
+
+	// Create demo metadata for movies (The Matrix)
+	movieMetadata := &provider.EnrichedMetadata{
+		Title:   "The Matrix",
+		Year:    "1999",
+		Rating:  8.7,
+		Genres:  []string{"Action", "Sci-Fi"},
+		Runtime: 136,
+		Tagline: "Welcome to the Real World",
+	}
+
 	return []preview{
-		{"📺", "Show", cfg.ApplyShowFolderTemplate(&config.FormatContext{ShowName: "Breaking Bad", Year: "2008"})},
-		{"📁", "Season", cfg.ApplySeasonFolderTemplate(&config.FormatContext{ShowName: "Breaking Bad", Year: "2008", Season: 1})},
-		{"🎬", "Episode", cfg.ApplyEpisodeTemplate(&config.FormatContext{ShowName: "Breaking Bad", Year: "2008", Season: 1, Episode: 7}) + ".mkv"},
-		{"🎭", "Movie", cfg.ApplyMovieTemplate(&config.FormatContext{MovieName: "The Matrix", Year: "1999"})},
+		{"📺", "Show", cfg.ApplyShowFolderTemplate(&config.FormatContext{
+			ShowName: "Breaking Bad",
+			Year:     "2008",
+			Metadata: showMetadata,
+		})},
+		{"📁", "Season", cfg.ApplySeasonFolderTemplate(&config.FormatContext{
+			ShowName: "Breaking Bad",
+			Year:     "2008",
+			Season:   1,
+			Metadata: showMetadata,
+		})},
+		{"🎬", "Episode", cfg.ApplyEpisodeTemplate(&config.FormatContext{
+			ShowName: "Breaking Bad",
+			Year:     "2008",
+			Season:   1,
+			Episode:  7,
+			Metadata: showMetadata,
+		}) + ".mkv"},
+		{"🎭", "Movie", cfg.ApplyMovieTemplate(&config.FormatContext{
+			MovieName: "The Matrix",
+			Year:      "1999",
+			Metadata:  movieMetadata,
+		})},
 	}
 }
 

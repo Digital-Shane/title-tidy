@@ -148,7 +148,7 @@ func TestMovieRenameWithTMDB(t *testing.T) {
 
 		tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{root})
 
-		MovieAnnotate(tree, cfg, "")
+		MovieAnnotate(tree, cfg, "", nil)
 
 		meta := core.GetMeta(root)
 		if meta == nil {
@@ -193,7 +193,7 @@ func TestMovieRenameWithTMDB(t *testing.T) {
 
 func TestMovieRenameWithoutTMDB(t *testing.T) {
 	cfg := &config.FormatConfig{
-		Movie:            "{movie} ({year})",
+		Movie:            "{title} ({year})",
 		EnableTMDBLookup: false,
 	}
 

@@ -16,7 +16,7 @@ func TestShowsCommandAnnotate(t *testing.T) {
 	show.AddChild(season)
 	tr := testNewTree(show)
 
-	ShowsCommand.annotate(tr, config.DefaultConfig(), "")
+	ShowsCommand.annotate(tr, config.DefaultConfig(), "", nil)
 
 	sm := core.GetMeta(show)
 	if sm == nil || sm.Type != core.MediaShow || sm.NewName == "" {
@@ -43,7 +43,7 @@ func TestShowsCommandAnnotateWithLinking(t *testing.T) {
 	tr := testNewTree(show)
 
 	linkPath := "/test/destination"
-	ShowsCommand.annotate(tr, config.DefaultConfig(), linkPath)
+	ShowsCommand.annotate(tr, config.DefaultConfig(), linkPath, nil)
 
 	// Verify show metadata and destination path
 	sm := core.GetMeta(show)
@@ -122,7 +122,7 @@ func TestShowsCommandAnnotateWithoutLinking(t *testing.T) {
 	show.AddChild(season)
 	tr := testNewTree(show)
 
-	ShowsCommand.annotate(tr, config.DefaultConfig(), "")
+	ShowsCommand.annotate(tr, config.DefaultConfig(), "", nil)
 
 	// Verify no destination paths are set when not linking
 	sm := core.GetMeta(show)

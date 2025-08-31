@@ -108,9 +108,9 @@ func TestShowsCommandWithTMDBIntegration(t *testing.T) {
 
 	// Create config with TMDB enabled
 	cfg := &config.FormatConfig{
-		ShowFolder:          "{show} ({year})",
+		ShowFolder:          "{title} ({year})",
 		SeasonFolder:        "Season {season}",
-		Episode:             "{season_code}{episode_code} - {episode_title}",
+		Episode:             "S{season}E{episode} - {episode_title}",
 		EnableTMDBLookup:    true,
 		TMDBAPIKey:          "test-api-key",
 		TMDBLanguage:        "en-US",
@@ -118,7 +118,7 @@ func TestShowsCommandWithTMDBIntegration(t *testing.T) {
 	}
 
 	// Apply annotation without TMDB (simulating the case where TMDB is disabled)
-	ShowsCommand.annotate(tree, cfg, "")
+	ShowsCommand.annotate(tree, cfg, "", nil)
 
 	// Check that metadata was applied
 	showMeta := core.GetMeta(showNode)
@@ -158,14 +158,14 @@ func TestShowsCommandTMDBFallback(t *testing.T) {
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{showNode})
 
 	cfg := &config.FormatConfig{
-		ShowFolder:          "{show} ({year})",
+		ShowFolder:          "{title} ({year})",
 		EnableTMDBLookup:    true,
 		TMDBAPIKey:          "test-api-key",
 		PreferLocalMetadata: false,
 	}
 
 	// Apply annotation - should fallback to local metadata when TMDB is unavailable
-	ShowsCommand.annotate(tree, cfg, "")
+	ShowsCommand.annotate(tree, cfg, "", nil)
 
 	showMeta := core.GetMeta(showNode)
 	if showMeta == nil {
@@ -199,13 +199,13 @@ func TestShowsCommandWithLinking(t *testing.T) {
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{showNode})
 
 	cfg := &config.FormatConfig{
-		ShowFolder:       "{show} ({year})",
+		ShowFolder:       "{title} ({year})",
 		SeasonFolder:     "Season {season}",
 		EnableTMDBLookup: false, // Disable TMDB for this test
 	}
 
 	linkPath := "/media/library"
-	ShowsCommand.annotate(tree, cfg, linkPath)
+	ShowsCommand.annotate(tree, cfg, linkPath, nil)
 
 	showMeta := core.GetMeta(showNode)
 	seasonMeta := core.GetMeta(seasonNode)
@@ -231,12 +231,12 @@ func TestEpisodesCommandWithTMDB(t *testing.T) {
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{episodeNode})
 
 	cfg := &config.FormatConfig{
-		Episode:          "{season_code}{episode_code}",
+		Episode:          "S{season}E{episode}",
 		EnableTMDBLookup: true,
 		TMDBAPIKey:       "test-api-key",
 	}
 
-	EpisodesCommand.annotate(tree, cfg, "")
+	EpisodesCommand.annotate(tree, cfg, "", nil)
 
 	episodeMeta := core.GetMeta(episodeNode)
 	if episodeMeta == nil {
@@ -270,12 +270,12 @@ func TestSeasonsCommandWithTMDB(t *testing.T) {
 
 	cfg := &config.FormatConfig{
 		SeasonFolder:     "Season {season}",
-		Episode:          "{season_code}{episode_code}",
+		Episode:          "S{season}E{episode}",
 		EnableTMDBLookup: true,
 		TMDBAPIKey:       "test-api-key",
 	}
 
-	SeasonsCommand.annotate(tree, cfg, "")
+	SeasonsCommand.annotate(tree, cfg, "", nil)
 
 	seasonMeta := core.GetMeta(seasonNode)
 	if seasonMeta == nil {
@@ -312,7 +312,7 @@ func TestMetadataContextPassing(t *testing.T) {
 			Rating:      8.7,
 		},
 		Config: &config.FormatConfig{
-			Episode:             "{season_code}{episode_code} - {episode_title}",
+			Episode:             "S{season}E{episode} - {episode_title}",
 			PreferLocalMetadata: false,
 		},
 	}

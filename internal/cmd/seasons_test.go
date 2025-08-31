@@ -17,7 +17,7 @@ func TestSeasonsCommandAnnotate(t *testing.T) {
 	season2 := testNewDirNode("Season 02")
 	tr := testNewTree(season1, season2)
 
-	SeasonsCommand.annotate(tr, config.DefaultConfig(), "")
+	SeasonsCommand.annotate(tr, config.DefaultConfig(), "", nil)
 
 	for _, s := range []*treeview.Node[treeview.FileInfo]{season1, season2} {
 		mm := core.GetMeta(s)

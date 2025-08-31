@@ -8,6 +8,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/util"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -24,9 +25,6 @@ var MoviesCommand = CommandConfig{
 // Matching for subtitles: the filename prefix before language + subtitle suffix must
 // exactly match the video filename without its extension.
 func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.FormatConfig) []*treeview.Node[treeview.FileInfo] {
-	// Initialize TMDB provider if enabled and needed
-	tmdbProvider := initializeTMDBProvider(cfg)
-
 	type bundle struct {
 		dir *treeview.Node[treeview.FileInfo]
 	}
@@ -49,9 +47,9 @@ func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 
 			// Extract year if present for movie formatting
 			formatted, year := config.ExtractNameAndYear(base)
-			// Apply movie template with TMDB metadata if available
-			newName, _ := applyRename(cfg, tmdbProvider, formatted, year, true)
-			vm.NewName = newName
+			// Apply basic movie template (metadata will be applied later in annotate)
+			ctx := createFormatContext(cfg, "", formatted, year, 0, 0, nil)
+			vm.NewName = cfg.ApplyMovieTemplate(ctx)
 
 			vm.IsVirtual = true
 			vm.NeedsDirectory = true
@@ -107,12 +105,9 @@ func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 
 // MovieAnnotate adds metadata to any remaining movie directories / files not handled
 // during preprocess (e.g., pre-existing movie directories from the filesystem).
-func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
+func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string, metadata map[string]*provider.EnrichedMetadata) {
 	// Track parent paths for building destination hierarchy
 	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
-
-	// Initialize TMDB provider if enabled and needed
-	tmdbProvider := initializeTMDBProvider(cfg)
 
 	// Track movie metadata for reuse
 	movieMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.EnrichedMetadata)
@@ -141,13 +136,21 @@ func MovieAnnotate(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig
 
 			// Extract year if present for movie formatting
 			formatted, year := config.ExtractNameAndYear(ni.Node.Name())
-			// Apply movie template with TMDB metadata if available
-			newName, metadata := applyRename(cfg, tmdbProvider, formatted, year, true)
-			m.NewName = newName
+
+			// Get pre-fetched metadata if available
+			var meta *provider.EnrichedMetadata
+			if metadata != nil {
+				key := util.GenerateMetadataKey("movie", formatted, year, 0, 0)
+				meta = metadata[key]
+			}
+
+			// Apply movie template with metadata
+			ctx := createFormatContext(cfg, "", formatted, year, 0, 0, meta)
+			m.NewName = cfg.ApplyMovieTemplate(ctx)
 
 			// Store metadata for potential future use
-			if metadata != nil {
-				movieMetadata[ni.Node] = metadata
+			if meta != nil {
+				movieMetadata[ni.Node] = meta
 			}
 
 			// Set destination path if linking
