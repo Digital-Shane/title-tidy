@@ -8,18 +8,16 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/util"
 	"github.com/Digital-Shane/treeview"
 )
 
 var SeasonsCommand = CommandConfig{
 	maxDepth:    2,
 	includeDirs: true,
-	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string) {
+	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string, metadata map[string]*provider.EnrichedMetadata) {
 		// Track parent paths for building destination hierarchy
 		parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
-
-		// Initialize TMDB provider if enabled and needed
-		tmdbProvider := initializeTMDBProvider(cfg)
 
 		// Track show metadata for passing to episodes
 		var seasonShowMeta *provider.EnrichedMetadata
@@ -42,12 +40,25 @@ var SeasonsCommand = CommandConfig{
 				seasonShowName = showName
 				seasonYear = year
 
-				// Fetch show metadata if available
-				showMeta := fetchMetadata(tmdbProvider, showName, "", false)
-				seasonShowMeta = showMeta
+				// Get pre-fetched metadata if available
+				var meta *provider.EnrichedMetadata
+				if metadata != nil {
+					// First try to get show metadata
+					showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+					seasonShowMeta = metadata[showKey]
 
-				// Apply season rename
-				m.NewName = applySeasonRename(cfg, tmdbProvider, showMeta, showName, year, season)
+					// Then try to get season-specific metadata
+					seasonKey := util.GenerateMetadataKey("season", showName, year, season, 0)
+					meta = metadata[seasonKey]
+					if meta == nil && seasonShowMeta != nil {
+						// Fall back to show metadata if season not found
+						meta = seasonShowMeta
+					}
+				}
+
+				// Apply season rename with metadata
+				ctx := createFormatContext(cfg, showName, "", year, season, 0, meta)
+				m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
 
 				// Set destination path if linking
 				if linkPath != "" {
@@ -62,8 +73,19 @@ var SeasonsCommand = CommandConfig{
 					continue
 				}
 
-				// Apply episode rename using parent show context
-				m.NewName = applyEpisodeRename(ni.Node, cfg, tmdbProvider, seasonShowMeta, seasonShowName, seasonYear, season, episode)
+				// Get pre-fetched episode metadata if available
+				var meta *provider.EnrichedMetadata
+				if metadata != nil {
+					key := util.GenerateMetadataKey("episode", seasonShowName, seasonYear, season, episode)
+					meta = metadata[key]
+				}
+
+				// Preserve file extension
+				ext := media.ExtractExtension(ni.Node.Name())
+
+				// Apply episode rename with metadata
+				ctx := createFormatContext(cfg, seasonShowName, "", seasonYear, season, episode, meta)
+				m.NewName = cfg.ApplyEpisodeTemplate(ctx) + ext
 
 				// Set destination path if linking
 				if linkPath != "" && ni.Node.Parent() != nil {

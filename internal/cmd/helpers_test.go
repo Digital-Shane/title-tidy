@@ -120,7 +120,7 @@ func TestFetchEpisodeMetadata(t *testing.T) {
 
 func TestCreateFormatContext(t *testing.T) {
 	cfg := &config.FormatConfig{
-		ShowFolder: "{show} ({year})",
+		ShowFolder: "{title} ({year})",
 	}
 
 	ctx := createFormatContext(cfg, "Test Show", "Test Movie", "2023", 1, 2, nil)
@@ -197,7 +197,7 @@ func TestApplyEpisodeRename(t *testing.T) {
 	node := treeview.NewNode("s01e01", "S01E01.mkv", treeFileInfo)
 
 	cfg := &config.FormatConfig{
-		Episode: "{season_code}{episode_code} - {episode_title}",
+		Episode: "S{season}E{episode} - {episode_title}",
 	}
 
 	// Test without metadata
@@ -225,8 +225,8 @@ func TestApplySeasonRename(t *testing.T) {
 
 func TestApplyRename(t *testing.T) {
 	cfg := &config.FormatConfig{
-		ShowFolder: "{show} ({year})",
-		Movie:      "{movie} ({year})",
+		ShowFolder: "{title} ({year})",
+		Movie:      "{title} ({year})",
 	}
 
 	// Test show rename without TMDB provider
@@ -247,5 +247,101 @@ func TestApplyRename(t *testing.T) {
 	}
 	if metadata != nil {
 		t.Errorf("applyRename movie metadata = %v, want nil", metadata)
+	}
+}
+
+func TestFetchSeasonMetadata_EdgeCases(t *testing.T) {
+	// Test with showMeta having zero ID
+	showMeta := &provider.EnrichedMetadata{
+		ID:       0,
+		Title:    "Test Show",
+		ShowName: "Test Show",
+	}
+	result := fetchSeasonMetadata(&provider.TMDBProvider{}, showMeta, 1)
+	if result != nil {
+		t.Errorf("fetchSeasonMetadata with zero ID = %v, want nil", result)
+	}
+}
+
+func TestFetchEpisodeMetadata_EdgeCases(t *testing.T) {
+	// Test with showMeta having zero ID
+	showMeta := &provider.EnrichedMetadata{
+		ID:       0,
+		Title:    "Test Show",
+		ShowName: "Test Show",
+	}
+	result := fetchEpisodeMetadata(&provider.TMDBProvider{}, showMeta, 1, 1)
+	if result != nil {
+		t.Errorf("fetchEpisodeMetadata with zero ID = %v, want nil", result)
+	}
+}
+
+func TestExtractShowNameFromPath_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name            string
+		path            string
+		removeExtension bool
+		wantShow        string
+		wantYear        string
+	}{
+		{
+			name:            "empty path",
+			path:            "",
+			removeExtension: false,
+			wantShow:        "",
+			wantYear:        "",
+		},
+		{
+			name:            "path with no pattern and extension removal",
+			path:            "Movie.Title.2020.mkv",
+			removeExtension: true,
+			wantShow:        "Movie Title",
+			wantYear:        "2020",
+		},
+		{
+			name:            "path with special characters",
+			path:            "Show: Subtitle (2020) S01E01",
+			removeExtension: false,
+			wantShow:        "Show: Subtitle",
+			wantYear:        "2020",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotShow, gotYear := extractShowNameFromPath(tt.path, tt.removeExtension)
+			if gotShow != tt.wantShow {
+				t.Errorf("extractShowNameFromPath(%q, %v) show = %q, want %q", tt.path, tt.removeExtension, gotShow, tt.wantShow)
+			}
+			if gotYear != tt.wantYear {
+				t.Errorf("extractShowNameFromPath(%q, %v) year = %q, want %q", tt.path, tt.removeExtension, gotYear, tt.wantYear)
+			}
+		})
+	}
+}
+
+func TestCreateFormatContext_WithMetadata(t *testing.T) {
+	cfg := &config.FormatConfig{
+		ShowFolder: "{title} ({year})",
+	}
+
+	metadata := &provider.EnrichedMetadata{
+		ID:       123,
+		Title:    "Test Show Title",
+		ShowName: "Test Show",
+		Overview: "Test description",
+		Year:     "2020",
+	}
+
+	ctx := createFormatContext(cfg, "Original Show", "Original Movie", "2023", 5, 10, metadata)
+
+	if ctx.Metadata != metadata {
+		t.Errorf("createFormatContext Metadata = %v, want %v", ctx.Metadata, metadata)
+	}
+	if ctx.ShowName != "Original Show" {
+		t.Errorf("createFormatContext ShowName = %q, want %q", ctx.ShowName, "Original Show")
+	}
+	if ctx.MovieName != "Original Movie" {
+		t.Errorf("createFormatContext MovieName = %q, want %q", ctx.MovieName, "Original Movie")
 	}
 }

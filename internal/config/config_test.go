@@ -14,10 +14,10 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	want := &FormatConfig{
-		ShowFolder:          "{show} ({year})",
-		SeasonFolder:        "{season_name}",
-		Episode:             "{season_code}{episode_code}",
-		Movie:               "{movie} ({year})",
+		ShowFolder:          "{title} ({year})",
+		SeasonFolder:        "Season {season}",
+		Episode:             "S{season}E{episode}",
+		Movie:               "{title} ({year})",
 		LogRetentionDays:    30,
 		EnableLogging:       true,
 		TMDBAPIKey:          "",
@@ -93,10 +93,10 @@ func TestLoad_ValidFile(t *testing.T) {
 
 	configFile := filepath.Join(configDir, "config.json")
 	configData := []byte(`{
-		"show_folder": "custom {show}",
-		"season_folder": "custom {season_name}",
-		"episode": "custom {episode_code}",
-		"movie": "custom {movie}",
+		"show_folder": "custom {title}",
+		"season_folder": "custom Season {season}",
+		"episode": "custom E{episode}",
+		"movie": "custom {title}",
 		"log_retention_days": 60,
 		"enable_logging": false
 	}`)
@@ -111,10 +111,10 @@ func TestLoad_ValidFile(t *testing.T) {
 	}
 
 	want := &FormatConfig{
-		ShowFolder:          "custom {show}",
-		SeasonFolder:        "custom {season_name}",
-		Episode:             "custom {episode_code}",
-		Movie:               "custom {movie}",
+		ShowFolder:          "custom {title}",
+		SeasonFolder:        "custom Season {season}",
+		Episode:             "custom E{episode}",
+		Movie:               "custom {title}",
 		LogRetentionDays:    60,
 		EnableLogging:       false,
 		TMDBAPIKey:          "",
@@ -146,7 +146,7 @@ func TestLoad_PartialConfig(t *testing.T) {
 
 	configFile := filepath.Join(configDir, "config.json")
 	configData := []byte(`{
-		"show_folder": "custom {show}",
+		"show_folder": "custom {title}",
 		"log_retention_days": 60
 	}`)
 	err = os.WriteFile(configFile, configData, 0644)
@@ -160,17 +160,17 @@ func TestLoad_PartialConfig(t *testing.T) {
 	}
 
 	// Should have custom showFolder but default values for missing fields
-	if cfg.ShowFolder != "custom {show}" {
-		t.Errorf("Load() ShowFolder = %q, want %q", cfg.ShowFolder, "custom {show}")
+	if cfg.ShowFolder != "custom {title}" {
+		t.Errorf("Load() ShowFolder = %q, want %q", cfg.ShowFolder, "custom {title}")
 	}
-	if cfg.SeasonFolder != "{season_name}" {
-		t.Errorf("Load() SeasonFolder = %q, want default %q", cfg.SeasonFolder, "{season_name}")
+	if cfg.SeasonFolder != "Season {season}" {
+		t.Errorf("Load() SeasonFolder = %q, want default %q", cfg.SeasonFolder, "Season {season}")
 	}
-	if cfg.Episode != "{season_code}{episode_code}" {
-		t.Errorf("Load() Episode = %q, want default %q", cfg.Episode, "{season_code}{episode_code}")
+	if cfg.Episode != "S{season}E{episode}" {
+		t.Errorf("Load() Episode = %q, want default %q", cfg.Episode, "S{season}E{episode}")
 	}
-	if cfg.Movie != "{movie} ({year})" {
-		t.Errorf("Load() Movie = %q, want default %q", cfg.Movie, "{movie} ({year})")
+	if cfg.Movie != "{title} ({year})" {
+		t.Errorf("Load() Movie = %q, want default %q", cfg.Movie, "{title} ({year})")
 	}
 	if cfg.LogRetentionDays != 60 {
 		t.Errorf("Load() LogRetentionDays = %d, want %d", cfg.LogRetentionDays, 60)
@@ -216,10 +216,10 @@ func TestSave(t *testing.T) {
 	os.Setenv("HOME", tempDir)
 
 	cfg := &FormatConfig{
-		ShowFolder:       "test {show}",
-		SeasonFolder:     "test {season_name}",
-		Episode:          "test {episode_code}",
-		Movie:            "test {movie}",
+		ShowFolder:       "test {title}",
+		SeasonFolder:     "test Season {season}",
+		Episode:          "test E{episode}",
+		Movie:            "test {title}",
 		LogRetentionDays: 90,
 		EnableLogging:    false,
 	}
@@ -279,10 +279,10 @@ func TestLoad(t *testing.T) {
 		os.MkdirAll(configDir, 0755)
 
 		testConfig := &FormatConfig{
-			ShowFolder:   "{show} - {year}",
+			ShowFolder:   "{title} - {year}",
 			SeasonFolder: "S{season}",
-			Episode:      "{code} {show}",
-			Movie:        "{movie} [{year}]",
+			Episode:      "{code} {title}",
+			Movie:        "{title} [{year}]",
 		}
 
 		data, _ := json.MarshalIndent(testConfig, "", "  ")
@@ -296,10 +296,10 @@ func TestLoad(t *testing.T) {
 
 		// Expected config should include default values filled in by Load()
 		expectedConfig := &FormatConfig{
-			ShowFolder:          "{show} - {year}",
+			ShowFolder:          "{title} - {year}",
 			SeasonFolder:        "S{season}",
-			Episode:             "{code} {show}",
-			Movie:               "{movie} [{year}]",
+			Episode:             "{code} {title}",
+			Movie:               "{title} [{year}]",
 			LogRetentionDays:    30,    // Default value filled in by Load()
 			EnableLogging:       false, // Not set in JSON, so false
 			TMDBAPIKey:          "",
@@ -324,7 +324,7 @@ func TestLoad(t *testing.T) {
 		os.MkdirAll(configDir, 0755)
 
 		partialConfig := map[string]string{
-			"show_folder": "{show}",
+			"show_folder": "{title}",
 			"episode":     "{code}",
 		}
 
@@ -339,10 +339,10 @@ func TestLoad(t *testing.T) {
 
 		// Should fill in missing fields with defaults
 		want := &FormatConfig{
-			ShowFolder:          "{show}",
-			SeasonFolder:        "{season_name}", // default
+			ShowFolder:          "{title}",
+			SeasonFolder:        "Season {season}", // default
 			Episode:             "{code}",
-			Movie:               "{movie} ({year})", // default
+			Movie:               "{title} ({year})", // default
 			LogRetentionDays:    30,                 // default
 			EnableLogging:       false,              // Not set in JSON, so false
 			TMDBAPIKey:          "",
@@ -385,10 +385,10 @@ func TestFormatConfig_Save(t *testing.T) {
 		defer func() { os.Setenv("HOME", oldHome) }()
 
 		cfg := &FormatConfig{
-			ShowFolder:   "{show} - {year}",
+			ShowFolder:   "{title} - {year}",
 			SeasonFolder: "Season {season}",
-			Episode:      "{show} {code}",
-			Movie:        "{movie} [{year}]",
+			Episode:      "{title} {code}",
+			Movie:        "{title} [{year}]",
 		}
 
 		err := cfg.Save()
@@ -423,14 +423,14 @@ func TestApplyShowFolderTemplate(t *testing.T) {
 	}{
 		{
 			name:     "default_template",
-			template: "{show} ({year})",
+			template: "{title} ({year})",
 			show:     "Breaking Bad",
 			year:     "2008",
 			want:     "Breaking Bad (2008)",
 		},
 		{
 			name:     "show_only",
-			template: "{show}",
+			template: "{title}",
 			show:     "The Wire",
 			year:     "2002",
 			want:     "The Wire",
@@ -444,7 +444,7 @@ func TestApplyShowFolderTemplate(t *testing.T) {
 		},
 		{
 			name:     "custom_format",
-			template: "{show} - {year}",
+			template: "{title} - {year}",
 			show:     "Game of Thrones",
 			year:     "2011",
 			want:     "Game of Thrones - 2011",
@@ -458,7 +458,7 @@ func TestApplyShowFolderTemplate(t *testing.T) {
 		},
 		{
 			name:     "empty_values",
-			template: "{show} ({year})",
+			template: "{title} ({year})",
 			show:     "",
 			year:     "",
 			want:     "",
@@ -491,15 +491,15 @@ func TestApplySeasonFolderTemplate(t *testing.T) {
 	}{
 		{
 			name:     "default_template",
-			template: "{show} - {season_name}",
+			template: "{title} - Season {season}",
 			show:     "Breaking Bad",
 			year:     "2008",
 			season:   1,
 			want:     "Breaking Bad - Season 01",
 		},
 		{
-			name:     "season_code",
-			template: "{show} {season_code}",
+			name:     "season_with_prefix",
+			template: "{title} S{season}",
 			show:     "The Wire",
 			year:     "2002",
 			season:   3,
@@ -515,7 +515,7 @@ func TestApplySeasonFolderTemplate(t *testing.T) {
 		},
 		{
 			name:     "all_variables",
-			template: "{show} - {season_code} - {season_name} - {season}",
+			template: "{title} - S{season} - Season {season} - {season}",
 			show:     "Test",
 			year:     "2021",
 			season:   5,
@@ -531,7 +531,7 @@ func TestApplySeasonFolderTemplate(t *testing.T) {
 		},
 		{
 			name:     "large_season_number",
-			template: "{season_code}",
+			template: "S{season}",
 			show:     "Test",
 			year:     "2022",
 			season:   100,
@@ -539,7 +539,7 @@ func TestApplySeasonFolderTemplate(t *testing.T) {
 		},
 		{
 			name:     "with_year",
-			template: "{show} ({year}) - {season_name}",
+			template: "{title} ({year}) - Season {season}",
 			show:     "Breaking Bad",
 			year:     "2008",
 			season:   1,
@@ -547,7 +547,7 @@ func TestApplySeasonFolderTemplate(t *testing.T) {
 		},
 		{
 			name:     "empty_year",
-			template: "{show} ({year}) - {season_name}",
+			template: "{title} ({year}) - Season {season}",
 			show:     "Breaking Bad",
 			year:     "",
 			season:   1,
@@ -583,7 +583,7 @@ func TestApplyEpisodeTemplate(t *testing.T) {
 	}{
 		{
 			name:     "default_template",
-			template: "{season_code}{episode_code}",
+			template: "S{season}E{episode}",
 			show:     "Breaking Bad",
 			year:     "2008",
 			season:   1,
@@ -592,7 +592,7 @@ func TestApplyEpisodeTemplate(t *testing.T) {
 		},
 		{
 			name:     "full_format",
-			template: "{show} ({year}) {season_code}{episode_code}",
+			template: "{title} ({year}) S{season}E{episode}",
 			show:     "The Wire",
 			year:     "2002",
 			season:   2,
@@ -601,7 +601,7 @@ func TestApplyEpisodeTemplate(t *testing.T) {
 		},
 		{
 			name:     "separate_codes",
-			template: "{season_code} {episode_code}",
+			template: "S{season} E{episode}",
 			show:     "Ignored",
 			year:     "Ignored",
 			season:   5,
@@ -610,7 +610,7 @@ func TestApplyEpisodeTemplate(t *testing.T) {
 		},
 		{
 			name:     "all_variables",
-			template: "{show} {year} {season} {episode} {season_code} {episode_code}",
+			template: "{title} {year} {season} {episode} S{season} E{episode}",
 			show:     "Test",
 			year:     "2020",
 			season:   3,
@@ -628,7 +628,7 @@ func TestApplyEpisodeTemplate(t *testing.T) {
 		},
 		{
 			name:     "large_numbers",
-			template: "{season_code}{episode_code}",
+			template: "S{season}E{episode}",
 			show:     "Test",
 			year:     "2020",
 			season:   100,
@@ -665,14 +665,14 @@ func TestApplyMovieTemplate(t *testing.T) {
 	}{
 		{
 			name:     "default_template",
-			template: "{movie} ({year})",
+			template: "{title} ({year})",
 			movie:    "The Matrix",
 			year:     "1999",
 			want:     "The Matrix (1999)",
 		},
 		{
 			name:     "movie_only",
-			template: "{movie}",
+			template: "{title}",
 			movie:    "Inception",
 			year:     "2010",
 			want:     "Inception",
@@ -686,14 +686,14 @@ func TestApplyMovieTemplate(t *testing.T) {
 		},
 		{
 			name:     "custom_format",
-			template: "{movie} - {year}",
+			template: "{title} - {year}",
 			movie:    "The Dark Knight",
 			year:     "2008",
 			want:     "The Dark Knight - 2008",
 		},
 		{
 			name:     "brackets_format",
-			template: "{movie} [{year}]",
+			template: "{title} [{year}]",
 			movie:    "Interstellar",
 			year:     "2014",
 			want:     "Interstellar [2014]",
@@ -707,7 +707,7 @@ func TestApplyMovieTemplate(t *testing.T) {
 		},
 		{
 			name:     "empty_values",
-			template: "{movie} ({year})",
+			template: "{title} ({year})",
 			movie:    "",
 			year:     "",
 			want:     "",
@@ -854,42 +854,42 @@ func TestNeedsMetadata(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "no_metadata_variables",
+			name: "has_title_variable",
 			config: &FormatConfig{
-				ShowFolder:   "{show} ({year})",
-				SeasonFolder: "{season_name}",
-				Episode:      "{season_code}{episode_code}",
-				Movie:        "{movie} ({year})",
+				ShowFolder:   "{title} ({year})",
+				SeasonFolder: "Season {season}",
+				Episode:      "S{season}E{episode}",
+				Movie:        "{title} ({year})",
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			name: "has_episode_title",
 			config: &FormatConfig{
-				ShowFolder:   "{show} ({year})",
-				SeasonFolder: "{season_name}",
+				ShowFolder:   "{title} ({year})",
+				SeasonFolder: "Season {season}",
 				Episode:      "{season_code}{episode_code} - {episode_title}",
-				Movie:        "{movie} ({year})",
+				Movie:        "{title} ({year})",
 			},
 			expected: true,
 		},
 		{
 			name: "has_rating",
 			config: &FormatConfig{
-				ShowFolder:   "{show} ({year}) [{rating}]",
-				SeasonFolder: "{season_name}",
-				Episode:      "{season_code}{episode_code}",
-				Movie:        "{movie} ({year})",
+				ShowFolder:   "{title} ({year}) [{rating}]",
+				SeasonFolder: "Season {season}",
+				Episode:      "S{season}E{episode}",
+				Movie:        "{title} ({year})",
 			},
 			expected: true,
 		},
 		{
 			name: "has_genres",
 			config: &FormatConfig{
-				ShowFolder:   "{show} ({year})",
-				SeasonFolder: "{season_name}",
-				Episode:      "{season_code}{episode_code}",
-				Movie:        "{movie} ({year}) - {genres}",
+				ShowFolder:   "{title} ({year})",
+				SeasonFolder: "Season {season}",
+				Episode:      "S{season}E{episode}",
+				Movie:        "{title} ({year}) - {genres}",
 			},
 			expected: true,
 		},
@@ -897,9 +897,9 @@ func TestNeedsMetadata(t *testing.T) {
 			name: "has_title_variable",
 			config: &FormatConfig{
 				ShowFolder:   "{title} ({year})",
-				SeasonFolder: "{season_name}",
-				Episode:      "{season_code}{episode_code}",
-				Movie:        "{movie} ({year})",
+				SeasonFolder: "Season {season}",
+				Episode:      "S{season}E{episode}",
+				Movie:        "{title} ({year})",
 			},
 			expected: true,
 		},
@@ -917,10 +917,10 @@ func TestNeedsMetadata(t *testing.T) {
 
 func TestApplyTemplateWithMetadata(t *testing.T) {
 	cfg := &FormatConfig{
-		ShowFolder:          "{show} ({year}) [{rating}]",
-		SeasonFolder:        "{season_name} - {genres}",
-		Episode:             "{season_code}{episode_code} - {episode_title}",
-		Movie:               "{movie} ({year}) - {tagline}",
+		ShowFolder:          "{title} ({year}) [{rating}]",
+		SeasonFolder:        "Season {season} - {genres}",
+		Episode:             "S{season}E{episode} - {episode_title}",
+		Movie:               "{title} ({year}) - {tagline}",
 		PreferLocalMetadata: false,
 	}
 
@@ -942,7 +942,7 @@ func TestApplyTemplateWithMetadata(t *testing.T) {
 			Config:   cfg,
 		}
 		got := cfg.ApplyShowFolderTemplate(ctx)
-		want := "Breaking Bad (2003) [8.7]"
+		want := "The Matrix Reloaded (2003) [8.7]"
 		if got != want {
 			t.Errorf("ApplyShowFolderTemplateWithContext() = %q, want %q", got, want)
 		}
@@ -996,7 +996,7 @@ func TestApplyTemplateWithMetadata(t *testing.T) {
 
 	t.Run("PreferLocalMetadata", func(t *testing.T) {
 		cfgLocal := &FormatConfig{
-			ShowFolder:          "{show} ({year})",
+			ShowFolder:          "{title} ({year})",
 			PreferLocalMetadata: true,
 		}
 		ctx := &FormatContext{
@@ -1036,24 +1036,24 @@ func TestResolveVariableComprehensive(t *testing.T) {
 	}{
 		{
 			name:     "all_movie_variables",
-			template: "{movie} - {title} - {year} - {rating} - {genres} - {runtime} - {tagline}",
+			template: "{title} - {year} - {rating} - {genres} - {runtime} - {tagline}",
 			ctx: &FormatContext{
 				MovieName: "Local Movie",
 				Year:      "1999",
 				Metadata:  metadata,
 			},
-			want: "The Matrix - The Matrix - 2003 - 8.7 - Action, Sci-Fi - 136 - Free your mind",
+			want: "The Matrix - 2003 - 8.7 - Action, Sci-Fi - 136 - Free your mind",
 		},
 		{
 			name:     "all_show_variables",
-			template: "{show} - {title} - {year} - {season_name}",
+			template: "{title} - {year} - Season {season}",
 			ctx: &FormatContext{
 				ShowName: "Local Show",
 				Year:     "2008",
 				Season:   5,
 				Metadata: metadata,
 			},
-			want: "Breaking Bad - The Matrix - 2003 - Season Five",
+			want: "The Matrix - 2003 - Season 05",
 		},
 		{
 			name:     "all_episode_variables",
@@ -1065,14 +1065,6 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			want: "Ozymandias - 2013-09-15 - 136",
 		},
 		{
-			name:     "overview_truncation",
-			template: "{overview}",
-			ctx: &FormatContext{
-				Metadata: metadata,
-			},
-			want: "A computer hacker learns from mysterious rebels about the true nature of his reality and his role...",
-		},
-		{
 			name:     "empty_metadata_fields",
 			template: "{episode_title} - {air_date} - {tagline}",
 			ctx: &FormatContext{
@@ -1081,8 +1073,8 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			want: "",
 		},
 		{
-			name:     "season_codes",
-			template: "{season} - {season_code} - {episode} - {episode_code}",
+			name:     "season_episode_formatting",
+			template: "{season} - S{season} - {episode} - E{episode}",
 			ctx: &FormatContext{
 				Season:  5,
 				Episode: 14,
@@ -1109,7 +1101,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			want: "Fallback Movie",
 		},
 		{
-			name:     "title_fallback_to_show",
+			name:     "title_variable_usage",
 			template: "{title}",
 			ctx: &FormatContext{
 				ShowName: "Fallback Show",
@@ -1119,7 +1111,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 		},
 		{
 			name:     "prefer_local_metadata",
-			template: "{show} - {year}",
+			template: "{title} - {year}",
 			ctx: &FormatContext{
 				ShowName: "Local Show",
 				Year:     "2020",

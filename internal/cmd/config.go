@@ -31,7 +31,7 @@ type CommandConfig struct {
 	maxDepth     int
 	includeDirs  bool
 	preprocess   func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
-	annotate     func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, string)
+	annotate     func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, string, map[string]*provider.EnrichedMetadata)
 	movieMode    bool
 	InstantMode  bool
 	DeleteNFO    bool
@@ -77,8 +77,23 @@ func RunCommand(cfg CommandConfig) error {
 		treeview.WithExpandAll[treeview.FileInfo](),
 		treeview.WithProvider(tui.CreateRenameProvider()),
 	)
+
+	// 4. Fetch metadata with progress if TMDB is enabled
+	var metadata map[string]*provider.EnrichedMetadata
+	if cfg.Config.EnableTMDBLookup && cfg.Config.TMDBAPIKey != "" && cfg.annotate != nil {
+		metaModel := tui.NewMetadataProgressModel(t, cfg.Config)
+		finalMetaModel, err := tea.NewProgram(metaModel, tea.WithAltScreen()).Run()
+		if err != nil {
+			return err
+		}
+		if mm, ok := finalMetaModel.(*tui.MetadataProgressModel); ok {
+			metadata = mm.Metadata()
+		}
+	}
+
+	// 5. Annotate tree with metadata
 	if cfg.annotate != nil {
-		cfg.annotate(t, cfg.Config, cfg.LinkPath)
+		cfg.annotate(t, cfg.Config, cfg.LinkPath, metadata)
 	}
 
 	// Mark files for deletion based on flags

@@ -61,10 +61,10 @@ type FormatConfig struct {
 // DefaultConfig returns the default format configuration
 func DefaultConfig() *FormatConfig {
 	return &FormatConfig{
-		ShowFolder:          "{show} ({year})",
-		SeasonFolder:        "{season_name}",
-		Episode:             "{season_code}{episode_code}",
-		Movie:               "{movie} ({year})",
+		ShowFolder:          "{title} ({year})",
+		SeasonFolder:        "Season {season}",
+		Episode:             "S{season}E{episode}",
+		Movie:               "{title} ({year})",
 		LogRetentionDays:    30,
 		EnableLogging:       true,
 		TMDBAPIKey:          "",
@@ -134,7 +134,7 @@ func Load() (*FormatConfig, error) {
 func (cfg *FormatConfig) NeedsMetadata() bool {
 	// Pattern matches any metadata-related variable
 	// Includes both metadata-only vars and vars that benefit from metadata
-	metadataVarPattern := `\{(?:episode_title|air_date|rating|genres|overview|runtime|tagline|title)\}`
+	metadataVarPattern := `\{(?:episode_title|air_date|rating|genres|runtime|tagline|title)\}`
 	re := regexp.MustCompile(metadataVarPattern)
 
 	// Combine all templates to check
@@ -197,15 +197,12 @@ func applyShowVariables(template, show, year string) string {
 // applySeasonVariables replaces season variables in a template string
 func applySeasonVariables(template string, season int) string {
 	result := strings.ReplaceAll(template, "{season}", fmt.Sprintf("%02d", season))
-	result = strings.ReplaceAll(result, "{season_code}", fmt.Sprintf("S%02d", season))
-	result = strings.ReplaceAll(result, "{season_name}", fmt.Sprintf("Season %02d", season))
 	return result
 }
 
 // applyEpisodeVariables replaces episode variables in a template string
 func applyEpisodeVariables(template string, episode int) string {
 	result := strings.ReplaceAll(template, "{episode}", fmt.Sprintf("%02d", episode))
-	result = strings.ReplaceAll(result, "{episode_code}", fmt.Sprintf("E%02d", episode))
 	return result
 }
 
@@ -254,30 +251,9 @@ func resolveVariable(varName string, ctx *FormatContext) string {
 		}
 		return ""
 
-	case "{season_code}":
-		if ctx.Season > 0 {
-			return fmt.Sprintf("S%02d", ctx.Season)
-		}
-		return ""
-
-	case "{season_name}":
-		if ctx.Metadata != nil && ctx.Metadata.SeasonName != "" && !preferLocal {
-			return ctx.Metadata.SeasonName
-		}
-		if ctx.Season > 0 {
-			return fmt.Sprintf("Season %02d", ctx.Season)
-		}
-		return ""
-
 	case "{episode}":
 		if ctx.Episode > 0 {
 			return fmt.Sprintf("%02d", ctx.Episode)
-		}
-		return ""
-
-	case "{episode_code}":
-		if ctx.Episode > 0 {
-			return fmt.Sprintf("E%02d", ctx.Episode)
 		}
 		return ""
 
@@ -302,17 +278,6 @@ func resolveVariable(varName string, ctx *FormatContext) string {
 	case "{genres}":
 		if ctx.Metadata != nil && len(ctx.Metadata.Genres) > 0 {
 			return strings.Join(ctx.Metadata.Genres, ", ")
-		}
-		return ""
-
-	case "{overview}":
-		if ctx.Metadata != nil && ctx.Metadata.Overview != "" {
-			// Truncate to reasonable length for filenames
-			overview := ctx.Metadata.Overview
-			if len(overview) > 100 {
-				overview = overview[:97] + "..."
-			}
-			return overview
 		}
 		return ""
 
@@ -343,11 +308,11 @@ func applyMetadataVariables(template string, ctx *FormatContext, cfg *FormatConf
 
 	// List of all supported variables
 	variables := []string{
-		"{show}", "{movie}", "{title}", "{year}",
-		"{season}", "{season_code}", "{season_name}",
-		"{episode}", "{episode_code}", "{episode_title}",
+		"{title}", "{year}",
+		"{season}",
+		"{episode}", "{episode_title}",
 		"{air_date}", "{rating}", "{genres}",
-		"{overview}", "{runtime}", "{tagline}",
+		"{runtime}", "{tagline}",
 	}
 
 	// Replace each variable

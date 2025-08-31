@@ -36,7 +36,7 @@ func TestMovieAnnotate_FileTypes(t *testing.T) {
 			dir.AddChild(file)
 			tr := testNewTree(dir)
 
-			MovieAnnotate(tr, config.DefaultConfig(), "")
+			MovieAnnotate(tr, config.DefaultConfig(), "", nil)
 
 			fm := core.GetMeta(file)
 			if fm == nil {
@@ -61,7 +61,7 @@ func TestMovieAnnotateWithLinking(t *testing.T) {
 	tr := testNewTree(dir)
 
 	linkPath := "/test/destination"
-	MovieAnnotate(tr, config.DefaultConfig(), linkPath)
+	MovieAnnotate(tr, config.DefaultConfig(), linkPath, nil)
 
 	// Verify directory metadata and destination path
 	dm := core.GetMeta(dir)
@@ -122,7 +122,7 @@ func TestMovieAnnotateWithoutLinking(t *testing.T) {
 	dir.AddChild(file)
 	tr := testNewTree(dir)
 
-	MovieAnnotate(tr, config.DefaultConfig(), "")
+	MovieAnnotate(tr, config.DefaultConfig(), "", nil)
 
 	// Verify no destination paths are set when not linking
 	dm := core.GetMeta(dir)
@@ -198,7 +198,7 @@ func TestMovieAnnotate_ChildWithoutParentNewName(t *testing.T) {
 	dirMeta.Type = core.MediaMovie
 	// Don't set NewName - should cause child to be skipped
 
-	MovieAnnotate(tr, config.DefaultConfig(), "")
+	MovieAnnotate(tr, config.DefaultConfig(), "", nil)
 
 	// Child should not have been annotated
 	childMeta := core.GetMeta(child)
