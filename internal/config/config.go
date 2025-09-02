@@ -56,6 +56,7 @@ type FormatConfig struct {
 	EnableTMDBLookup    bool   `json:"enable_tmdb_lookup"`
 	TMDBLanguage        string `json:"tmdb_language"`
 	PreferLocalMetadata bool   `json:"prefer_local_metadata"`
+	TMDBWorkerCount     int    `json:"tmdb_worker_count"`
 }
 
 // DefaultConfig returns the default format configuration
@@ -71,6 +72,7 @@ func DefaultConfig() *FormatConfig {
 		EnableTMDBLookup:    false,
 		TMDBLanguage:        "en-US",
 		PreferLocalMetadata: true,
+		TMDBWorkerCount:     20,
 	}
 }
 
@@ -125,6 +127,9 @@ func Load() (*FormatConfig, error) {
 	// Fill in missing TMDB fields with defaults
 	if cfg.TMDBLanguage == "" {
 		cfg.TMDBLanguage = defaults.TMDBLanguage
+	}
+	if cfg.TMDBWorkerCount == 0 {
+		cfg.TMDBWorkerCount = defaults.TMDBWorkerCount
 	}
 
 	return &cfg, nil

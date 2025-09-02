@@ -53,7 +53,8 @@ type Model struct {
 	tmdbEnabled      bool   // TMDB lookup enabled
 	tmdbLanguage     string // TMDB language code
 	tmdbPreferLocal  bool   // Prefer local metadata
-	tmdbSubfocus     int    // 0=enabled, 1=api key, 2=language, 3=prefer local
+	tmdbWorkerCount  string // TMDB worker count as string for input
+	tmdbSubfocus     int    // 0=enabled, 1=api key, 2=language, 3=prefer local, 4=worker count
 	tmdbValidation   string // API key validation status: "", "validating", "valid", "invalid"
 	tmdbValidatedKey string // Last API key that was validated
 	width            int
@@ -84,6 +85,7 @@ func New() (*Model, error) {
 		EnableTMDBLookup:    cfg.EnableTMDBLookup,
 		TMDBLanguage:        cfg.TMDBLanguage,
 		PreferLocalMetadata: cfg.PreferLocalMetadata,
+		TMDBWorkerCount:     cfg.TMDBWorkerCount,
 	}
 
 	m := &Model{
@@ -109,6 +111,7 @@ func New() (*Model, error) {
 		tmdbEnabled:      cfg.EnableTMDBLookup,
 		tmdbLanguage:     cfg.TMDBLanguage,
 		tmdbPreferLocal:  cfg.PreferLocalMetadata,
+		tmdbWorkerCount:  fmt.Sprintf("%d", cfg.TMDBWorkerCount),
 		tmdbSubfocus:     0,
 		variablesView:    viewport.New(0, 0),
 		autoScroll:       true,
@@ -222,7 +225,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Within TMDB section, down arrow switches between fields
 				if m.tmdbEnabled {
 					// All fields are active when TMDB is enabled
-					if m.tmdbSubfocus < 3 {
+					if m.tmdbSubfocus < 4 {
 						m.tmdbSubfocus++
 					}
 				} else {
@@ -282,6 +285,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, debouncedTMDBValidate(m.tmdbAPIKey)
 			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 2 {
 				// Backspace in TMDB language field
+				m.deleteTMDBChar()
+			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 4 {
+				// Backspace in TMDB worker count field
 				m.deleteTMDBChar()
 			} else if m.activeSection != SectionLogging && m.activeSection != SectionTMDB {
 				m.deleteChar()
@@ -395,6 +401,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					for _, r := range runes {
 						if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '-' {
 							m.insertTMDBLanguage(string(r))
+						}
+					}
+				} else if m.tmdbSubfocus == 4 {
+					// Worker count field - only allow digits
+					for _, r := range runes {
+						if r >= '0' && r <= '9' {
+							m.insertTMDBWorkerCount(string(r))
 						}
 					}
 				}
@@ -1104,12 +1117,31 @@ func (m *Model) buildTMDBInputField(width int) string {
 		}
 	}
 
+	// Build worker count field
+	var workerCountField string
+	workerCountLabel := "Worker Count: "
+	workerCountValue := m.tmdbWorkerCount
+	if workerCountValue == "" {
+		workerCountValue = "20" // Show default if empty
+	}
+
+	if !m.tmdbEnabled {
+		// When TMDB is disabled, always show as disabled regardless of focus
+		workerCountField = disabledStyle.Render(workerCountLabel + workerCountValue + " (disabled)")
+	} else if m.tmdbSubfocus == 4 {
+		// Only show focus when TMDB is enabled - show cursor after the text
+		workerCountField = workerCountLabel + normalStyle.Render(workerCountValue) + focusedStyle.Render(" ")
+	} else {
+		workerCountField = workerCountLabel + normalStyle.Render(workerCountValue)
+	}
+
 	lines := []string{
 		label,
 		enabledToggle,
 		apiKeyField,
 		languageField,
 		preferLocalToggle,
+		workerCountField,
 	}
 
 	return strings.Join(lines, "\n")
@@ -1128,6 +1160,12 @@ func (m *Model) insertTMDBLanguage(text string) {
 	}
 }
 
+func (m *Model) insertTMDBWorkerCount(text string) {
+	if len(m.tmdbWorkerCount) < 3 { // Max 3 digits for worker count (up to 999)
+		m.tmdbWorkerCount += text
+	}
+}
+
 func (m *Model) deleteTMDBChar() {
 	if m.tmdbSubfocus == 1 && len(m.tmdbAPIKey) > 0 {
 		m.tmdbAPIKey = m.tmdbAPIKey[:len(m.tmdbAPIKey)-1]
@@ -1136,6 +1174,8 @@ func (m *Model) deleteTMDBChar() {
 		m.tmdbValidatedKey = ""
 	} else if m.tmdbSubfocus == 2 && len(m.tmdbLanguage) > 0 {
 		m.tmdbLanguage = m.tmdbLanguage[:len(m.tmdbLanguage)-1]
+	} else if m.tmdbSubfocus == 4 && len(m.tmdbWorkerCount) > 0 {
+		m.tmdbWorkerCount = m.tmdbWorkerCount[:len(m.tmdbWorkerCount)-1]
 	}
 }
 
@@ -1160,6 +1200,17 @@ func (m *Model) save() {
 	m.config.TMDBLanguage = m.tmdbLanguage
 	m.config.PreferLocalMetadata = m.tmdbPreferLocal
 
+	// Update worker count
+	if workerCount, err := strconv.Atoi(m.tmdbWorkerCount); err == nil {
+		if workerCount > 0 {
+			m.config.TMDBWorkerCount = workerCount
+		} else {
+			m.config.TMDBWorkerCount = 20 // Default if invalid
+		}
+	} else {
+		m.config.TMDBWorkerCount = 20 // Default if parsing fails
+	}
+
 	// Skip TMDB validation - trust what the user enters
 
 	// Save to disk
@@ -1180,6 +1231,7 @@ func (m *Model) save() {
 		m.originalConfig.EnableTMDBLookup = m.config.EnableTMDBLookup
 		m.originalConfig.TMDBLanguage = m.config.TMDBLanguage
 		m.originalConfig.PreferLocalMetadata = m.config.PreferLocalMetadata
+		m.originalConfig.TMDBWorkerCount = m.config.TMDBWorkerCount
 	}
 }
 
@@ -1206,6 +1258,7 @@ func (m *Model) reset() {
 	m.tmdbEnabled = m.originalConfig.EnableTMDBLookup
 	m.tmdbLanguage = m.originalConfig.TMDBLanguage
 	m.tmdbPreferLocal = m.originalConfig.PreferLocalMetadata
+	m.tmdbWorkerCount = fmt.Sprintf("%d", m.originalConfig.TMDBWorkerCount)
 	m.tmdbSubfocus = 0
 
 	m.saveStatus = "Reset to saved values"
