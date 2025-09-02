@@ -3,7 +3,7 @@ Output demo.gif
 Set Framerate 10
 Set Shell zsh
 Set FontSize 16
-Set Width 1300
+Set Width 1450
 Set Height 700
 
 Hide
@@ -31,7 +31,7 @@ Tab
 Sleep 500ms
 Left 30
 Sleep 250ms
-Type "{show} - "
+Type "{title} - "
 Sleep 1s
 Ctrl+S
 Sleep 1s

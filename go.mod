@@ -3,7 +3,7 @@ module github.com/Digital-Shane/title-tidy
 go 1.24
 
 require (
-	github.com/Digital-Shane/treeview v1.7.0
+	github.com/Digital-Shane/treeview v1.8.0
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/lipgloss v1.1.0

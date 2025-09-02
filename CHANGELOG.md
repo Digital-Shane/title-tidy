@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Updated
+- README.md to include tmdb config settings.
+- treeview library to `v1.8.0` to fix TUI distortion caused by viewport line wrapping.
 ### Added
 - Ability to configure TMDB settings.
 - TMDB provider for pulling metadata.
