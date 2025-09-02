@@ -64,38 +64,66 @@ title-tidy [command]
 title-tidy config
 ```
 
-Title Tidy allows you to completely customize how your media files are named using configurable templates and logging settings:
+Title Tidy allows you to completely customize how your media files are named using configurable templates, metadata enrichment from TMDB, and logging settings:
 
-![config demo](https://vhs.charm.sh/vhs-3fSox2lKLDkQMKDDeANf6p.gif)
+![config demo](https://vhs.charm.sh/vhs-2qcRVzJI8fANyCOWQXO7wi.gif)
 
-This opens an interactive interface where you can customize:
+This opens an interactive interface with multiple configuration sections:
 
-**Naming templates for:**
-* **Show folders**: How TV show directories are named (default: `{show} ({year})`)
-* **Season folders**: How season directories are named (default: `{season_name}`)
-* **Episode files**: How individual episodes are named (default: `{season_code}{episode_code}`)
-* **Movie folders**: How movie directories are named (default: `{movie} ({year})`)
+#### Naming Templates
 
-**Logging settings:**
-* **Enable/Disable logging**: Toggle operation history tracking
+Customize how your media files and folders are named:
+
+* **Show folders**: How TV show directories are named (default: `{title} ({year})`)
+* **Season folders**: How season directories are named (default: `Season {season}`)
+* **Episode files**: How individual episodes are named (default: `S{season}E{episode}`)
+* **Movie folders**: How movie directories are named (default: `{title} ({year})`)
+
+#### Available Template Variables
+
+**Core Variables (always available):**
+* `{title}` - Show or movie title (cleaned from filename or TMDB)
+* `{year}` - Release year
+* `{season}` - Season number with zero padding (e.g., "01")
+* `{episode}` - Episode number with zero padding (e.g., "01")
+
+**TMDB Metadata Variables (when TMDB is enabled):**
+* `{episode_title}` - Episode title from TMDB (episodes only)
+* `{air_date}` - Episode air date (episodes only)
+* `{rating}` - TMDB rating score (e.g., "8.5")
+* `{genres}` - Comma-separated genre list (e.g., "Drama, Crime")
+* `{runtime}` - Runtime in minutes
+* `{tagline}` - Movie or show tagline
+
+**Template Examples:**
+* `S{season}E{episode}` → "S01E01"
+* `{title} - S{season}E{episode} - {episode_title}` → "Breaking Bad - S01E01 - Pilot"
+* `Season {season}` → "Season 01"
+* `{title} ({year}) [{rating}]` → "The Matrix (1999) [8.7]"
+
+#### Logging Settings
+
+Configure operation history tracking for the undo feature:
+
+* **Enable/Disable logging**: Toggle whether rename operations are tracked
 * **Retention days**: How long to keep log files (default: 30 days)
 
-**Available template variables:**
-* `{show}` - Show name (cleaned)
-* `{movie}` - Movie name (cleaned)  
-* `{year}` - Year from filename
-* `{season}` - Season number (e.g., "01")
-* `{season_code}` - Season with prefix (e.g., "S01")
-* `{season_name}` - Full season name (e.g., "Season 01")
-* `{episode}` - Episode number (e.g., "01")
-* `{episode_code}` - Episode with prefix (e.g., "E01")
+When logging is enabled, all rename operations are saved to `~/.title-tidy/logs/` allowing you to undo recent changes. Old logs are automatically cleaned up based on your retention settings.
 
-**Template examples:**
-* `{show} - {season_code}{episode_code}` → "Breaking Bad - S01E01"
-* `{season_name}` → "Season 01"
-* `{movie} [{year}]` → "The Matrix [1999]"
+#### TMDB Integration
 
-Your custom templates are saved to `~/.title-tidy/config.json` and will be used for all future renames.
+Enhance your media naming with rich metadata from The Movie Database:
+
+* **Enable TMDB lookup**: Toggle metadata fetching from TMDB
+* **API Key**: Your TMDB API key (get one free at [themoviedb.org](https://www.themoviedb.org))
+  - Note: Use the API Key (v3 auth), not the Read Access Token
+* **Language**: Content language for metadata (default: "en-US")
+  - Examples: "fr-FR" for French, "es-ES" for Spanish, "ja-JP" for Japanese
+* **Prefer local metadata**: Use filename-extracted data first, falling back to TMDB when needed
+
+When TMDB is enabled, Title Tidy will automatically fetch metadata for your media files, including proper titles, episode names, ratings, genres, and more. This data can be used in your naming templates to create information-rich filenames.
+
+Your configuration is saved to `~/.title-tidy/config.json` and will be used for all future renames.
 
 ### Shows
 

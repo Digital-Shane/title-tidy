@@ -101,13 +101,7 @@ create-gif mode:
 	demo_dir="$(pwd)/demo/$target"
 	cd "$demo_dir"
 	echo "Generating gif for $target demo..."
-	if [ "$target" = "config" ]; then
-		./backup-config.sh
-		vhs demo.tape
-		./restore-config.sh
-	else
-		vhs demo.tape
-	fi
+	vhs demo.tape
 	echo "Created $demo_dir/demo.gif"
 
 # Generate, publish and update README for a specific demo
@@ -123,13 +117,7 @@ update-gif mode:
 	demo_dir="$(pwd)/demo/$target"
 	cd "$demo_dir"
 	echo "Generating gif for $target demo..."
-	if [ "$target" = "config" ]; then
-		./backup-config.sh
-		vhs demo.tape
-		./restore-config.sh
-	else
-		vhs demo.tape
-	fi
+	vhs demo.tape
 	echo "Publishing gif to vhs.charm.sh..."
 	gif_url=$(vhs publish demo.gif)
 	rm -f demo.gif

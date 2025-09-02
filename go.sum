@@ -1,5 +1,7 @@
 github.com/Digital-Shane/treeview v1.7.0 h1:TCqTDOKN2ypbI4pxAlh5mF6URx3cNmJWICWbNaluqC0=
 github.com/Digital-Shane/treeview v1.7.0/go.mod h1:ayLS+EA0aOK9GToyltxW3NTnL8Hag5HQOst6/qV934c=
+github.com/Digital-Shane/treeview v1.8.0 h1:+78XeDAlzgQ8kZfJs/Q0yuZ57jbGsuH3Wakfq2KPuNw=
+github.com/Digital-Shane/treeview v1.8.0/go.mod h1:ayLS+EA0aOK9GToyltxW3NTnL8Hag5HQOst6/qV934c=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
 github.com/charmbracelet/bubbles v0.21.0 h1:9TdC97SdRVg/1aaXNVWfFH3nnLAwOXr8Fn6u6mfQdFs=
