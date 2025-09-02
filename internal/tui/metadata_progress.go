@@ -2,8 +2,10 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/media"
@@ -24,12 +26,19 @@ type MetadataProgressModel struct {
 	// Progress tracking
 	totalItems     int
 	processedItems int
-	currentItem    string
+	currentPhase   string
+	activeWorkers  int
+	workersMu      sync.RWMutex
 
 	// Results storage
 	metadata     map[string]*provider.EnrichedMetadata
 	metadataMu   sync.RWMutex
 	tmdbProvider *provider.TMDBProvider
+
+	// Worker pool
+	workerCount int
+	workCh      chan MetadataItem
+	resultCh    chan metadataResult
 
 	// UI components
 	width    int
@@ -38,11 +47,15 @@ type MetadataProgressModel struct {
 	msgCh    chan tea.Msg
 	done     bool
 	err      error
+	errors   []error
+	errorsMu sync.Mutex
 }
 
 // metadataProgressMsg updates progress
 type metadataProgressMsg struct {
-	item string
+	phase   string
+	item    string
+	workers int
 }
 
 // metadataCompleteMsg signals completion
@@ -56,6 +69,14 @@ type MetadataItem struct {
 	Episode int
 	IsMovie bool
 	Key     string // Unique key for caching
+	Phase   int    // 0=show/movie, 1=season, 2=episode
+}
+
+// metadataResult represents the result of fetching metadata
+type metadataResult struct {
+	item MetadataItem
+	meta *provider.EnrichedMetadata
+	err  error
 }
 
 // NewMetadataProgressModel creates a new metadata progress model
@@ -77,6 +98,8 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		}
 	}
 
+	workerCount := 6 // Default worker count for parallel processing
+
 	return &MetadataProgressModel{
 		tree:         tree,
 		cfg:          cfg,
@@ -84,9 +107,13 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		width:        80,
 		height:       12,
 		progress:     p,
-		msgCh:        make(chan tea.Msg, 64),
+		msgCh:        make(chan tea.Msg, 256),
 		metadata:     make(map[string]*provider.EnrichedMetadata),
 		tmdbProvider: tmdbProvider,
+		workerCount:  workerCount,
+		workCh:       make(chan MetadataItem, 100),
+		resultCh:     make(chan metadataResult, 100),
+		errors:       make([]error, 0),
 	}
 }
 
@@ -173,20 +200,83 @@ func (m *MetadataProgressModel) waitForMsg() tea.Cmd {
 
 // fetchMetadataAsync fetches metadata for all items in the tree
 func (m *MetadataProgressModel) fetchMetadataAsync() {
-	// Collect unique items to fetch
-	items := m.collectMetadataItems()
+	// Collect and organize items by phase
+	phases := m.organizeItemsByPhase()
 
-	// Process each item
-	for _, item := range items {
-		// Check if already cached
-		m.metadataMu.RLock()
-		if _, exists := m.metadata[item.Key]; exists {
-			m.metadataMu.RUnlock()
-			m.processedItems++
+	// Process each phase sequentially
+	for phaseNum, phaseItems := range phases {
+		if len(phaseItems) == 0 {
 			continue
 		}
-		m.metadataMu.RUnlock()
 
+		// Set current phase
+		phaseName := m.getPhaseName(phaseNum)
+		m.currentPhase = phaseName
+
+		// Start workers for this phase
+		var wg sync.WaitGroup
+
+		// Start worker goroutines
+		for i := 0; i < m.workerCount; i++ {
+			wg.Add(1)
+			go m.metadataWorker(&wg, i)
+		}
+
+		// Start result processor
+		resultDone := make(chan bool)
+		go m.processResults(resultDone)
+
+		// Send work items
+		go func() {
+			for _, item := range phaseItems {
+				// Skip if already cached
+				m.metadataMu.RLock()
+				if _, exists := m.metadata[item.Key]; exists {
+					m.metadataMu.RUnlock()
+					m.processedItems++
+					continue
+				}
+				m.metadataMu.RUnlock()
+
+				m.workCh <- item
+			}
+			close(m.workCh)
+		}()
+
+		// Wait for all workers to complete
+		wg.Wait()
+		close(m.resultCh)
+
+		// Wait for result processor to finish
+		<-resultDone
+
+		// Reset channels for next phase
+		if phaseNum < 2 {
+			m.workCh = make(chan MetadataItem, 100)
+			m.resultCh = make(chan metadataResult, 100)
+		}
+	}
+
+	m.done = true
+	m.msgCh <- metadataCompleteMsg{}
+}
+
+// metadataWorker processes items from the work channel
+func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int) {
+	defer wg.Done()
+
+	// Update active workers count
+	m.workersMu.Lock()
+	m.activeWorkers++
+	m.workersMu.Unlock()
+
+	defer func() {
+		m.workersMu.Lock()
+		m.activeWorkers--
+		m.workersMu.Unlock()
+	}()
+
+	for item := range m.workCh {
 		// Create descriptive progress message
 		var currentDesc string
 		if item.IsMovie {
@@ -199,28 +289,95 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 			currentDesc = item.Name
 		}
 
-		// Update current item
-		m.currentItem = currentDesc
+		// Send progress update
+		m.workersMu.RLock()
+		workers := m.activeWorkers
+		m.workersMu.RUnlock()
+
 		select {
-		case m.msgCh <- metadataProgressMsg{item: currentDesc}:
+		case m.msgCh <- metadataProgressMsg{
+			phase:   m.currentPhase,
+			item:    currentDesc,
+			workers: workers,
+		}:
 		default:
 		}
 
-		// Fetch metadata using the helper function
-		meta := util.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m.metadata)
+		// Fetch metadata with retry logic for rate limiting
+		var meta *provider.EnrichedMetadata
+		var err error
+		retryCount := 0
+		maxRetries := 3
 
-		// Store result if successful
-		if meta != nil {
+		for retryCount < maxRetries {
+			meta = util.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m.metadata)
+			if meta != nil {
+				break
+			}
+
+			// If rate limited, wait with exponential backoff
+			if err == provider.ErrRateLimited {
+				waitTime := time.Duration(1<<uint(retryCount)) * time.Second
+				time.Sleep(waitTime)
+				retryCount++
+			} else {
+				break
+			}
+		}
+
+		// Send result
+		m.resultCh <- metadataResult{
+			item: item,
+			meta: meta,
+			err:  err,
+		}
+	}
+}
+
+// processResults handles results from workers
+func (m *MetadataProgressModel) processResults(done chan bool) {
+	for result := range m.resultCh {
+		if result.meta != nil {
 			m.metadataMu.Lock()
-			m.metadata[item.Key] = meta
+			m.metadata[result.item.Key] = result.meta
 			m.metadataMu.Unlock()
+		}
+
+		if result.err != nil && result.err != provider.ErrNoResults {
+			m.errorsMu.Lock()
+			m.errors = append(m.errors, fmt.Errorf("%s: %w", result.item.Name, result.err))
+			m.errorsMu.Unlock()
 		}
 
 		m.processedItems++
 	}
+	done <- true
+}
 
-	m.done = true
-	m.msgCh <- metadataCompleteMsg{}
+// organizeItemsByPhase groups items by processing phase
+func (m *MetadataProgressModel) organizeItemsByPhase() map[int][]MetadataItem {
+	items := m.collectMetadataItems()
+	phases := make(map[int][]MetadataItem)
+
+	for _, item := range items {
+		phases[item.Phase] = append(phases[item.Phase], item)
+	}
+
+	return phases
+}
+
+// getPhaseName returns a human-readable phase name
+func (m *MetadataProgressModel) getPhaseName(phase int) string {
+	switch phase {
+	case 0:
+		return "Shows/Movies"
+	case 1:
+		return "Seasons"
+	case 2:
+		return "Episodes"
+	default:
+		return "Unknown"
+	}
 }
 
 // collectMetadataItems collects all unique items that need metadata
@@ -228,7 +385,7 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 	var items []MetadataItem
 	seen := make(map[string]bool)
 
-	// First pass: collect all shows/movies (depth 0)
+	// First pass: collect all shows/movies (depth 0) - Phase 0
 	for ni := range m.tree.BreadthFirst(context.Background()) {
 		if ni.Depth == 0 {
 			name, year := config.ExtractNameAndYear(ni.Node.Name())
@@ -258,6 +415,7 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 						Year:    year,
 						IsMovie: isMovie,
 						Key:     key,
+						Phase:   0,
 					})
 				}
 			}
@@ -267,7 +425,7 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 	// Second pass: collect seasons and episodes (only for shows, not movies)
 	for ni := range m.tree.BreadthFirst(context.Background()) {
 		switch ni.Depth {
-		case 1: // Seasons
+		case 1: // Seasons - Phase 1
 			if parent := ni.Node.Parent(); parent != nil {
 				showName, year := config.ExtractNameAndYear(parent.Name())
 				if season, found := media.ExtractSeasonNumber(ni.Node.Name()); found && showName != "" {
@@ -279,11 +437,12 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 							Year:   year,
 							Season: season,
 							Key:    key,
+							Phase:  1,
 						})
 					}
 				}
 			}
-		case 2: // Episodes
+		case 2: // Episodes - Phase 2
 			if parent := ni.Node.Parent(); parent != nil {
 				if grandparent := parent.Parent(); grandparent != nil {
 					showName, year := config.ExtractNameAndYear(grandparent.Name())
@@ -297,6 +456,7 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 								Season:  season,
 								Episode: episode,
 								Key:     key,
+								Phase:   2,
 							})
 						}
 					}
@@ -320,6 +480,10 @@ func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case metadataProgressMsg:
+		m.currentPhase = msg.phase
+		m.workersMu.Lock()
+		m.activeWorkers = msg.workers
+		m.workersMu.Unlock()
 		ratio := float64(m.processedItems) / float64(max(m.totalItems, 1))
 		cmd := m.progress.SetPercent(ratio)
 		return m, tea.Batch(cmd, m.waitForMsg())
@@ -353,16 +517,20 @@ func (m *MetadataProgressModel) View() string {
 		Width(m.width).
 		Render("Fetching Metadata from TMDB")
 
-	info := fmt.Sprintf("Items processed: %d/%d", m.processedItems, m.totalItems)
-
-	currentStyle := lipgloss.NewStyle().
+	// Phase and worker info
+	phaseStyle := lipgloss.NewStyle().
 		Foreground(colorAccent).
 		Bold(true)
 
-	current := ""
-	if m.currentItem != "" {
-		current = currentStyle.Render(fmt.Sprintf("Current: %s", m.currentItem))
+	phaseInfo := ""
+	if m.currentPhase != "" {
+		m.workersMu.RLock()
+		workers := m.activeWorkers
+		m.workersMu.RUnlock()
+		phaseInfo = phaseStyle.Render(fmt.Sprintf("Phase: %s | Active Workers: %d", m.currentPhase, workers))
 	}
+
+	info := fmt.Sprintf("Items processed: %d/%d", m.processedItems, m.totalItems)
 
 	statsStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -370,21 +538,29 @@ func (m *MetadataProgressModel) View() string {
 		Padding(1).
 		Width(m.width - 4)
 
-	stats := fmt.Sprintf("Total Items: %d\nProcessed: %d\nProgress: %d%%",
-		m.totalItems, m.processedItems, percent)
+	stats := fmt.Sprintf("Total Items: %d\nProcessed: %d\nProgress: %d%%\nWorker Pool: %d workers",
+		m.totalItems, m.processedItems, percent, m.workerCount)
+
+	// Show errors if any
+	errorInfo := ""
+	if len(m.errors) > 0 {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF0000"))
+		errorInfo = errorStyle.Render(fmt.Sprintf("\nErrors: %d", len(m.errors)))
+	}
 
 	status := lipgloss.NewStyle().
 		Background(colorSecondary).
 		Foreground(colorBackground).
 		Width(m.width).
-		Render("Fetching metadata... please wait")
+		Render("Fetching metadata in parallel... please wait")
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		header,
+		phaseInfo,
 		bar,
 		info,
-		current,
-		statsStyle.Render(stats),
+		statsStyle.Render(stats+errorInfo),
 		status,
 	)
 
@@ -398,5 +574,17 @@ func (m *MetadataProgressModel) Metadata() map[string]*provider.EnrichedMetadata
 
 // Err returns any error
 func (m *MetadataProgressModel) Err() error {
-	return m.err
+	if m.err != nil {
+		return m.err
+	}
+	// Return aggregated errors if any critical ones exist
+	if len(m.errors) > 0 {
+		// Check for critical errors that should stop processing
+		for _, err := range m.errors {
+			if errors.Is(err, provider.ErrInvalidAPIKey) || errors.Is(err, provider.ErrAPIUnavailable) {
+				return err
+			}
+		}
+	}
+	return nil
 }

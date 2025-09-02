@@ -506,6 +506,7 @@ type rateLimiter struct {
 	retryCount    int
 	maxRetries    int
 	backoffFactor time.Duration
+	lastRequest   time.Time
 }
 
 // newRateLimiter creates a new rate limiter
@@ -516,15 +517,36 @@ func newRateLimiter(maxRequests int, window time.Duration) *rateLimiter {
 		requests:      make([]time.Time, 0, maxRequests),
 		maxRetries:    4,
 		backoffFactor: time.Second,
+		lastRequest:   time.Now().Add(-time.Second), // Allow immediate first request
 	}
 }
 
 // wait blocks until a request can be made within rate limits
 func (r *rateLimiter) wait() error {
+	return r.waitWithJitter(0)
+}
+
+// waitWithJitter blocks until a request can be made, with optional jitter for parallel requests
+func (r *rateLimiter) waitWithJitter(workerID int) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	now := time.Now()
+
+	// Add minimum spacing between requests (250ms) to avoid bursts
+	minSpacing := 250 * time.Millisecond
+	if now.Sub(r.lastRequest) < minSpacing {
+		waitTime := minSpacing - now.Sub(r.lastRequest)
+		r.mu.Unlock()
+		time.Sleep(waitTime)
+		r.mu.Lock()
+		now = time.Now()
+	}
+
+	// Check if we've exceeded max retries first
+	if r.retryCount >= r.maxRetries {
+		r.mu.Unlock()
+		return ErrRateLimited
+	}
 
 	// Clean up old requests outside the window
 	cutoff := now.Add(-r.window)
@@ -539,7 +561,9 @@ func (r *rateLimiter) wait() error {
 	// Check if we can make a request
 	if len(r.requests) < r.maxRequests {
 		r.requests = append(r.requests, now)
+		r.lastRequest = now
 		r.retryCount = 0
+		r.mu.Unlock()
 		return nil
 	}
 
@@ -547,26 +571,32 @@ func (r *rateLimiter) wait() error {
 	oldestRequest := r.requests[0]
 	waitTime := r.window - now.Sub(oldestRequest)
 
+	// Add jitter to prevent thundering herd (0-500ms based on worker ID)
+	jitter := time.Duration(workerID*50) * time.Millisecond
+	if jitter > 500*time.Millisecond {
+		jitter = 500 * time.Millisecond
+	}
+	waitTime += jitter
+
 	// Apply exponential backoff if we're repeatedly hitting limits
 	if r.retryCount > 0 {
 		backoff := r.backoffFactor * time.Duration(1<<uint(r.retryCount-1))
 		if backoff > waitTime {
 			waitTime = backoff
 		}
-		if r.retryCount >= r.maxRetries {
-			return ErrRateLimited
-		}
 	}
 
 	r.retryCount++
+	r.mu.Unlock()
 
 	// Wait and then allow the request
-	r.mu.Unlock()
 	time.Sleep(waitTime)
-	r.mu.Lock()
 
+	r.mu.Lock()
 	// Record the request after waiting
 	r.requests = append(r.requests, time.Now())
+	r.lastRequest = time.Now()
+	r.mu.Unlock()
 
 	return nil
 }
