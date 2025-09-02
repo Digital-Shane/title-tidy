@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.7.1] - 2025-09-02
+### Updated
+* Allow configuring the amount of TMDB workers in the config.
+* Increase default workers to 20 from 6.
+
 ## [v1.7.0] - 2025-09-02
 ### Updated
 - README.md to include tmdb config settings.

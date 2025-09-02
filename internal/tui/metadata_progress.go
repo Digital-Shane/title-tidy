@@ -98,7 +98,11 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		}
 	}
 
-	workerCount := 6 // Default worker count for parallel processing
+	// Use configured worker count, with a sensible minimum
+	workerCount := cfg.TMDBWorkerCount
+	if workerCount <= 0 {
+		workerCount = 20 // Fallback to default if not configured or invalid
+	}
 
 	return &MetadataProgressModel{
 		tree:         tree,

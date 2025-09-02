@@ -152,8 +152,8 @@ func TestMetadataProgressModel_WorkerConcurrency(t *testing.T) {
 	model := NewMetadataProgressModel(tree, cfg)
 
 	// Verify worker count is set
-	if model.workerCount != 6 {
-		t.Errorf("workerCount = %d, want 6", model.workerCount)
+	if model.workerCount != 20 {
+		t.Errorf("workerCount = %d, want 20", model.workerCount)
 	}
 
 	// Test that activeWorkers tracking works
@@ -294,8 +294,8 @@ func TestMetadataProgressModel_Initialization(t *testing.T) {
 	if model.cfg != cfg {
 		t.Error("Config not properly initialized")
 	}
-	if model.workerCount != 6 {
-		t.Errorf("Worker count = %d, want 6", model.workerCount)
+	if model.workerCount != 20 {
+		t.Errorf("Worker count = %d, want 20", model.workerCount)
 	}
 	if model.workCh == nil {
 		t.Error("Work channel not initialized")
