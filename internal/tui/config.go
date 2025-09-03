@@ -1121,9 +1121,6 @@ func (m *Model) buildTMDBInputField(width int) string {
 	var workerCountField string
 	workerCountLabel := "Worker Count: "
 	workerCountValue := m.tmdbWorkerCount
-	if workerCountValue == "" {
-		workerCountValue = "20" // Show default if empty
-	}
 
 	if !m.tmdbEnabled {
 		// When TMDB is disabled, always show as disabled regardless of focus
@@ -1201,14 +1198,16 @@ func (m *Model) save() {
 	m.config.PreferLocalMetadata = m.tmdbPreferLocal
 
 	// Update worker count
-	if workerCount, err := strconv.Atoi(m.tmdbWorkerCount); err == nil {
+	if m.tmdbWorkerCount == "" {
+		m.config.TMDBWorkerCount = 10 // Use default if empty
+	} else if workerCount, err := strconv.Atoi(m.tmdbWorkerCount); err == nil {
 		if workerCount > 0 {
 			m.config.TMDBWorkerCount = workerCount
 		} else {
-			m.config.TMDBWorkerCount = 20 // Default if invalid
+			m.config.TMDBWorkerCount = 10 // Default if invalid
 		}
 	} else {
-		m.config.TMDBWorkerCount = 20 // Default if parsing fails
+		m.config.TMDBWorkerCount = 10 // Default if parsing fails
 	}
 
 	// Skip TMDB validation - trust what the user enters

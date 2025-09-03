@@ -11,10 +11,17 @@ func TestRateLimiter(t *testing.T) {
 		rl := newRateLimiter(5, 1*time.Second)
 
 		// Should allow 5 requests immediately
+		start := time.Now()
 		for i := 0; i < 5; i++ {
 			if err := rl.wait(); err != nil {
 				t.Errorf("wait() request %d error = %v, want nil", i+1, err)
 			}
+		}
+		elapsed := time.Since(start)
+
+		// Should be very fast since we're under the limit
+		if elapsed > 100*time.Millisecond {
+			t.Errorf("5 requests under limit took %v, expected < 100ms", elapsed)
 		}
 	})
 
@@ -29,13 +36,13 @@ func TestRateLimiter(t *testing.T) {
 			}
 		}
 
-		// 3rd request should be delayed (at least 250ms min spacing + window time)
+		// 3rd request should be delayed until window allows it
 		if err := rl.wait(); err != nil {
 			t.Errorf("wait() request 3 error = %v, want nil", err)
 		}
 
 		elapsed := time.Since(start)
-		// With min spacing of 250ms between requests, expect at least 500ms total
+		// Should wait at least the window duration (500ms)
 		if elapsed < 500*time.Millisecond {
 			t.Errorf("3rd request took %v, expected at least 500ms delay", elapsed)
 		}
@@ -44,18 +51,17 @@ func TestRateLimiter(t *testing.T) {
 	t.Run("CleansUpOldRequests", func(t *testing.T) {
 		rl := newRateLimiter(3, 200*time.Millisecond)
 
-		// Make 3 requests
+		// Make 3 requests to fill the limit
 		for i := 0; i < 3; i++ {
 			if err := rl.wait(); err != nil {
 				t.Errorf("wait() initial request %d error = %v", i+1, err)
 			}
-			time.Sleep(10 * time.Millisecond) // Small delay between requests
 		}
 
 		// Wait for window to pass completely
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 
-		// Should be able to make 3 more requests with only min spacing delays
+		// Should be able to make 3 more requests quickly
 		start := time.Now()
 		for i := 0; i < 3; i++ {
 			if err := rl.wait(); err != nil {
@@ -64,22 +70,21 @@ func TestRateLimiter(t *testing.T) {
 		}
 
 		elapsed := time.Since(start)
-		// With min spacing of 250ms between requests, expect at least 500ms for 3 requests
-		if elapsed > 800*time.Millisecond {
-			t.Errorf("Requests after window took %v, expected around 500-750ms", elapsed)
+		// Should be fast since old requests have expired
+		if elapsed > 100*time.Millisecond {
+			t.Errorf("Requests after window took %v, expected < 100ms", elapsed)
 		}
 	})
 
 	t.Run("ConcurrentRequests", func(t *testing.T) {
-		rl := newRateLimiter(25, 2*time.Second) // Increased limits for concurrent test
-		rl.maxRetries = 10                      // More retries for concurrent scenario
+		rl := newRateLimiter(10, 1*time.Second)
 
 		var wg sync.WaitGroup
 		successCount := 0
 		var mu sync.Mutex
 
-		// Launch 20 goroutines trying to make requests
-		for i := 0; i < 20; i++ {
+		// Launch 15 goroutines trying to make requests
+		for i := 0; i < 15; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -93,79 +98,85 @@ func TestRateLimiter(t *testing.T) {
 
 		wg.Wait()
 
-		// At least 10 requests should succeed (given the rate limit allows it)
-		if successCount < 10 {
-			t.Errorf("Only %d concurrent requests succeeded, expected at least 10", successCount)
+		// All requests should succeed (they'll just be throttled)
+		if successCount != 15 {
+			t.Errorf("Only %d concurrent requests succeeded, expected 15", successCount)
 		}
 	})
 
-	t.Run("ExponentialBackoff", func(t *testing.T) {
+	t.Run("NeverReturnsRateLimitError", func(t *testing.T) {
 		rl := newRateLimiter(1, 100*time.Millisecond)
-		rl.maxRetries = 2 // Reduce for testing
 
-		// First request should succeed
+		// Fill the limit
 		if err := rl.wait(); err != nil {
 			t.Errorf("wait() first request error = %v", err)
 		}
 
-		// Second request should wait (min spacing 250ms)
+		// Additional requests should wait but never return error
+		for i := 0; i < 5; i++ {
+			if err := rl.wait(); err != nil {
+				t.Errorf("wait() request %d returned error %v, should never return error", i+2, err)
+			}
+		}
+	})
+
+	t.Run("RespectsSlidingWindow", func(t *testing.T) {
+		rl := newRateLimiter(3, 300*time.Millisecond)
+
+		// Make 3 requests quickly
 		start := time.Now()
+		for i := 0; i < 3; i++ {
+			if err := rl.wait(); err != nil {
+				t.Errorf("wait() request %d error = %v", i+1, err)
+			}
+		}
+
+		// 4th request should wait for window
 		if err := rl.wait(); err != nil {
-			t.Errorf("wait() second request error = %v", err)
+			t.Errorf("wait() 4th request error = %v", err)
 		}
+
 		elapsed := time.Since(start)
-
-		// With min spacing of 250ms, expect at least that
-		if elapsed < 250*time.Millisecond || elapsed > 350*time.Millisecond {
-			t.Errorf("Second request took %v, expected ~250ms (min spacing)", elapsed)
+		// Should wait at least the window duration
+		if elapsed < 300*time.Millisecond {
+			t.Errorf("4th request took %v, expected at least 300ms", elapsed)
 		}
 
-		// Quick third request should use backoff
-		time.Sleep(10 * time.Millisecond) // Small gap
+		// But shouldn't wait much longer (should be efficient)
+		if elapsed > 400*time.Millisecond {
+			t.Errorf("4th request took %v, expected around 300ms (too slow)", elapsed)
+		}
+	})
+
+	t.Run("TMDBRealWorldScenario", func(t *testing.T) {
+		// Test with TMDB-like limits: 38 requests per 10 seconds
+		rl := newRateLimiter(38, 10*time.Second)
+
+		start := time.Now()
+
+		// Make 38 requests - should all go through quickly
+		for i := 0; i < 38; i++ {
+			if err := rl.wait(); err != nil {
+				t.Errorf("wait() request %d error = %v", i+1, err)
+			}
+		}
+
+		firstBatchTime := time.Since(start)
+		// Should be fast for first batch
+		if firstBatchTime > 1*time.Second {
+			t.Errorf("First 38 requests took %v, expected < 1s", firstBatchTime)
+		}
+
+		// 39th request should wait for window
 		start = time.Now()
 		if err := rl.wait(); err != nil {
-			t.Errorf("wait() third request error = %v", err)
+			t.Errorf("wait() 39th request error = %v", err)
 		}
-		elapsed = time.Since(start)
+		waitTime := time.Since(start)
 
-		// Should have longer delay due to backoff
-		if elapsed < 100*time.Millisecond {
-			t.Errorf("Third request took %v, expected backoff delay", elapsed)
-		}
-	})
-
-	t.Run("MaxRetriesExceeded", func(t *testing.T) {
-		// Use waitWithJitter directly to test rate limiting logic
-		rl := newRateLimiter(1, 100*time.Millisecond)
-		rl.maxRetries = 2 // Very low for testing
-
-		// First request succeeds
-		if err := rl.waitWithJitter(0); err != nil {
-			t.Errorf("wait() first request error = %v", err)
-		}
-
-		// Immediately try again - should wait but succeed (retry 1)
-		if err := rl.waitWithJitter(0); err != nil {
-			t.Errorf("wait() second request error = %v", err)
-		}
-
-		// Third request immediately - should wait but succeed (retry 2)
-		if err := rl.waitWithJitter(0); err != nil {
-			t.Errorf("wait() third request error = %v", err)
-		}
-
-		// Force the rate limiter state to exceed retries
-		rl.mu.Lock()
-		// Set retry count to max
-		rl.retryCount = rl.maxRetries
-		// Ensure the window is still full
-		rl.requests = []time.Time{time.Now()}
-		rl.mu.Unlock()
-
-		// This should now exceed max retries
-		err := rl.waitWithJitter(0)
-		if err != ErrRateLimited {
-			t.Errorf("wait() after max retries = %v, want ErrRateLimited", err)
+		// Should wait close to 10 seconds (when first request expires)
+		if waitTime < 9*time.Second || waitTime > 11*time.Second {
+			t.Errorf("39th request waited %v, expected ~10s", waitTime)
 		}
 	})
 }
