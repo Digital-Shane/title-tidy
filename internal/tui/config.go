@@ -13,6 +13,49 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Icon sets for different terminal capabilities in config UI
+var (
+	// Emoji icons for config UI (modern terminals)
+	configEmojiIcons = map[string]string{
+		"title":    "📺",
+		"check":    "✓",
+		"folder":   "📁",
+		"episode":  "🎬",
+		"movie":    "🎭",
+		"calendar": "📅",
+		"document": "📄",
+		"key":      "🔑",
+		"globe":    "🌐",
+		"chart":    "📊",
+		"film":     "🎬",
+	}
+
+	// ASCII icons for config UI (SSH/Windows-safe)
+	configAsciiIcons = map[string]string{
+		"title":    "[TV]",
+		"check":    "[v]",
+		"folder":   "[D]",
+		"episode":  "[E]",
+		"movie":    "[M]",
+		"calendar": "[C]",
+		"document": "[F]",
+		"key":      "[K]",
+		"globe":    "[G]",
+		"chart":    "[#]",
+		"film":     "[F]",
+	}
+)
+
+// selectConfigIcons chooses the best icon set for the config UI
+func selectConfigIcons() map[string]string {
+	// Use ASCII icons for SSH sessions or Windows (PowerShell has poor emoji support)
+	if isLimitedTerminal() {
+		return configAsciiIcons
+	}
+
+	return configEmojiIcons
+}
+
 // scrollTickMsg is sent periodically to enable auto-scrolling
 type scrollTickMsg struct{}
 
@@ -391,19 +434,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeSection == SectionTMDB {
 				// Handle TMDB input based on subfocus
 				runes := string(msg.Runes)
-				if m.tmdbSubfocus == 1 {
+				switch m.tmdbSubfocus {
+				case 1:
 					// API key field - accept any characters the user enters
 					m.insertTMDBAPIKey(runes)
 					// Trigger debounced validation
 					return m, debouncedTMDBValidate(m.tmdbAPIKey)
-				} else if m.tmdbSubfocus == 2 {
+				case 2:
 					// Language field - allow letters, hyphen for codes like "en-US"
 					for _, r := range runes {
 						if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '-' {
 							m.insertTMDBLanguage(string(r))
 						}
 					}
-				} else if m.tmdbSubfocus == 4 {
+				case 4:
 					// Worker count field - only allow digits
 					for _, r := range runes {
 						if r >= '0' && r <= '9' {
@@ -451,7 +495,8 @@ func (m *Model) View() string {
 		BorderForeground(lipgloss.Color("#4a5568"))
 
 	// Title
-	title := titleStyle.Render("📺 Title-Tidy Format Configuration")
+	icons := selectConfigIcons()
+	title := titleStyle.Render(icons["title"] + " Title-Tidy Format Configuration")
 
 	// Tabs
 	tabs := []string{}
@@ -660,15 +705,16 @@ func (m *Model) buildLoggingInputField(width int) string {
 		enabledText = "Disabled"
 	}
 
+	icons := selectConfigIcons()
 	if m.loggingSubfocus == 0 {
 		if m.loggingEnabled {
-			enabledToggle = focusedStyle.Render("[✓] " + enabledText)
+			enabledToggle = focusedStyle.Render("[" + icons["check"] + "] " + enabledText)
 		} else {
 			enabledToggle = focusedStyle.Render("[ ] " + enabledText)
 		}
 	} else {
 		if m.loggingEnabled {
-			enabledToggle = enabledStyle.Render("[✓] " + enabledText)
+			enabledToggle = enabledStyle.Render("[" + icons["check"] + "] " + enabledText)
 		} else {
 			enabledToggle = disabledStyle.Render("[ ] " + enabledText)
 		}
@@ -854,11 +900,12 @@ func (m *Model) generatePreviews() []preview {
 			enabledStatus = "Enabled"
 		}
 
+		icons := selectConfigIcons()
 		return []preview{
-			{"✓", "Logging", enabledStatus},
-			{"📅", "Retention", m.loggingRetention + " days"},
-			{"📁", "Log Location", "~/.title-tidy/logs/"},
-			{"📄", "Log Format", "JSON session files"},
+			{icons["check"], "Logging", enabledStatus},
+			{icons["calendar"], "Retention", m.loggingRetention + " days"},
+			{icons["folder"], "Log Location", "~/.title-tidy/logs/"},
+			{icons["document"], "Log Format", "JSON session files"},
 		}
 	}
 
@@ -888,11 +935,12 @@ func (m *Model) generatePreviews() []preview {
 			preferStatus = "Local first"
 		}
 
+		icons := selectConfigIcons()
 		return []preview{
-			{"🎬", "TMDB Lookup", enabledStatus},
-			{"🔑", "API Key", apiStatus},
-			{"🌐", "Language", m.tmdbLanguage},
-			{"📊", "Priority", preferStatus},
+			{icons["film"], "TMDB Lookup", enabledStatus},
+			{icons["key"], "API Key", apiStatus},
+			{icons["globe"], "Language", m.tmdbLanguage},
+			{icons["chart"], "Priority", preferStatus},
 		}
 	}
 
@@ -928,26 +976,27 @@ func (m *Model) generatePreviews() []preview {
 		Tagline: "Welcome to the Real World",
 	}
 
+	icons := selectConfigIcons()
 	return []preview{
-		{"📺", "Show", cfg.ApplyShowFolderTemplate(&config.FormatContext{
+		{icons["title"], "Show", cfg.ApplyShowFolderTemplate(&config.FormatContext{
 			ShowName: "Breaking Bad",
 			Year:     "2008",
 			Metadata: showMetadata,
 		})},
-		{"📁", "Season", cfg.ApplySeasonFolderTemplate(&config.FormatContext{
+		{icons["folder"], "Season", cfg.ApplySeasonFolderTemplate(&config.FormatContext{
 			ShowName: "Breaking Bad",
 			Year:     "2008",
 			Season:   1,
 			Metadata: showMetadata,
 		})},
-		{"🎬", "Episode", cfg.ApplyEpisodeTemplate(&config.FormatContext{
+		{icons["episode"], "Episode", cfg.ApplyEpisodeTemplate(&config.FormatContext{
 			ShowName: "Breaking Bad",
 			Year:     "2008",
 			Season:   1,
 			Episode:  7,
 			Metadata: showMetadata,
 		}) + ".mkv"},
-		{"🎭", "Movie", cfg.ApplyMovieTemplate(&config.FormatContext{
+		{icons["movie"], "Movie", cfg.ApplyMovieTemplate(&config.FormatContext{
 			MovieName: "The Matrix",
 			Year:      "1999",
 			Metadata:  movieMetadata,
@@ -1044,15 +1093,16 @@ func (m *Model) buildTMDBInputField(width int) string {
 		enabledText = "Disabled"
 	}
 
+	icons := selectConfigIcons()
 	if m.tmdbSubfocus == 0 {
 		if m.tmdbEnabled {
-			enabledToggle = focusedStyle.Render("[✓] " + enabledText)
+			enabledToggle = focusedStyle.Render("[" + icons["check"] + "] " + enabledText)
 		} else {
 			enabledToggle = focusedStyle.Render("[ ] " + enabledText)
 		}
 	} else {
 		if m.tmdbEnabled {
-			enabledToggle = enabledStyle.Render("[✓] " + enabledText)
+			enabledToggle = enabledStyle.Render("[" + icons["check"] + "] " + enabledText)
 		} else {
 			enabledToggle = disabledStyle.Render("[ ] " + enabledText)
 		}
@@ -1105,13 +1155,13 @@ func (m *Model) buildTMDBInputField(width int) string {
 	} else if m.tmdbSubfocus == 3 {
 		// Only show focus when TMDB is enabled
 		if m.tmdbPreferLocal {
-			preferLocalToggle = focusedStyle.Render("[✓] " + preferLocalText)
+			preferLocalToggle = focusedStyle.Render("[" + icons["check"] + "] " + preferLocalText)
 		} else {
 			preferLocalToggle = focusedStyle.Render("[ ] " + preferLocalText)
 		}
 	} else {
 		if m.tmdbPreferLocal {
-			preferLocalToggle = enabledStyle.Render("[✓] " + preferLocalText)
+			preferLocalToggle = enabledStyle.Render("[" + icons["check"] + "] " + preferLocalText)
 		} else {
 			preferLocalToggle = disabledStyle.Render("[ ] " + preferLocalText)
 		}
@@ -1176,31 +1226,39 @@ func (m *Model) deleteTMDBChar() {
 	}
 }
 
+// stripNullChars removes null characters from a string
+// This is needed on Windows where terminal input can include \x00 bytes
+func stripNullChars(s string) string {
+	return strings.ReplaceAll(s, "\x00", "")
+}
+
 func (m *Model) save() {
-	// Update config from inputs
-	m.config.ShowFolder = m.inputs[SectionShowFolder]
-	m.config.SeasonFolder = m.inputs[SectionSeasonFolder]
-	m.config.Episode = m.inputs[SectionEpisode]
-	m.config.Movie = m.inputs[SectionMovie]
+	// Update config from inputs, stripping null characters that Windows terminals may add
+	m.config.ShowFolder = stripNullChars(m.inputs[SectionShowFolder])
+	m.config.SeasonFolder = stripNullChars(m.inputs[SectionSeasonFolder])
+	m.config.Episode = stripNullChars(m.inputs[SectionEpisode])
+	m.config.Movie = stripNullChars(m.inputs[SectionMovie])
 
 	// Update logging config
 	m.config.EnableLogging = m.loggingEnabled
-	if retentionDays, err := strconv.Atoi(m.loggingRetention); err == nil {
+	sanitizedRetention := stripNullChars(m.loggingRetention)
+	if retentionDays, err := strconv.Atoi(sanitizedRetention); err == nil {
 		if retentionDays > 0 {
 			m.config.LogRetentionDays = retentionDays
 		}
 	}
 
-	// Update TMDB config
-	m.config.TMDBAPIKey = m.tmdbAPIKey
+	// Update TMDB config, stripping null characters from string fields
+	m.config.TMDBAPIKey = stripNullChars(m.tmdbAPIKey)
 	m.config.EnableTMDBLookup = m.tmdbEnabled
-	m.config.TMDBLanguage = m.tmdbLanguage
+	m.config.TMDBLanguage = stripNullChars(m.tmdbLanguage)
 	m.config.PreferLocalMetadata = m.tmdbPreferLocal
 
 	// Update worker count
-	if m.tmdbWorkerCount == "" {
+	sanitizedWorkerCount := stripNullChars(m.tmdbWorkerCount)
+	if sanitizedWorkerCount == "" {
 		m.config.TMDBWorkerCount = 10 // Use default if empty
-	} else if workerCount, err := strconv.Atoi(m.tmdbWorkerCount); err == nil {
+	} else if workerCount, err := strconv.Atoi(sanitizedWorkerCount); err == nil {
 		if workerCount > 0 {
 			m.config.TMDBWorkerCount = workerCount
 		} else {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestConfigScrolling(t *testing.T) {
@@ -81,6 +82,39 @@ func TestConfigScrolling(t *testing.T) {
 		if !strings.Contains(view, "↑↓") && !strings.Contains(view, "Scroll") {
 			t.Log("Scroll help indicators should be shown when content is scrollable")
 		}
+	}
+}
+
+func TestStripNullChars(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "NoNullChars",
+			input:    "normal string",
+			expected: "normal string",
+		},
+		{
+			name:     "WindowsStyleInput",
+			input:    "{title} ({year})\x00",
+			expected: "{title} ({year})",
+		},
+		{
+			name:     "OnlyNullChars",
+			input:    "\x00\x00\x00",
+			expected: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := stripNullChars(tc.input)
+			if diff := cmp.Diff(tc.expected, result); diff != "" {
+				t.Errorf("stripNullChars(%q) mismatch (-want +got):\n%s", tc.input, diff)
+			}
+		})
 	}
 }
 
