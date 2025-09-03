@@ -33,7 +33,7 @@ func (m *RenameModel) prepareRenameProgress() {
 	m.renameCount = 0
 
 	// Single pass to count all operation types
-	for info, _ := range m.Tree.All(context.Background()) {
+	for info := range m.Tree.All(context.Background()) {
 		n := info.Node
 		mm := core.GetMeta(n)
 		if mm == nil {

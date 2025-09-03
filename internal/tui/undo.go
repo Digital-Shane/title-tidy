@@ -38,7 +38,7 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *UndoModel {
 	}
 
 	// Detect terminal capabilities for icons
-	if isSshSession() {
+	if isLimitedTerminal() {
 		m.iconSet = asciiIcons
 	} else {
 		m.iconSet = emojiIcons

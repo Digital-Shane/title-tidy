@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.7.4] - 2025-09-03
+### Fixed
+* powershell adding null unicode characters at the end of config strings.
+* Use SSH icon set in powershell because fancy icons are not supported.
+
 ## [v1.7.3] - 2025-09-03
 ### Updated
 * `treeview` dependency to `v1.8.1` to fix inode implementation on windows.

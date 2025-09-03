@@ -180,8 +180,8 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo]) *RenameModel {
 
 // detectTerminalCapabilities determines what icons to use based on terminal and environment
 func (m *RenameModel) detectTerminalCapabilities() {
-	// Check if we're in SSH
-	if isSshSession() {
+	// Check if we're in SSH or windows
+	if isLimitedTerminal() {
 		m.iconSet = asciiIcons
 	} else {
 		m.iconSet = emojiIcons

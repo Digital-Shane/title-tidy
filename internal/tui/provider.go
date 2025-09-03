@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
@@ -109,12 +110,27 @@ func deletionError() func(*treeview.Node[treeview.FileInfo]) bool {
 
 // selectTreeIconSet chooses the best icon set for tree items based on terminal capabilities
 func selectTreeIconSet() map[string]string {
-	// In SSH, be more conservative
-	if isSshSession() {
+	// Use ASCII icons for SSH sessions or Windows (PowerShell has poor emoji support)
+	if isLimitedTerminal() {
 		return treeAsciiIcons
 	}
 
 	return treeEmojiIcons
+}
+
+// isLimitedTerminal detects environments where ASCII icons are better than emoji
+func isLimitedTerminal() bool {
+	// SSH sessions typically have limited emoji support
+	if isSshSession() {
+		return true
+	}
+
+	// Windows terminals (especially PowerShell) often render emoji poorly
+	if runtime.GOOS == "windows" {
+		return true
+	}
+
+	return false
 }
 
 func isSshSession() bool {
