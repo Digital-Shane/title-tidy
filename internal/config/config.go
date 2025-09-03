@@ -72,7 +72,7 @@ func DefaultConfig() *FormatConfig {
 		EnableTMDBLookup:    false,
 		TMDBLanguage:        "en-US",
 		PreferLocalMetadata: true,
-		TMDBWorkerCount:     20,
+		TMDBWorkerCount:     10,
 	}
 }
 

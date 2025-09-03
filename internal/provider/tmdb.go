@@ -103,7 +103,7 @@ func NewTMDBProvider(apiKey, language string) (*TMDBProvider, error) {
 		cache:       c,
 		cacheFile:   cacheFile,
 		language:    language,
-		rateLimiter: newRateLimiter(40, 10*time.Second), // 40 requests per 10 seconds
+		rateLimiter: newRateLimiter(38, 10*time.Second), // 38 requests per 10 seconds (under 40 limit)
 	}, nil
 }
 
@@ -497,56 +497,30 @@ func ParseYear(s string) string {
 	return match
 }
 
-// rateLimiter implements a token bucket rate limiter
+// rateLimiter implements a simple sliding window rate limiter
 type rateLimiter struct {
-	mu            sync.Mutex
-	requests      []time.Time
-	maxRequests   int
-	window        time.Duration
-	retryCount    int
-	maxRetries    int
-	backoffFactor time.Duration
-	lastRequest   time.Time
+	mu          sync.Mutex
+	requests    []time.Time
+	maxRequests int
+	window      time.Duration
 }
 
 // newRateLimiter creates a new rate limiter
 func newRateLimiter(maxRequests int, window time.Duration) *rateLimiter {
 	return &rateLimiter{
-		maxRequests:   maxRequests,
-		window:        window,
-		requests:      make([]time.Time, 0, maxRequests),
-		maxRetries:    4,
-		backoffFactor: time.Second,
-		lastRequest:   time.Now().Add(-time.Second), // Allow immediate first request
+		maxRequests: maxRequests,
+		window:      window,
+		requests:    make([]time.Time, 0, maxRequests),
 	}
 }
 
 // wait blocks until a request can be made within rate limits
+// This method never returns an error - it always waits until a request can be made
 func (r *rateLimiter) wait() error {
-	return r.waitWithJitter(0)
-}
-
-// waitWithJitter blocks until a request can be made, with optional jitter for parallel requests
-func (r *rateLimiter) waitWithJitter(workerID int) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	now := time.Now()
-
-	// Add minimum spacing between requests (250ms) to avoid bursts
-	minSpacing := 250 * time.Millisecond
-	if now.Sub(r.lastRequest) < minSpacing {
-		waitTime := minSpacing - now.Sub(r.lastRequest)
-		r.mu.Unlock()
-		time.Sleep(waitTime)
-		r.mu.Lock()
-		now = time.Now()
-	}
-
-	// Check if we've exceeded max retries first
-	if r.retryCount >= r.maxRetries {
-		r.mu.Unlock()
-		return ErrRateLimited
-	}
 
 	// Clean up old requests outside the window
 	cutoff := now.Add(-r.window)
@@ -558,45 +532,41 @@ func (r *rateLimiter) waitWithJitter(workerID int) error {
 	}
 	r.requests = validRequests
 
-	// Check if we can make a request
+	// If we're under the limit, allow the request immediately
 	if len(r.requests) < r.maxRequests {
 		r.requests = append(r.requests, now)
-		r.lastRequest = now
-		r.retryCount = 0
-		r.mu.Unlock()
 		return nil
 	}
 
-	// We're rate limited, calculate wait time
+	// We need to wait. Calculate when the oldest request will expire
 	oldestRequest := r.requests[0]
 	waitTime := r.window - now.Sub(oldestRequest)
 
-	// Add jitter to prevent thundering herd (0-500ms based on worker ID)
-	jitter := time.Duration(workerID*50) * time.Millisecond
-	if jitter > 500*time.Millisecond {
-		jitter = 500 * time.Millisecond
-	}
-	waitTime += jitter
+	// Add a small buffer to ensure the request has actually expired
+	waitTime += 10 * time.Millisecond
 
-	// Apply exponential backoff if we're repeatedly hitting limits
-	if r.retryCount > 0 {
-		backoff := r.backoffFactor * time.Duration(1<<uint(r.retryCount-1))
-		if backoff > waitTime {
-			waitTime = backoff
-		}
-	}
-
-	r.retryCount++
+	// Release the lock before sleeping
 	r.mu.Unlock()
 
-	// Wait and then allow the request
+	// Wait for the window to allow another request
 	time.Sleep(waitTime)
 
+	// Re-acquire lock and record the request
 	r.mu.Lock()
-	// Record the request after waiting
-	r.requests = append(r.requests, time.Now())
-	r.lastRequest = time.Now()
-	r.mu.Unlock()
+
+	// Clean up again after waiting
+	now = time.Now()
+	cutoff = now.Add(-r.window)
+	validRequests = make([]time.Time, 0, r.maxRequests)
+	for _, req := range r.requests {
+		if req.After(cutoff) {
+			validRequests = append(validRequests, req)
+		}
+	}
+	r.requests = validRequests
+
+	// Record this request
+	r.requests = append(r.requests, now)
 
 	return nil
 }

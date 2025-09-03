@@ -86,10 +86,10 @@ func TestGenerateMetadataKey(t *testing.T) {
 func TestFetchMetadataWithDependencies_NilProvider(t *testing.T) {
 	cache := make(map[string]*provider.EnrichedMetadata)
 
-	got := FetchMetadataWithDependencies(nil, "Test Show", "2020", 1, 1, false, cache)
+	got, err := FetchMetadataWithDependencies(nil, "Test Show", "2020", 1, 1, false, cache)
 
-	if got != nil {
-		t.Errorf("FetchMetadataWithDependencies(nil, ...) = %v, want nil", got)
+	if got != nil || err != nil {
+		t.Errorf("FetchMetadataWithDependencies(nil, ...) = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
@@ -97,10 +97,10 @@ func TestFetchMetadataWithDependencies_EmptyName(t *testing.T) {
 	// Create a mock provider (we'll use nil since we expect early return)
 	cache := make(map[string]*provider.EnrichedMetadata)
 
-	got := FetchMetadataWithDependencies(nil, "", "2020", 1, 1, false, cache)
+	got, err := FetchMetadataWithDependencies(nil, "", "2020", 1, 1, false, cache)
 
-	if got != nil {
-		t.Errorf("FetchMetadataWithDependencies(..., \"\", ...) = %v, want nil", got)
+	if got != nil || err != nil {
+		t.Errorf("FetchMetadataWithDependencies(..., \"\", ...) = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
@@ -186,9 +186,9 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FetchMetadataWithDependencies(tt.provider, tt.itemName, tt.year, tt.season, tt.episode, tt.isMovie, tt.cache)
+			got, err := FetchMetadataWithDependencies(tt.provider, tt.itemName, tt.year, tt.season, tt.episode, tt.isMovie, tt.cache)
 			if got != tt.want {
-				t.Errorf("FetchMetadataWithDependencies() = %v, want %v", got, tt.want)
+				t.Errorf("FetchMetadataWithDependencies() = (%v, %v), want (%v, <nil>)", got, err, tt.want)
 			}
 		})
 	}
@@ -256,9 +256,9 @@ func TestFetchMetadataWithDependencies_Movie(t *testing.T) {
 	}
 
 	// Test with mock - this will test the movie path but return nil due to interface limitations
-	got := FetchMetadataWithDependencies((*provider.TMDBProvider)(nil), "Test Movie", "2020", 0, 0, true, cache)
-	if got != nil {
-		t.Errorf("FetchMetadataWithDependencies with nil provider = %v, want nil", got)
+	got, err := FetchMetadataWithDependencies((*provider.TMDBProvider)(nil), "Test Movie", "2020", 0, 0, true, cache)
+	if got != nil || err != nil {
+		t.Errorf("FetchMetadataWithDependencies with nil provider = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
@@ -274,9 +274,9 @@ func TestFetchMetadataWithDependencies_Show(t *testing.T) {
 	}
 
 	// Test with nil provider
-	got := FetchMetadataWithDependencies(nil, "Test Show", "2020", 0, 0, false, cache)
-	if got != nil {
-		t.Errorf("FetchMetadataWithDependencies with nil provider = %v, want nil", got)
+	got, err := FetchMetadataWithDependencies(nil, "Test Show", "2020", 0, 0, false, cache)
+	if got != nil || err != nil {
+		t.Errorf("FetchMetadataWithDependencies with nil provider = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
@@ -292,9 +292,9 @@ func TestFetchMetadataWithDependencies_Episode(t *testing.T) {
 	}
 
 	// Test with nil provider
-	got := FetchMetadataWithDependencies(nil, "Test Show", "2020", 1, 5, false, cache)
-	if got != nil {
-		t.Errorf("FetchMetadataWithDependencies with nil provider = %v, want nil", got)
+	got, err := FetchMetadataWithDependencies(nil, "Test Show", "2020", 1, 5, false, cache)
+	if got != nil || err != nil {
+		t.Errorf("FetchMetadataWithDependencies with nil provider = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
@@ -310,9 +310,9 @@ func TestFetchMetadataWithDependencies_Season(t *testing.T) {
 	}
 
 	// Test with nil provider
-	got := FetchMetadataWithDependencies(nil, "Test Show", "2020", 2, 0, false, cache)
-	if got != nil {
-		t.Errorf("FetchMetadataWithDependencies with nil provider = %v, want nil", got)
+	got, err := FetchMetadataWithDependencies(nil, "Test Show", "2020", 2, 0, false, cache)
+	if got != nil || err != nil {
+		t.Errorf("FetchMetadataWithDependencies with nil provider = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
@@ -373,7 +373,7 @@ func TestFetchMetadataWithDependencies_CacheInteraction(t *testing.T) {
 			}
 
 			// Call function with nil provider (will exit early but still test cache key generation)
-			FetchMetadataWithDependencies(nil, tt.itemName, tt.year, tt.season, tt.episode, tt.isMovie, cache)
+			_, _ = FetchMetadataWithDependencies(nil, tt.itemName, tt.year, tt.season, tt.episode, tt.isMovie, cache)
 
 			// Verify expected cache keys exist (if they were supposed to be generated)
 			for _, key := range tt.wantCacheKeys {

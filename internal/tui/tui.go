@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -412,7 +413,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// update bar percent
 		var pct float64
 		if m.totalRenameOps > 0 {
-			pct = min(float64(m.completedOps)/float64(m.totalRenameOps), 1)
+			pct = math.Min(float64(m.completedOps)/float64(m.totalRenameOps), 1)
 		}
 		cmd := m.progressModel.SetPercent(pct)
 		// schedule next step until completion

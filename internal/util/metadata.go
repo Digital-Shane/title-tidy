@@ -24,9 +24,10 @@ func GenerateMetadataKey(mediaType string, name, year string, season, episode in
 
 // FetchMetadataWithDependencies fetches metadata with proper dependency resolution
 // For episodes/seasons, it ensures show metadata is fetched first
-func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, year string, season, episode int, isMovie bool, cache map[string]*provider.EnrichedMetadata) *provider.EnrichedMetadata {
+// Returns both metadata and error so callers can handle rate limiting properly
+func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, year string, season, episode int, isMovie bool, cache map[string]*provider.EnrichedMetadata) (*provider.EnrichedMetadata, error) {
 	if tmdbProvider == nil || name == "" {
-		return nil
+		return nil, nil
 	}
 
 	var meta *provider.EnrichedMetadata
@@ -41,7 +42,10 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 
 		if showMeta == nil {
 			// Fetch show metadata first
-			showMeta, _ = tmdbProvider.SearchTVShow(name)
+			showMeta, err = tmdbProvider.SearchTVShow(name)
+			if err != nil {
+				return nil, err // Return error (including rate limiting) immediately
+			}
 			if showMeta != nil {
 				cache[showKey] = showMeta
 			}
@@ -63,7 +67,10 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 
 		if showMeta == nil {
 			// Fetch show metadata first
-			showMeta, _ = tmdbProvider.SearchTVShow(name)
+			showMeta, err = tmdbProvider.SearchTVShow(name)
+			if err != nil {
+				return nil, err // Return error (including rate limiting) immediately
+			}
 			if showMeta != nil {
 				cache[showKey] = showMeta
 			}
@@ -83,9 +90,5 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 		meta, err = tmdbProvider.SearchTVShow(name)
 	}
 
-	if err != nil || meta == nil {
-		return nil
-	}
-
-	return meta
+	return meta, err
 }

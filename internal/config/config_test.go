@@ -24,7 +24,7 @@ func TestDefaultConfig(t *testing.T) {
 		EnableTMDBLookup:    false,
 		TMDBLanguage:        "en-US",
 		PreferLocalMetadata: true,
-		TMDBWorkerCount:     20,
+		TMDBWorkerCount:     10,
 	}
 
 	if diff := cmp.Diff(want, cfg); diff != "" {
@@ -122,7 +122,7 @@ func TestLoad_ValidFile(t *testing.T) {
 		EnableTMDBLookup:    false,
 		TMDBLanguage:        "en-US", // Filled in by Load() with default
 		PreferLocalMetadata: false,
-		TMDBWorkerCount:     20, // Filled in by Load() with default
+		TMDBWorkerCount:     10, // Filled in by Load() with default
 	}
 
 	if diff := cmp.Diff(want, cfg); diff != "" {
@@ -308,7 +308,7 @@ func TestLoad(t *testing.T) {
 			EnableTMDBLookup:    false,
 			TMDBLanguage:        "en-US", // Default value filled in by Load()
 			PreferLocalMetadata: false,   // Not set in JSON, so false
-			TMDBWorkerCount:     20,      // Default value filled in by Load()
+			TMDBWorkerCount:     10,      // Default value filled in by Load()
 		}
 
 		if diff := cmp.Diff(expectedConfig, cfg); diff != "" {
@@ -352,7 +352,7 @@ func TestLoad(t *testing.T) {
 			EnableTMDBLookup:    false,
 			TMDBLanguage:        "en-US", // default
 			PreferLocalMetadata: false,   // Not set in JSON, so false
-			TMDBWorkerCount:     20,      // default
+			TMDBWorkerCount:     10,      // default
 		}
 
 		if diff := cmp.Diff(want, cfg); diff != "" {

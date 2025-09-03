@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // MetadataProgressModel displays progress while fetching metadata from TMDB
 type MetadataProgressModel struct {
@@ -53,9 +62,8 @@ type MetadataProgressModel struct {
 
 // metadataProgressMsg updates progress
 type metadataProgressMsg struct {
-	phase   string
-	item    string
-	workers int
+	phase string
+	item  string
 }
 
 // metadataCompleteMsg signals completion
@@ -217,6 +225,11 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 		phaseName := m.getPhaseName(phaseNum)
 		m.currentPhase = phaseName
 
+		// Reset active workers count for this phase
+		m.workersMu.Lock()
+		m.activeWorkers = 0
+		m.workersMu.Unlock()
+
 		// Start workers for this phase
 		var wg sync.WaitGroup
 
@@ -294,15 +307,10 @@ func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int)
 		}
 
 		// Send progress update
-		m.workersMu.RLock()
-		workers := m.activeWorkers
-		m.workersMu.RUnlock()
-
 		select {
 		case m.msgCh <- metadataProgressMsg{
-			phase:   m.currentPhase,
-			item:    currentDesc,
-			workers: workers,
+			phase: m.currentPhase,
+			item:  currentDesc,
 		}:
 		default:
 		}
@@ -311,20 +319,31 @@ func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int)
 		var meta *provider.EnrichedMetadata
 		var err error
 		retryCount := 0
-		maxRetries := 3
 
-		for retryCount < maxRetries {
-			meta = util.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m.metadata)
+		for {
+			meta, err = util.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m.metadata)
+
+			// If we got metadata successfully, break out
 			if meta != nil {
+				err = nil // Clear any error since we succeeded
 				break
 			}
 
-			// If rate limited, wait with exponential backoff
+			// Handle different error types
 			if err == provider.ErrRateLimited {
-				waitTime := time.Duration(1<<uint(retryCount)) * time.Second
+				// For rate limiting, NEVER give up - just wait and retry
+				// Use exponential backoff starting at 2 seconds, capping at 32 seconds
+				waitTime := time.Duration(2<<uint(min(retryCount, 4))) * time.Second
 				time.Sleep(waitTime)
 				retryCount++
+				// Continue the loop - never break on rate limiting
+				continue
+			} else if err != nil {
+				// For non-retryable errors (API key invalid, etc.), break immediately
+				break
 			} else {
+				// If err is nil but meta is also nil, it means no results found
+				// This is not an error we should retry
 				break
 			}
 		}
@@ -485,9 +504,7 @@ func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case metadataProgressMsg:
 		m.currentPhase = msg.phase
-		m.workersMu.Lock()
-		m.activeWorkers = msg.workers
-		m.workersMu.Unlock()
+		// Don't overwrite activeWorkers - it's maintained by workers themselves
 		ratio := float64(m.processedItems) / float64(max(m.totalItems, 1))
 		cmd := m.progress.SetPercent(ratio)
 		return m, tea.Batch(cmd, m.waitForMsg())
@@ -542,7 +559,7 @@ func (m *MetadataProgressModel) View() string {
 		Padding(1).
 		Width(m.width - 4)
 
-	stats := fmt.Sprintf("Total Items: %d\nProcessed: %d\nProgress: %d%%\nWorker Pool: %d workers",
+	stats := fmt.Sprintf("Total Items: %d\nProcessed: %d\nProgress: %d%%\nMax Worker Pool: %d workers",
 		m.totalItems, m.processedItems, percent, m.workerCount)
 
 	// Show errors if any
@@ -550,7 +567,53 @@ func (m *MetadataProgressModel) View() string {
 	if len(m.errors) > 0 {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF0000"))
-		errorInfo = errorStyle.Render(fmt.Sprintf("\nErrors: %d", len(m.errors)))
+
+		// Show error count and error messages
+		errorLines := []string{fmt.Sprintf("Errors: %d", len(m.errors))}
+
+		// Calculate available space for errors
+		// Account for: header, phase info, progress bar, stats, status bar, and some padding
+		usedLines := 6 // rough estimate of other UI elements
+		availableHeight := m.height - usedLines
+		maxErrorLines := availableHeight - 1 // reserve one line for error count
+
+		if maxErrorLines < 1 {
+			maxErrorLines = 1 // always show at least one error
+		}
+
+		// Calculate how many errors we can show
+		errorsToShow := len(m.errors)
+		if errorsToShow > maxErrorLines {
+			errorsToShow = maxErrorLines
+		}
+
+		// Show most recent errors
+		startIdx := len(m.errors) - errorsToShow
+		if startIdx < 0 {
+			startIdx = 0
+		}
+
+		// Calculate available width for error messages (account for "• " prefix)
+		availableWidth := m.width - 2
+		if availableWidth < 10 {
+			availableWidth = 10 // minimum readable width
+		}
+
+		for i := startIdx; i < len(m.errors); i++ {
+			errorMsg := m.errors[i].Error()
+			// Only truncate if message is longer than available width
+			if len(errorMsg) > availableWidth {
+				errorMsg = errorMsg[:availableWidth-3] + "..."
+			}
+			errorLines = append(errorLines, fmt.Sprintf("• %s", errorMsg))
+		}
+
+		// Only show "and X more" if we couldn't fit all errors
+		if len(m.errors) > errorsToShow {
+			errorLines = append(errorLines, fmt.Sprintf("... and %d more", len(m.errors)-errorsToShow))
+		}
+
+		errorInfo = "\n" + errorStyle.Render(strings.Join(errorLines, "\n"))
 	}
 
 	status := lipgloss.NewStyle().

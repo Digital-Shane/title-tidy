@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,7 +138,7 @@ func (m *IndexProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case indexProgressMsg:
-		ratio := min(float64(m.processedRoots)/float64(m.totalRoots), 1)
+		ratio := math.Min(float64(m.processedRoots)/float64(m.totalRoots), 1)
 		cmd := m.progress.SetPercent(ratio)
 		// Always continue waiting so we can receive indexCompleteMsg.
 		return m, tea.Batch(cmd, m.waitForMsg())
