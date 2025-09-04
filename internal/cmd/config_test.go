@@ -56,30 +56,34 @@ func TestUnwrapRoot(t *testing.T) {
 
 func TestMarkFilesForDeletion(t *testing.T) {
 	tests := []struct {
-		name         string
-		deleteNFO    bool
-		deleteImages bool
-		setupTree    func() *treeview.Tree[treeview.FileInfo]
-		wantDeleted  []string
-		wantKept     []string
+		name          string
+		deleteNFO     bool
+		deleteImages  bool
+		deleteSamples bool
+		setupTree     func() *treeview.Tree[treeview.FileInfo]
+		wantDeleted   []string
+		wantKept      []string
 	}{
 		{
-			name:         "no deletion flags",
-			deleteNFO:    false,
-			deleteImages: false,
+			name:          "no deletion flags",
+			deleteNFO:     false,
+			deleteImages:  false,
+			deleteSamples: false,
 			setupTree: func() *treeview.Tree[treeview.FileInfo] {
 				return testNewTree(
 					testNewFileNode("movie.mkv"),
 					testNewFileNode("movie.nfo"),
 					testNewFileNode("poster.jpg"),
+					testNewFileNode("sample.mkv"),
 				)
 			},
-			wantKept: []string{"movie.mkv", "movie.nfo", "poster.jpg"},
+			wantKept: []string{"movie.mkv", "movie.nfo", "poster.jpg", "sample.mkv"},
 		},
 		{
-			name:         "delete both NFO and images",
-			deleteNFO:    true,
-			deleteImages: true,
+			name:          "delete both NFO and images",
+			deleteNFO:     true,
+			deleteImages:  true,
+			deleteSamples: false,
 			setupTree: func() *treeview.Tree[treeview.FileInfo] {
 				return testNewTree(
 					testNewFileNode("movie.mkv"),
@@ -91,9 +95,45 @@ func TestMarkFilesForDeletion(t *testing.T) {
 			wantKept:    []string{"movie.mkv"},
 		},
 		{
-			name:         "skip directories",
-			deleteNFO:    true,
-			deleteImages: true,
+			name:          "delete sample files",
+			deleteNFO:     false,
+			deleteImages:  false,
+			deleteSamples: true,
+			setupTree: func() *treeview.Tree[treeview.FileInfo] {
+				sampleDir := testNewDirNode("Sample")
+				sampleDir.AddChild(testNewFileNode("preview.mkv"))
+				return testNewTree(
+					testNewFileNode("movie.mkv"),
+					testNewFileNode("sample.mp4"),
+					testNewFileNode("movie-sample.avi"),
+					sampleDir,
+					testNewFileNode("sample.txt"),
+				)
+			},
+			wantDeleted: []string{"sample.mp4", "movie-sample.avi", "Sample", "sample.txt"},
+			wantKept:    []string{"movie.mkv"},
+		},
+		{
+			name:          "delete all types",
+			deleteNFO:     true,
+			deleteImages:  true,
+			deleteSamples: true,
+			setupTree: func() *treeview.Tree[treeview.FileInfo] {
+				return testNewTree(
+					testNewFileNode("movie.mkv"),
+					testNewFileNode("movie.nfo"),
+					testNewFileNode("poster.jpg"),
+					testNewFileNode("sample.mkv"),
+				)
+			},
+			wantDeleted: []string{"movie.nfo", "poster.jpg", "sample.mkv"},
+			wantKept:    []string{"movie.mkv"},
+		},
+		{
+			name:          "skip directories",
+			deleteNFO:     true,
+			deleteImages:  true,
+			deleteSamples: false,
 			setupTree: func() *treeview.Tree[treeview.FileInfo] {
 				dir := testNewDirNode("Season 01")
 				dir.AddChild(testNewFileNode("episode.nfo"))
@@ -109,7 +149,7 @@ func TestMarkFilesForDeletion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tree := tt.setupTree()
-			MarkFilesForDeletion(tree, tt.deleteNFO, tt.deleteImages)
+			MarkFilesForDeletion(tree, tt.deleteNFO, tt.deleteImages, tt.deleteSamples)
 
 			// Check deleted files
 			for _, filename := range tt.wantDeleted {

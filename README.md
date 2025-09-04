@@ -55,6 +55,7 @@ title-tidy [command]
 * Add the `-i` or `--instant` flag to apply changes immediately without the interactive preview.
 * The `--no-nfo` flag will delete nfo files during the rename process.
 * The `--no-img` flag will delete image files during the rename process.
+* The `--no-sample` flag will delete files with "sample" in the name during the rename process.
 * The `--link [DESTINATION]` flag will cause title-tidy to hard link files into the destination instead of renaming files in place. Use this if you are still seeding media files, but want to move them into your organized media.
 
 ## Commands

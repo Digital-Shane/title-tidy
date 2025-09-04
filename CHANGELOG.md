@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.8.0] - 2025-09-04
+### Added
+* new `--no-sample` command that deletes sample media files.
+
 ## [v1.7.4] - 2025-09-03
 ### Fixed
 * powershell adding null unicode characters at the end of config strings.
