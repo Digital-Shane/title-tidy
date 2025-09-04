@@ -411,6 +411,44 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 	// First pass: collect all shows/movies (depth 0) - Phase 0
 	for ni := range m.tree.BreadthFirst(context.Background()) {
 		if ni.Depth == 0 {
+			// Check if this is an episode file (contains season/episode pattern)
+			if !ni.Node.Data().IsDir() {
+				if season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node); found {
+					// This is an episode file at depth 0 (episodes command)
+					// Extract show name from the part before the season/episode pattern
+					showName, year := media.ExtractShowNameFromPath(ni.Node.Name(), true)
+					if showName != "" {
+						// Add the show metadata request
+						showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+						if !seen[showKey] {
+							seen[showKey] = true
+							items = append(items, MetadataItem{
+								Name:    showName,
+								Year:    year,
+								IsMovie: false,
+								Key:     showKey,
+								Phase:   0,
+							})
+						}
+
+						// Add the episode metadata request
+						episodeKey := util.GenerateMetadataKey("episode", showName, year, season, episode)
+						if !seen[episodeKey] {
+							seen[episodeKey] = true
+							items = append(items, MetadataItem{
+								Name:    showName,
+								Year:    year,
+								Season:  season,
+								Episode: episode,
+								Key:     episodeKey,
+								Phase:   2, // Episodes are phase 2
+							})
+						}
+					}
+					continue // Skip the regular movie/show detection
+				}
+			}
+
 			name, year := config.ExtractNameAndYear(ni.Node.Name())
 			if name != "" {
 				// Check if it's a movie or show based on content

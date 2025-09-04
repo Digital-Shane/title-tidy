@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -217,4 +218,32 @@ func FindSeasonEpisodeIndex(filename string) int {
 	}
 
 	return earliestIndex
+}
+
+// ExtractShowNameFromPath extracts show name and year from a file or folder path
+// by finding where the season/episode pattern starts and cleaning everything before it.
+// This is moved here from cmd package to avoid import cycles.
+func ExtractShowNameFromPath(path string, removeExtension bool) (showName, year string) {
+	workingPath := path
+
+	// Remove extension if needed (for files)
+	if removeExtension {
+		ext := ExtractExtension(path)
+		if ext != "" {
+			workingPath = path[:len(path)-len(ext)]
+		}
+	}
+
+	// Find where the season/episode pattern starts
+	if idx := FindSeasonEpisodeIndex(workingPath); idx > 0 {
+		// Extract everything before the pattern
+		showPart := workingPath[:idx]
+		// ExtractNameAndYear handles all the complex parsing
+		showName, year = config.ExtractNameAndYear(showPart)
+	} else {
+		// No pattern found, just clean the whole name
+		showName, year = config.ExtractNameAndYear(workingPath)
+	}
+
+	return showName, year
 }

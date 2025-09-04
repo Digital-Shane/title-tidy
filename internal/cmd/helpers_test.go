@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/treeview"
 	"github.com/google/go-cmp/cmp"
@@ -56,12 +57,12 @@ func TestExtractShowNameFromPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotShow, gotYear := extractShowNameFromPath(tt.path, tt.removeExtension)
+			gotShow, gotYear := media.ExtractShowNameFromPath(tt.path, tt.removeExtension)
 			if gotShow != tt.wantShow {
-				t.Errorf("extractShowNameFromPath(%q, %v) show = %q, want %q", tt.path, tt.removeExtension, gotShow, tt.wantShow)
+				t.Errorf("media.ExtractShowNameFromPath(%q, %v) show = %q, want %q", tt.path, tt.removeExtension, gotShow, tt.wantShow)
 			}
 			if gotYear != tt.wantYear {
-				t.Errorf("extractShowNameFromPath(%q, %v) year = %q, want %q", tt.path, tt.removeExtension, gotYear, tt.wantYear)
+				t.Errorf("media.ExtractShowNameFromPath(%q, %v) year = %q, want %q", tt.path, tt.removeExtension, gotYear, tt.wantYear)
 			}
 		})
 	}
@@ -309,12 +310,12 @@ func TestExtractShowNameFromPath_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotShow, gotYear := extractShowNameFromPath(tt.path, tt.removeExtension)
+			gotShow, gotYear := media.ExtractShowNameFromPath(tt.path, tt.removeExtension)
 			if gotShow != tt.wantShow {
-				t.Errorf("extractShowNameFromPath(%q, %v) show = %q, want %q", tt.path, tt.removeExtension, gotShow, tt.wantShow)
+				t.Errorf("media.ExtractShowNameFromPath(%q, %v) show = %q, want %q", tt.path, tt.removeExtension, gotShow, tt.wantShow)
 			}
 			if gotYear != tt.wantYear {
-				t.Errorf("extractShowNameFromPath(%q, %v) year = %q, want %q", tt.path, tt.removeExtension, gotYear, tt.wantYear)
+				t.Errorf("media.ExtractShowNameFromPath(%q, %v) year = %q, want %q", tt.path, tt.removeExtension, gotYear, tt.wantYear)
 			}
 		})
 	}
