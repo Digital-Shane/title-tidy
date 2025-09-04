@@ -33,7 +33,7 @@ var EpisodesCommand = CommandConfig{
 			}
 
 			// Extract show name from filename
-			showName, year := extractShowNameFromPath(ni.Node.Name(), true)
+			showName, year := media.ExtractShowNameFromPath(ni.Node.Name(), true)
 
 			// Get pre-fetched metadata if available
 			var meta *provider.EnrichedMetadata

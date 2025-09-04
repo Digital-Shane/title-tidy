@@ -10,33 +10,6 @@ import (
 	"github.com/Digital-Shane/treeview"
 )
 
-// extractShowNameFromPath extracts show name and year from a file or folder path
-// by finding where the season/episode pattern starts and cleaning everything before it
-func extractShowNameFromPath(path string, removeExtension bool) (showName, year string) {
-	workingPath := path
-
-	// Remove extension if needed (for files)
-	if removeExtension {
-		ext := media.ExtractExtension(path)
-		if ext != "" {
-			workingPath = path[:len(path)-len(ext)]
-		}
-	}
-
-	// Find where the season/episode pattern starts
-	if idx := media.FindSeasonEpisodeIndex(workingPath); idx > 0 {
-		// Extract everything before the pattern
-		showPart := workingPath[:idx]
-		// ExtractNameAndYear handles all the complex parsing
-		showName, year = config.ExtractNameAndYear(showPart)
-	} else {
-		// No pattern found, just clean the whole name
-		showName, year = config.ExtractNameAndYear(workingPath)
-	}
-
-	return showName, year
-}
-
 // fetchMetadata searches for metadata from TMDB (supports both shows and movies)
 func fetchMetadata(tmdbProvider *provider.TMDBProvider, name, year string, isMovie bool) *provider.EnrichedMetadata {
 	if tmdbProvider == nil || name == "" {

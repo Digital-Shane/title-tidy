@@ -27,6 +27,50 @@ func testNewTree(nodes ...*treeview.Node[treeview.FileInfo]) *treeview.Tree[tree
 	return treeview.NewTree(nodes)
 }
 
+func TestMetadataProgressModel_EpisodesAtDepth0(t *testing.T) {
+	// Create episode files at depth 0 (as in episodes command)
+	episode1 := testNewFileNode("the.show.title.s01e01.episode.one.mkv")
+	episode2 := testNewFileNode("the.show.title.s01e02.episode.two.mkv")
+
+	tree := testNewTree(episode1, episode2)
+
+	// Create model
+	cfg := &config.FormatConfig{
+		EnableTMDBLookup: false,
+	}
+	model := NewMetadataProgressModel(tree, cfg)
+
+	// Collect metadata items
+	items := model.collectMetadataItems()
+
+	// Should have detected show and episodes
+	expectedKeys := map[string]bool{
+		"show:the show title:":        true, // Empty year has one colon
+		"episode:the show title::1:1": true,
+		"episode:the show title::1:2": true,
+	}
+
+	foundKeys := make(map[string]bool)
+	for _, item := range items {
+		foundKeys[item.Key] = true
+		t.Logf("Found key: %q (IsMovie: %v)", item.Key, item.IsMovie)
+	}
+
+	for key := range expectedKeys {
+		if !foundKeys[key] {
+			t.Errorf("Expected metadata key %q not found", key)
+			t.Logf("Available keys: %v", foundKeys)
+		}
+	}
+
+	// Should NOT have movie keys
+	for _, item := range items {
+		if item.IsMovie {
+			t.Errorf("Episode file incorrectly classified as movie: %s", item.Key)
+		}
+	}
+}
+
 func TestMetadataProgressModel_OrganizeItemsByPhase(t *testing.T) {
 	// Create a test tree structure
 	showNode := testNewDirNode("Breaking Bad (2008)")

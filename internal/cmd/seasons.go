@@ -34,7 +34,7 @@ var SeasonsCommand = CommandConfig{
 				}
 
 				// Extract show name from the season folder name
-				showName, year := extractShowNameFromPath(ni.Node.Name(), false)
+				showName, year := media.ExtractShowNameFromPath(ni.Node.Name(), false)
 
 				// Store for episodes to use
 				seasonShowName = showName
