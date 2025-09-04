@@ -84,6 +84,11 @@ func IsImage(filename string) bool {
 	return imageRe.MatchString(filename)
 }
 
+// IsSample reports whether filename or folder name contains "sample".
+func IsSample(name string) bool {
+	return strings.Contains(strings.ToLower(name), "sample")
+}
+
 // extractSubtitleSuffix extracts the language code and extension from subtitle files.
 // For example: "movie.en.srt" returns ".en.srt", "movie.srt" returns ".srt"
 // Also handles cases like "movie.eng.srt", "movie.en-US.srt", etc.

@@ -112,6 +112,7 @@ type RenameModel struct {
 	IsMovieMode      bool
 	DeleteNFO        bool
 	DeleteImages     bool
+	DeleteSamples    bool
 	IsLinkMode       bool
 	LinkPath         string
 

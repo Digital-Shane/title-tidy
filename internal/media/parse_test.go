@@ -55,6 +55,28 @@ func TestIsSubtitle(t *testing.T) {
 	}
 }
 
+func TestIsSample(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"sample.mkv", true},
+		{"Movie.Sample.mp4", true},
+		{"SAMPLE-video.avi", true},
+		{"Samples", true},
+		{"movie-sample", true},
+		{"regular.mkv", false},
+		{"example.txt", false},
+		{"sampling.doc", false},
+	}
+	for _, tc := range tests {
+		if got := IsSample(tc.in); got != tc.want {
+			t.Errorf("IsSample(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestExtractSubtitleSuffix(t *testing.T) {
 	t.Parallel()
 	tests := []struct{ in, want string }{

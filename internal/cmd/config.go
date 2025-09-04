@@ -27,19 +27,21 @@ import (
 //   - InstantMode: apply renames immediately without interactive preview.
 //   - DeleteNFO: mark NFO files for deletion during rename.
 //   - DeleteImages: mark image files for deletion during rename.
+//   - DeleteSamples: mark sample media files and folders for deletion during rename.
 type CommandConfig struct {
-	maxDepth     int
-	includeDirs  bool
-	preprocess   func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
-	annotate     func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, string, map[string]*provider.EnrichedMetadata)
-	movieMode    bool
-	InstantMode  bool
-	DeleteNFO    bool
-	DeleteImages bool
-	Config       *config.FormatConfig
-	LinkPath     string
-	Command      string
-	CommandArgs  []string
+	maxDepth      int
+	includeDirs   bool
+	preprocess    func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
+	annotate      func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, string, map[string]*provider.EnrichedMetadata)
+	movieMode     bool
+	InstantMode   bool
+	DeleteNFO     bool
+	DeleteImages  bool
+	DeleteSamples bool
+	Config        *config.FormatConfig
+	LinkPath      string
+	Command       string
+	CommandArgs   []string
 }
 
 func RunCommand(cfg CommandConfig) error {
@@ -97,13 +99,14 @@ func RunCommand(cfg CommandConfig) error {
 	}
 
 	// Mark files for deletion based on flags
-	MarkFilesForDeletion(t, cfg.DeleteNFO, cfg.DeleteImages)
+	MarkFilesForDeletion(t, cfg.DeleteNFO, cfg.DeleteImages, cfg.DeleteSamples)
 
 	// Create model
 	model := tui.NewRenameModel(t)
 	model.IsMovieMode = cfg.movieMode
 	model.DeleteNFO = cfg.DeleteNFO
 	model.DeleteImages = cfg.DeleteImages
+	model.DeleteSamples = cfg.DeleteSamples
 	model.LinkPath = cfg.LinkPath
 	model.IsLinkMode = cfg.LinkPath != ""
 	model.Command = cfg.Command
@@ -172,26 +175,30 @@ func UnwrapRoot(t *treeview.Tree[treeview.FileInfo]) []*treeview.Node[treeview.F
 	return ns
 }
 
-// MarkFilesForDeletion traverses the tree and marks NFO and/or image files for deletion
-func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, deleteImages bool) {
-	if !deleteNFO && !deleteImages {
+// MarkFilesForDeletion traverses the tree and marks NFO, image, and/or sample files for deletion
+func MarkFilesForDeletion(t *treeview.Tree[treeview.FileInfo], deleteNFO, deleteImages, deleteSamples bool) {
+	if !deleteNFO && !deleteImages && !deleteSamples {
 		return
 	}
 
 	for ni := range t.All(context.Background()) {
-		if ni.Node.Data().IsDir() {
-			continue
-		}
-
-		filename := ni.Node.Name()
+		name := ni.Node.Name()
 		shouldDelete := false
 
-		if deleteNFO && media.IsNFO(filename) {
+		// Handle sample files and folders
+		if deleteSamples && media.IsSample(name) {
 			shouldDelete = true
 		}
 
-		if deleteImages && media.IsImage(filename) {
-			shouldDelete = true
+		// Handle NFO and image files (only for non-directories)
+		if !ni.Node.Data().IsDir() {
+			if deleteNFO && media.IsNFO(name) {
+				shouldDelete = true
+			}
+
+			if deleteImages && media.IsImage(name) {
+				shouldDelete = true
+			}
 		}
 
 		if shouldDelete {

@@ -70,6 +70,7 @@ func main() {
 	flags.BoolVar(instant, "instant", false, "Apply renames immediately without interactive preview")
 	noNFO := flags.Bool("no-nfo", false, "Delete NFO files during rename")
 	noImages := flags.Bool("no-img", false, "Delete image files during rename")
+	noSamples := flags.Bool("no-sample", false, "Delete sample media files and folders during rename")
 	linkPath := flags.String("link", "", "Create hard links in destination instead of renaming in place")
 
 	// Parse remaining arguments after the command
@@ -95,6 +96,7 @@ func main() {
 	cfg.InstantMode = *instant
 	cfg.DeleteNFO = *noNFO
 	cfg.DeleteImages = *noImages
+	cfg.DeleteSamples = *noSamples
 	cfg.Config = formatConfig
 	cfg.LinkPath = *linkPath
 	cfg.Command = command
@@ -120,5 +122,6 @@ func printUsage() {
 	fmt.Printf("  -i, --instant          Apply renames immediately and exit\n")
 	fmt.Printf("  --no-nfo               Delete NFO files during rename\n")
 	fmt.Printf("  --no-img               Delete image files during rename\n")
+	fmt.Printf("  --no-sample            Delete sample media files and folders during rename\n")
 	fmt.Printf("  --link <path>          Create hard links in destination instead of renaming\n")
 }
