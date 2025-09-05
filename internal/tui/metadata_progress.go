@@ -233,18 +233,26 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 		// Start workers for this phase
 		var wg sync.WaitGroup
 
-		// Start worker goroutines
+		// Capture current channels by value to avoid race conditions
+		workCh := m.workCh
+		resultCh := m.resultCh
+
+		// Start worker goroutines with captured channel
 		for i := 0; i < m.workerCount; i++ {
 			wg.Add(1)
-			go m.metadataWorker(&wg, i)
+			go func(id int) {
+				defer wg.Done()
+				m.metadataWorker(workCh, resultCh, id)
+			}(i)
 		}
 
 		// Start result processor
 		resultDone := make(chan bool)
-		go m.processResults(resultDone)
+		go m.processResults(resultCh, resultDone)
 
-		// Send work items
-		go func() {
+		// Send work items and close channel when done
+		// This is now synchronous to avoid race conditions
+		func() {
 			for _, item := range phaseItems {
 				// Skip if already cached
 				m.metadataMu.RLock()
@@ -255,14 +263,14 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 				}
 				m.metadataMu.RUnlock()
 
-				m.workCh <- item
+				workCh <- item
 			}
-			close(m.workCh)
+			close(workCh)
 		}()
 
 		// Wait for all workers to complete
 		wg.Wait()
-		close(m.resultCh)
+		close(resultCh)
 
 		// Wait for result processor to finish
 		<-resultDone
@@ -278,10 +286,8 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 	m.msgCh <- metadataCompleteMsg{}
 }
 
-// metadataWorker processes items from the work channel
-func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int) {
-	defer wg.Done()
-
+// metadataWorker processes items from the provided work channel
+func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resultCh chan<- metadataResult, workerID int) {
 	// Update active workers count
 	m.workersMu.Lock()
 	m.activeWorkers++
@@ -293,7 +299,7 @@ func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int)
 		m.workersMu.Unlock()
 	}()
 
-	for item := range m.workCh {
+	for item := range workCh {
 		// Create descriptive progress message
 		var currentDesc string
 		if item.IsMovie {
@@ -349,7 +355,7 @@ func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int)
 		}
 
 		// Send result
-		m.resultCh <- metadataResult{
+		resultCh <- metadataResult{
 			item: item,
 			meta: meta,
 			err:  err,
@@ -357,9 +363,9 @@ func (m *MetadataProgressModel) metadataWorker(wg *sync.WaitGroup, workerID int)
 	}
 }
 
-// processResults handles results from workers
-func (m *MetadataProgressModel) processResults(done chan bool) {
-	for result := range m.resultCh {
+// processResults handles results from the provided result channel
+func (m *MetadataProgressModel) processResults(resultCh <-chan metadataResult, done chan bool) {
+	for result := range resultCh {
 		if result.meta != nil {
 			m.metadataMu.Lock()
 			m.metadata[result.item.Key] = result.meta
