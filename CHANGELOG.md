@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.8.2] - 2025-09-04
+### Fixed
+* channel race condition during metadata parsing
+
 ## [v1.8.1] - 2025-09-04
 ### Fixed
 * metadata progress loop confusing episodes for movies when running `title-tidy episodes`.

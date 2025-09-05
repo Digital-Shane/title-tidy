@@ -164,9 +164,9 @@ func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 
 	close(model.resultCh)
 
-	// Process results
+	// Process results using the channel-based method
 	done := make(chan bool)
-	go model.processResults(done)
+	go model.processResults(model.resultCh, done)
 	<-done
 
 	// Check metadata was stored
@@ -382,7 +382,11 @@ func TestMetadataWorker_ProcessesItems(t *testing.T) {
 	go func() {
 		var wg sync.WaitGroup
 		wg.Add(1)
-		model.metadataWorker(&wg, 0)
+		go func() {
+			defer wg.Done()
+			model.metadataWorker(model.workCh, model.resultCh, 0)
+		}()
+		wg.Wait()
 	}()
 
 	// Should receive a result
