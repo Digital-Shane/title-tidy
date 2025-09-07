@@ -142,7 +142,8 @@ func TestMoviePreprocess_DefensiveEmptyExtension(t *testing.T) {
 	video := testNewFileNode("movie.mkv")
 	nodes := []*treeview.Node[treeview.FileInfo]{nodeWithEmptyExt, video}
 
-	out := MoviePreprocess(nodes, config.DefaultConfig())
+	cfg := &CommandConfig{Config: config.DefaultConfig()}
+	out := MoviePreprocess(nodes, cfg)
 
 	// The file with no extension should be left alone or bundled
 	foundOriginal := false
@@ -170,7 +171,8 @@ func TestMoviePreprocess_SubtitleDefensiveEmptySuffix(t *testing.T) {
 	badSubtitle := testNewFileNode("movie.srt") // This should return empty suffix from ExtractSubtitleSuffix
 	nodes := []*treeview.Node[treeview.FileInfo]{video, badSubtitle}
 
-	out := MoviePreprocess(nodes, config.DefaultConfig())
+	cfg := &CommandConfig{Config: config.DefaultConfig()}
+	out := MoviePreprocess(nodes, cfg)
 
 	// Should create one virtual directory for the video
 	virtualCount := 0
@@ -204,5 +206,99 @@ func TestMovieAnnotate_ChildWithoutParentNewName(t *testing.T) {
 	childMeta := core.GetMeta(child)
 	if childMeta != nil && childMeta.Type == core.MediaMovieFile {
 		t.Errorf("MovieAnnotate should have skipped child when parent has no NewName")
+	}
+}
+
+func TestMoviePreprocess_NoDirectories(t *testing.T) {
+	tests := []struct {
+		name        string
+		filename    string
+		wantNewName string
+	}{
+		{
+			name:        "video file without directory",
+			filename:    "Test.Movie.2024.mkv",
+			wantNewName: "Test Movie (2024).mkv",
+		},
+		{
+			name:        "subtitle file without directory",
+			filename:    "Test.Movie.2024.en.srt",
+			wantNewName: "Test Movie (2024).en.srt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := testNewFileNode(tt.filename)
+			nodes := []*treeview.Node[treeview.FileInfo]{node}
+
+			cfg := &CommandConfig{
+				Config:        config.DefaultConfig(),
+				NoDirectories: true,
+			}
+			out := MoviePreprocess(nodes, cfg)
+
+			// Should return same nodes, not wrapped in virtual directories
+			if len(out) != 1 {
+				t.Fatalf("MoviePreprocess with NoDirectories = %d nodes, want 1", len(out))
+			}
+
+			// Check that metadata was applied directly to the file
+			meta := core.GetMeta(out[0])
+			if meta == nil {
+				t.Fatal("MoviePreprocess with NoDirectories didn't create metadata")
+			}
+			if meta.Type != core.MediaMovieFile {
+				t.Errorf("MoviePreprocess with NoDirectories Type = %v, want %v", meta.Type, core.MediaMovieFile)
+			}
+			if meta.NewName != tt.wantNewName {
+				t.Errorf("MoviePreprocess with NoDirectories NewName = %q, want %q", meta.NewName, tt.wantNewName)
+			}
+			// Should not be marked as virtual or needing directory
+			if meta.IsVirtual {
+				t.Error("MoviePreprocess with NoDirectories IsVirtual = true, want false")
+			}
+			if meta.NeedsDirectory {
+				t.Error("MoviePreprocess with NoDirectories NeedsDirectory = true, want false")
+			}
+		})
+	}
+}
+
+func TestMoviePreprocess_WithDirectories(t *testing.T) {
+	// Test that the default behavior still works (creating directories)
+	video := testNewFileNode("Test.Movie.2024.mkv")
+	subtitle := testNewFileNode("Test.Movie.2024.en.srt")
+	nodes := []*treeview.Node[treeview.FileInfo]{video, subtitle}
+
+	cfg := &CommandConfig{
+		Config:        config.DefaultConfig(),
+		NoDirectories: false, // Default: create directories
+	}
+	out := MoviePreprocess(nodes, cfg)
+
+	// Should create one virtual directory containing both files
+	if len(out) != 1 {
+		t.Fatalf("MoviePreprocess with directories = %d nodes, want 1", len(out))
+	}
+
+	// Check that it's a virtual directory
+	dirMeta := core.GetMeta(out[0])
+	if dirMeta == nil {
+		t.Fatal("MoviePreprocess with directories didn't create directory metadata")
+	}
+	if dirMeta.Type != core.MediaMovie {
+		t.Errorf("MoviePreprocess with directories Type = %v, want %v", dirMeta.Type, core.MediaMovie)
+	}
+	if !dirMeta.IsVirtual {
+		t.Error("MoviePreprocess with directories IsVirtual = false, want true")
+	}
+	if !dirMeta.NeedsDirectory {
+		t.Error("MoviePreprocess with directories NeedsDirectory = false, want true")
+	}
+
+	// Check that both files are children
+	if len(out[0].Children()) != 2 {
+		t.Errorf("MoviePreprocess with directories children = %d, want 2", len(out[0].Children()))
 	}
 }
