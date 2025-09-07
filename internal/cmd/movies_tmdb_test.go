@@ -113,7 +113,8 @@ func TestMovieRenameWithTMDB(t *testing.T) {
 				treeview.FileInfo{FileInfo: core.NewSimpleFileInfo("The.Matrix.1999.1080p.mkv", false)}),
 		}
 
-		result := MoviePreprocess(nodes, cfg)
+		cmdCfg := &CommandConfig{Config: cfg}
+		result := MoviePreprocess(nodes, cmdCfg)
 
 		if len(result) != 1 {
 			t.Errorf("MoviePreprocess() returned %d nodes, want 1", len(result))
@@ -203,7 +204,8 @@ func TestMovieRenameWithoutTMDB(t *testing.T) {
 			treeview.FileInfo{FileInfo: core.NewSimpleFileInfo("Inception.2010.BluRay.mkv", false)}),
 	}
 
-	result := MoviePreprocess(nodes, cfg)
+	cmdCfg := &CommandConfig{Config: cfg}
+	result := MoviePreprocess(nodes, cmdCfg)
 
 	if len(result) != 1 {
 		t.Errorf("MoviePreprocess() without TMDB returned %d nodes, want 1", len(result))

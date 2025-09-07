@@ -28,16 +28,18 @@ import (
 //   - DeleteNFO: mark NFO files for deletion during rename.
 //   - DeleteImages: mark image files for deletion during rename.
 //   - DeleteSamples: mark sample media files and folders for deletion during rename.
+//   - NoDirectories: for movies command, don't create directories (keep files in place).
 type CommandConfig struct {
 	maxDepth      int
 	includeDirs   bool
-	preprocess    func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
+	preprocess    func([]*treeview.Node[treeview.FileInfo], *CommandConfig) []*treeview.Node[treeview.FileInfo]
 	annotate      func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, string, map[string]*provider.EnrichedMetadata)
 	movieMode     bool
 	InstantMode   bool
 	DeleteNFO     bool
 	DeleteImages  bool
 	DeleteSamples bool
+	NoDirectories bool
 	Config        *config.FormatConfig
 	LinkPath      string
 	Command       string
@@ -71,7 +73,7 @@ func RunCommand(cfg CommandConfig) error {
 	// 2. Prepare nodes
 	nodes := UnwrapRoot(t)
 	if cfg.preprocess != nil {
-		nodes = cfg.preprocess(nodes, cfg.Config)
+		nodes = cfg.preprocess(nodes, &cfg)
 	}
 
 	// 3. Rebuild application tree with provider and expansion.

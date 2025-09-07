@@ -24,7 +24,47 @@ var MoviesCommand = CommandConfig{
 // virtual directories, so they can be materialized atomically during rename.
 // Matching for subtitles: the filename prefix before language + subtitle suffix must
 // exactly match the video filename without its extension.
-func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.FormatConfig) []*treeview.Node[treeview.FileInfo] {
+// If NoDirectories is true, movie files are renamed in place without creating directories.
+func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *CommandConfig) []*treeview.Node[treeview.FileInfo] {
+	// If NoDirectories is set, don't create virtual directories
+	if cfg.NoDirectories {
+		// Just annotate movie files without bundling them into directories
+		for _, n := range nodes {
+			if n.Data().IsDir() {
+				continue
+			}
+			if media.IsVideo(n.Name()) {
+				m := core.EnsureMeta(n)
+				m.Type = core.MediaMovieFile
+
+				// Extract year if present for movie formatting
+				base := n.Name()
+				if ext := media.ExtractExtension(base); ext != "" {
+					base = base[:len(base)-len(ext)]
+				}
+				formatted, year := config.ExtractNameAndYear(base)
+
+				// Apply movie template directly to the file
+				ctx := createFormatContext(cfg.Config, "", formatted, year, 0, 0, nil)
+				m.NewName = cfg.Config.ApplyMovieTemplate(ctx) + media.ExtractExtension(n.Name())
+			} else if media.IsSubtitle(n.Name()) {
+				// For subtitles, use the base name matching logic
+				m := core.EnsureMeta(n)
+				m.Type = core.MediaMovieFile
+
+				suffix := media.ExtractExtension(n.Name())
+				base := n.Name()[:len(n.Name())-len(suffix)]
+				formatted, year := config.ExtractNameAndYear(base)
+
+				// Apply movie template to subtitle
+				ctx := createFormatContext(cfg.Config, "", formatted, year, 0, 0, nil)
+				m.NewName = cfg.Config.ApplyMovieTemplate(ctx) + suffix
+			}
+		}
+		return nodes
+	}
+
+	// Original bundling logic for when directories are desired
 	type bundle struct {
 		dir *treeview.Node[treeview.FileInfo]
 	}
@@ -48,8 +88,8 @@ func MoviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 			// Extract year if present for movie formatting
 			formatted, year := config.ExtractNameAndYear(base)
 			// Apply basic movie template (metadata will be applied later in annotate)
-			ctx := createFormatContext(cfg, "", formatted, year, 0, 0, nil)
-			vm.NewName = cfg.ApplyMovieTemplate(ctx)
+			ctx := createFormatContext(cfg.Config, "", formatted, year, 0, 0, nil)
+			vm.NewName = cfg.Config.ApplyMovieTemplate(ctx)
 
 			vm.IsVirtual = true
 			vm.NeedsDirectory = true

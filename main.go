@@ -73,6 +73,12 @@ func main() {
 	noSamples := flags.Bool("no-sample", false, "Delete sample media files and folders during rename")
 	linkPath := flags.String("link", "", "Create hard links in destination instead of renaming in place")
 
+	// Movie-specific flag
+	var noDir *bool
+	if command == "movies" {
+		noDir = flags.Bool("no-dir", false, "Don't create directories for movies (keep files in current location)")
+	}
+
 	// Parse remaining arguments after the command
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		fmt.Printf("Error parsing flags: %v\n", err)
@@ -102,6 +108,11 @@ func main() {
 	cfg.Command = command
 	cfg.CommandArgs = os.Args[2:]
 
+	// Set movie-specific flag if applicable
+	if command == "movies" && noDir != nil {
+		cfg.NoDirectories = *noDir
+	}
+
 	if err := cmd.RunCommand(cfg); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -124,4 +135,5 @@ func printUsage() {
 	fmt.Printf("  --no-img               Delete image files during rename\n")
 	fmt.Printf("  --no-sample            Delete sample media files and folders during rename\n")
 	fmt.Printf("  --link <path>          Create hard links in destination instead of renaming\n")
+	fmt.Printf("  --no-dir               Don't create directories for movies (movies command only)\n")
 }
