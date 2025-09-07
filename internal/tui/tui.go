@@ -39,43 +39,6 @@ type MetadataCompleteMsg struct {
 	Errors int
 }
 
-// Icon sets for different terminal capabilities
-var (
-	// High-quality emoji icons (for modern terminals)
-	emojiIcons = map[string]string{
-		"stats":      "📊",
-		"tv":         "📺",
-		"movie":      "🎬",
-		"seasons":    "📁",
-		"episodes":   "🎬",
-		"video":      "🎥",
-		"subtitles":  "📄",
-		"needrename": "✓",
-		"nochange":   "=",
-		"delete":     "❌",
-		"success":    "✅",
-		"error":      "❌",
-		"arrows":     "↑↓←→",
-	}
-
-	// ASCII fallback (always works)
-	asciiIcons = map[string]string{
-		"stats":      "[*]",
-		"tv":         "[TV]",
-		"movie":      "[M]",
-		"seasons":    "[D]",
-		"episodes":   "[E]",
-		"video":      "[V]",
-		"subtitles":  "[S]",
-		"needrename": "[+]",
-		"nochange":   "[=]",
-		"delete":     "[x]",
-		"success":    "[v]",
-		"error":      "[!]",
-		"arrows":     "^v<>",
-	}
-)
-
 // Cached base styles (applied with dynamic Width each render) to avoid
 // re-allocating identical style pipelines on every View() call.
 var (
@@ -181,12 +144,7 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo]) *RenameModel {
 
 // detectTerminalCapabilities determines what icons to use based on terminal and environment
 func (m *RenameModel) detectTerminalCapabilities() {
-	// Check if we're in SSH or windows
-	if isLimitedTerminal() {
-		m.iconSet = asciiIcons
-	} else {
-		m.iconSet = emojiIcons
-	}
+	m.iconSet = SelectIcons()
 }
 
 // getIcon returns the appropriate icon for the current terminal
@@ -195,7 +153,7 @@ func (m *RenameModel) getIcon(iconType string) string {
 		return icon
 	}
 	// Fallback to ASCII if icon not found
-	return asciiIcons[iconType]
+	return ASCIIIcons[iconType]
 }
 
 // CalculateLayout recomputes panel dimensions from current window size.

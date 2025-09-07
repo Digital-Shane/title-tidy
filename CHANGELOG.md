@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [v1.9.0] - 2025-09-07
+### Updated
+* Consolidate icon sets for all uis.
 ### Added
 * New option to prevent the movies command from creating directories for movie files.
 
