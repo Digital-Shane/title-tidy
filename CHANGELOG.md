@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.8.3] - 2025-09-07
+### Added
+* New release pipeline for those that want to download executables. 
+
 ## [v1.8.2] - 2025-09-04
 ### Fixed
 * channel race condition during metadata parsing

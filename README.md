@@ -25,6 +25,7 @@ Green items indicate pending changes. You can navigate through the list and appl
 - [Logging](#logging)
 - [Installation](#installation)
   - [Go Install (Recommended)](#go-install)
+  - [Binary Release](#binary-release)
   - [Docker](#docker)
 - [Built With](#built-with)
 - [Contributing](#contributing)
@@ -300,6 +301,16 @@ Once Go is installed, you can install Title Tidy with a single command:
 
 ```bash
 go install github.com/Digital-Shane/title-tidy@latest
+```
+
+### Binary Release
+
+Download pre-built binaries from the [releases page](https://github.com/Digital-Shane/title-tidy/releases).
+
+**Note:** On macOS, you'll need to bypass Gatekeeper since the binaries aren't signed:
+```bash
+# After downloading, remove quarantine attribute
+xattr -d com.apple.quarantine title-tidy
 ```
 
 ### Docker
