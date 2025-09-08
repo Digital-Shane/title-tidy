@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"runtime"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/media"
@@ -24,37 +22,6 @@ var (
 	// State colors (2 colors)
 	colorSuccess = lipgloss.Color("#5dc796") // Success operations
 	colorError   = lipgloss.Color("#f04c56") // Error states
-)
-
-// Tree icon sets for different terminal capabilities
-var (
-	// Emoji icons for tree items (modern terminals)
-	treeEmojiIcons = map[string]string{
-		"success":   "✅",
-		"error":     "❌",
-		"delete":    "❌",
-		"virtual":   "➕",
-		"show":      "📺",
-		"season":    "📁",
-		"episode":   "🎬",
-		"movie":     "🎬",
-		"moviefile": "🎥",
-		"default":   "📄",
-	}
-
-	// ASCII icons for tree items (SSH-safe)
-	treeAsciiIcons = map[string]string{
-		"success":   "[v]",
-		"error":     "[!]",
-		"delete":    "[x]",
-		"virtual":   "[+]",
-		"show":      "[TV]",
-		"season":    "[S]",
-		"episode":   "[E]",
-		"movie":     "[M]",
-		"moviefile": "[F]",
-		"default":   "[ ]",
-	}
 )
 
 // ---- predicate helpers ----
@@ -110,34 +77,7 @@ func deletionError() func(*treeview.Node[treeview.FileInfo]) bool {
 
 // selectTreeIconSet chooses the best icon set for tree items based on terminal capabilities
 func selectTreeIconSet() map[string]string {
-	// Use ASCII icons for SSH sessions or Windows (PowerShell has poor emoji support)
-	if isLimitedTerminal() {
-		return treeAsciiIcons
-	}
-
-	return treeEmojiIcons
-}
-
-// isLimitedTerminal detects environments where ASCII icons are better than emoji
-func isLimitedTerminal() bool {
-	// SSH sessions typically have limited emoji support
-	if isSshSession() {
-		return true
-	}
-
-	// Windows terminals (especially PowerShell) often render emoji poorly
-	if runtime.GOOS == "windows" {
-		return true
-	}
-
-	return false
-}
-
-func isSshSession() bool {
-	return os.Getenv("SSH_CLIENT") != "" ||
-		os.Getenv("SSH_TTY") != "" ||
-		os.Getenv("SSH_CONNECTION") != "" ||
-		os.Getenv("SSH_CLIENT") != ""
+	return SelectIcons()
 }
 
 // CreateRenameProvider constructs the [treeview.DefaultNodeProvider] used by

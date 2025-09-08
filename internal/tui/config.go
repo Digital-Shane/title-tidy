@@ -13,47 +13,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Icon sets for different terminal capabilities in config UI
-var (
-	// Emoji icons for config UI (modern terminals)
-	configEmojiIcons = map[string]string{
-		"title":    "📺",
-		"check":    "✓",
-		"folder":   "📁",
-		"episode":  "🎬",
-		"movie":    "🎭",
-		"calendar": "📅",
-		"document": "📄",
-		"key":      "🔑",
-		"globe":    "🌐",
-		"chart":    "📊",
-		"film":     "🎬",
-	}
-
-	// ASCII icons for config UI (SSH/Windows-safe)
-	configAsciiIcons = map[string]string{
-		"title":    "[TV]",
-		"check":    "[v]",
-		"folder":   "[D]",
-		"episode":  "[E]",
-		"movie":    "[M]",
-		"calendar": "[C]",
-		"document": "[F]",
-		"key":      "[K]",
-		"globe":    "[G]",
-		"chart":    "[#]",
-		"film":     "[F]",
-	}
-)
-
 // selectConfigIcons chooses the best icon set for the config UI
 func selectConfigIcons() map[string]string {
-	// Use ASCII icons for SSH sessions or Windows (PowerShell has poor emoji support)
-	if isLimitedTerminal() {
-		return configAsciiIcons
-	}
-
-	return configEmojiIcons
+	return SelectIcons()
 }
 
 // scrollTickMsg is sent periodically to enable auto-scrolling

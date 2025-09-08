@@ -38,11 +38,7 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *UndoModel {
 	}
 
 	// Detect terminal capabilities for icons
-	if isLimitedTerminal() {
-		m.iconSet = asciiIcons
-	} else {
-		m.iconSet = emojiIcons
-	}
+	m.iconSet = SelectIcons()
 
 	// Create underlying TUI model with same pattern as RenameModel
 	keyMap := treeview.DefaultKeyMap()
@@ -479,7 +475,7 @@ func (m *UndoModel) getIcon(iconType string) string {
 	if icon, exists := m.iconSet[iconType]; exists {
 		return icon
 	}
-	return asciiIcons[iconType]
+	return ASCIIIcons[iconType]
 }
 
 // formatOperation formats a single operation for display
@@ -579,30 +575,4 @@ func (m *UndoModel) performUndo(summary log.SessionSummary) tea.Cmd {
 		successful, failed, _ := log.UndoSession(summary.Session)
 		return UndoCompleteMsg{successCount: successful, errorCount: failed}
 	}
-}
-
-// Add some additional icon mappings
-func init() {
-	// Ensure we have icons for operations
-	if asciiIcons == nil {
-		asciiIcons = make(map[string]string)
-	}
-	if emojiIcons == nil {
-		emojiIcons = make(map[string]string)
-	}
-
-	// Add operation-specific icons
-	asciiIcons["check"] = "[✓]"
-	asciiIcons["error"] = "[✗]"
-	asciiIcons["link"] = "[→]"
-	asciiIcons["delete"] = "[x]"
-	asciiIcons["folder"] = "[D]"
-	asciiIcons["unknown"] = "[?]"
-
-	emojiIcons["check"] = "✅"
-	emojiIcons["error"] = "❌"
-	emojiIcons["link"] = "🔗"
-	emojiIcons["delete"] = "❌"
-	emojiIcons["folder"] = "📁"
-	emojiIcons["unknown"] = "❓"
 }
