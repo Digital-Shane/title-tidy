@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Updated
+* All command to use cobra for processing
+### Removed
+* Coverage check in prep for moving toward integration testing
 
 ## [v1.9.0] - 2025-09-07
 ### Updated

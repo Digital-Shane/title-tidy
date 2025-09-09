@@ -482,8 +482,6 @@ func TestDeleteFilesMode(t *testing.T) {
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{n},
 		treeview.WithProvider(CreateRenameProvider()))
 	m := NewRenameModel(tree)
-	m.DeleteNFO = true
-	m.DeleteImages = true
 
 	// Should not affect other counts since files marked for deletion
 	// are handled differently in statistics

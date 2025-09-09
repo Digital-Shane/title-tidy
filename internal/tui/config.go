@@ -151,7 +151,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.variablesView.GotoTop()
 				} else {
 					// Scroll down by 1 config item
-					m.variablesView.LineDown(4)
+					m.variablesView.ScrollDown(4)
 				}
 			}
 		}
@@ -212,7 +212,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Manual scroll up in variables view
 			m.scrollPaused = true
-			m.variablesView.LineUp(1)
+			m.variablesView.ScrollUp(1)
 			// Resume auto-scroll after a delay
 			go func() {
 				time.Sleep(3 * time.Second)
@@ -241,7 +241,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Manual scroll down in variables view
 			m.scrollPaused = true
-			m.variablesView.LineDown(1)
+			m.variablesView.ScrollDown(1)
 			// Resume auto-scroll after a delay
 			go func() {
 				time.Sleep(3 * time.Second)
@@ -448,7 +448,7 @@ func (m *Model) View() string {
 	tabStyle := lipgloss.NewStyle().
 		Padding(0, 2)
 
-	activeTabStyle := tabStyle.Copy().
+	activeTabStyle := tabStyle.
 		Bold(true).
 		Foreground(lipgloss.Color("#7c3aed"))
 
