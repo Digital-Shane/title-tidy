@@ -10,130 +10,110 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/util"
 	"github.com/Digital-Shane/treeview"
+	"github.com/spf13/cobra"
 )
 
-var ShowsCommand = CommandConfig{
-	maxDepth:    3,
-	includeDirs: true,
-	annotate: func(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, linkPath string, metadata map[string]*provider.EnrichedMetadata) {
-		// Track parent paths for building destination hierarchy
-		parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
+var showsCmd = &cobra.Command{
+	Use:   "shows",
+	Short: "Rename TV show files and folders",
+	Long: `Rename TV show directories with their seasons and episodes.
+	
+This command processes complete TV show hierarchies, renaming show folders,
+season folders, and episode files according to your configured format.`,
+	RunE: runShowsCommand,
+}
 
-		// Track show metadata for reuse in seasons/episodes
-		showMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.EnrichedMetadata)
+func runShowsCommand(cmd *cobra.Command, args []string) error {
+	return RunMediaCommand(cmd, CommandConfig{
+		CommandName:   "shows",
+		MaxDepth:      3,
+		IncludeDirs:   true,
+		TreeAnnotator: annotateShowsTree,
+	})
+}
 
-		// Use BreadthFirst to process shows first, then seasons, then episodes
-		for ni := range t.BreadthFirst(context.Background()) {
-			m := core.EnsureMeta(ni.Node)
-			switch ni.Depth {
-			case 0: // Shows
-				m.Type = core.MediaShow
-				// Extract name and year from original filename
-				showName, year := config.ExtractNameAndYear(ni.Node.Name())
-				if showName == "" {
-					continue
+func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.EnrichedMetadata) {
+	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
+	showMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.EnrichedMetadata)
+
+	for ni := range t.BreadthFirst(context.Background()) {
+		m := core.EnsureMeta(ni.Node)
+		switch ni.Depth {
+		case 0: // Shows
+			m.Type = core.MediaShow
+			showName, year := config.ExtractNameAndYear(ni.Node.Name())
+			if showName == "" {
+				continue
+			}
+
+			var meta *provider.EnrichedMetadata
+			if metadata != nil {
+				key := util.GenerateMetadataKey("show", showName, year, 0, 0)
+				meta = metadata[key]
+			}
+
+			ctx := createFormatContext(cfg, showName, "", year, 0, 0, meta)
+			m.NewName = cfg.ApplyShowFolderTemplate(ctx)
+
+			if meta != nil {
+				showMetadata[ni.Node] = meta
+			}
+
+			if linkPath != "" {
+				parentPaths[ni.Node] = linkPath
+			}
+
+		case 1: // Seasons
+			m.Type = core.MediaSeason
+			seasonNumber, found := media.ExtractSeasonNumber(ni.Node.Name())
+			if !found {
+				continue
+			}
+
+			var showName string
+			var year string
+			var meta *provider.EnrichedMetadata
+			if ni.Node.Parent() != nil {
+				showName, year = config.ExtractNameAndYear(ni.Node.Parent().Name())
+				meta = showMetadata[ni.Node.Parent()]
+			}
+
+			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, 0, meta)
+			m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
+
+			if linkPath != "" {
+				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
+					parentPaths[ni.Node] = filepath.Join(parentPath, m.NewName)
 				}
+			}
 
-				// Get pre-fetched metadata if available
-				var meta *provider.EnrichedMetadata
-				if metadata != nil {
-					key := util.GenerateMetadataKey("show", showName, year, 0, 0)
-					meta = metadata[key]
-				}
+		case 2: // Episodes
+			m.Type = core.MediaEpisode
+			seasonNumber, episodeNumber, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
+			if !found || seasonNumber == 0 || episodeNumber == 0 {
+				continue
+			}
 
-				// Apply show rename with metadata
-				ctx := createFormatContext(cfg, showName, "", year, 0, 0, meta)
-				m.NewName = cfg.ApplyShowFolderTemplate(ctx)
+			var showName string
+			var year string
+			var meta *provider.EnrichedMetadata
+			if ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
+				showName, year = config.ExtractNameAndYear(ni.Node.Parent().Parent().Name())
+				meta = showMetadata[ni.Node.Parent().Parent()]
+			}
 
-				// Store metadata for children
-				if meta != nil {
-					showMetadata[ni.Node] = meta
-				}
+			ctx := createFormatContext(cfg, showName, ni.Node.Name(), year, seasonNumber, episodeNumber, meta)
+			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + media.ExtractExtension(ni.Node.Name())
 
-				// Set destination path if linking
-				if linkPath != "" {
-					m.DestinationPath = filepath.Join(linkPath, m.NewName)
-					parentPaths[ni.Node] = m.DestinationPath
-				}
-
-			case 1: // Seasons
-				m.Type = core.MediaSeason
-				// Get show context from parent show node
-				var showName, year string
-				var parentMetadata *provider.EnrichedMetadata
-				if showNode := ni.Node.Parent(); showNode != nil {
-					showName, year = config.ExtractNameAndYear(showNode.Name())
-					parentMetadata = showMetadata[showNode]
-				}
-
-				// Extract season number from directory name
-				season, found := media.ExtractSeasonNumber(ni.Node.Name())
-				if !found {
-					continue
-				}
-
-				// Get pre-fetched season metadata if available
-				var meta *provider.EnrichedMetadata
-				if metadata != nil {
-					key := util.GenerateMetadataKey("season", showName, year, season, 0)
-					meta = metadata[key]
-					if meta == nil && parentMetadata != nil {
-						// Fall back to show metadata if season not found
-						meta = parentMetadata
-					}
-				}
-
-				// Apply season rename with metadata
-				ctx := createFormatContext(cfg, showName, "", year, season, 0, meta)
-				m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
-
-				// Set destination path if linking
-				if linkPath != "" && ni.Node.Parent() != nil {
-					parentPath := parentPaths[ni.Node.Parent()]
-					if parentPath != "" {
-						m.DestinationPath = filepath.Join(parentPath, m.NewName)
-						parentPaths[ni.Node] = m.DestinationPath
-					}
-				}
-
-			case 2: // Episodes
-				m.Type = core.MediaEpisode
-				// Get show context from grandparent show node
-				var showName, year string
-				if seasonNode := ni.Node.Parent(); seasonNode != nil {
-					if showNode := seasonNode.Parent(); showNode != nil {
-						showName, year = config.ExtractNameAndYear(showNode.Name())
-					}
-				}
-
-				// Parse season/episode from filename
-				season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
-				if !found {
-					continue
-				}
-
-				// Get pre-fetched episode metadata if available
-				var meta *provider.EnrichedMetadata
-				if metadata != nil {
-					key := util.GenerateMetadataKey("episode", showName, year, season, episode)
-					meta = metadata[key]
-				}
-
-				// Preserve file extension
-				ext := media.ExtractExtension(ni.Node.Name())
-
-				// Apply episode rename with metadata
-				ctx := createFormatContext(cfg, showName, "", year, season, episode, meta)
-				m.NewName = cfg.ApplyEpisodeTemplate(ctx) + ext
-
-				// Set destination path if linking
-				if linkPath != "" && ni.Node.Parent() != nil {
-					parentPath := parentPaths[ni.Node.Parent()]
-					if parentPath != "" {
-						m.DestinationPath = filepath.Join(parentPath, m.NewName)
-					}
+			if linkPath != "" {
+				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
+					m.DestinationPath = parentPath
 				}
 			}
 		}
-	},
+	}
+}
+
+func init() {
+	rootCmd.AddCommand(showsCmd)
 }

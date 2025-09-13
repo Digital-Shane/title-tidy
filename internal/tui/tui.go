@@ -73,9 +73,6 @@ type RenameModel struct {
 	width            int
 	height           int
 	IsMovieMode      bool
-	DeleteNFO        bool
-	DeleteImages     bool
-	DeleteSamples    bool
 	IsLinkMode       bool
 	LinkPath         string
 

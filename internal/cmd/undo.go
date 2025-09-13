@@ -7,11 +7,20 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
 )
 
-// RunUndoCommand handles the undo subcommand
-func RunUndoCommand() error {
-	// Get session summaries for display
+var undoCmd = &cobra.Command{
+	Use:   "undo",
+	Short: "Undo recent rename operations",
+	Long: `Display recent rename operations and allow selective undo.
+	
+This command shows a list of previous rename sessions that can be undone,
+allowing you to reverse changes made by title-tidy.`,
+	RunE: runUndoCommand,
+}
+
+func runUndoCommand(cmd *cobra.Command, args []string) error {
 	summaries, err := log.GetSessionSummaries()
 	if err != nil {
 		return fmt.Errorf("failed to read log sessions: %w", err)
@@ -25,24 +34,24 @@ func RunUndoCommand() error {
 	sessionNodes := make([]*treeview.Node[log.SessionSummary], 0, len(summaries))
 
 	for _, summary := range summaries {
-		// Create a node name with key session info
 		nodeName := fmt.Sprintf("%s %s - %s (%d ops)",
 			summary.Icon,
 			summary.Session.Metadata.CommandArgs[0],
 			summary.RelativeTime,
 			summary.Session.Metadata.TotalOps)
 
-		// Store the entire SessionSummary in the node
 		node := treeview.NewNode(summary.Session.Metadata.SessionID, nodeName, summary)
 		sessionNodes = append(sessionNodes, node)
 	}
 
-	// Create tree with SessionSummary as the generic type
 	tree := treeview.NewTree(sessionNodes)
 	model := tui.NewUndoModel(tree)
 
-	// Launch the TUI
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
+}
+
+func init() {
+	rootCmd.AddCommand(undoCmd)
 }
