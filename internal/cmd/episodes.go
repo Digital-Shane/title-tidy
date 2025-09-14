@@ -40,12 +40,10 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 		m := core.EnsureMeta(ni.Node)
 		m.Type = core.MediaEpisode
 
-		season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
+		showName, year, season, episode, found := media.ProcessEpisodeNode(ni.Node)
 		if !found {
 			continue
 		}
-
-		showName, year := media.ExtractShowNameFromPath(ni.Node.Name(), true)
 
 		var meta *provider.EnrichedMetadata
 		if metadata != nil {

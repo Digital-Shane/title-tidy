@@ -251,13 +251,13 @@ func resolveVariable(varName string, ctx *FormatContext) string {
 		return ctx.Year
 
 	case "{season}":
-		if ctx.Season > 0 {
+		if ctx.Season >= 0 {
 			return fmt.Sprintf("%02d", ctx.Season)
 		}
 		return ""
 
 	case "{episode}":
-		if ctx.Episode > 0 {
+		if ctx.Episode >= 0 {
 			return fmt.Sprintf("%02d", ctx.Episode)
 		}
 		return ""
