@@ -262,3 +262,299 @@ func TestParseSeasonEpisode_NoEpisodeNumber(t *testing.T) {
 		t.Errorf("ParseSeasonEpisode(%q, nil) = (%d, %d, true), want (0, 0, false)", filename, season, episode)
 	}
 }
+
+func TestExtractShowInfo(t *testing.T) {
+	tests := []struct {
+		name         string
+		nodeName     string
+		parentName   string
+		isFile       bool
+		wantShowName string
+		wantYear     string
+	}{
+		{
+			name:         "EpisodeFileWithShowInName",
+			nodeName:     "Breaking Bad S01E01 Pilot.mkv",
+			isFile:       true,
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+		},
+		{
+			name:         "EpisodeFileWithShowAndYear",
+			nodeName:     "The Office (2005) S02E03.mp4",
+			isFile:       true,
+			wantShowName: "The Office",
+			wantYear:     "2005",
+		},
+		{
+			name:         "EpisodeFileNoShowFallbackToParent",
+			nodeName:     "S01E01.mkv",
+			parentName:   "Breaking Bad",
+			isFile:       true,
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+		},
+		{
+			name:         "SeasonFolderWithShow",
+			nodeName:     "Breaking Bad Season 1",
+			isFile:       false,
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+		},
+		{
+			name:         "SeasonFolderNoShow",
+			nodeName:     "Season 01",
+			parentName:   "The Office (2005)",
+			isFile:       false,
+			wantShowName: "The Office",
+			wantYear:     "2005",
+		},
+		{
+			name:         "ShowFolder",
+			nodeName:     "Stranger Things (2016)",
+			isFile:       false,
+			wantShowName: "Stranger Things",
+			wantYear:     "2016",
+		},
+		{
+			name:         "EpisodeWithDottedFormat",
+			nodeName:     "The.Office.1.04.The.Alliance.mkv",
+			isFile:       true,
+			wantShowName: "The Office",
+			wantYear:     "",
+		},
+		{
+			name:         "EpisodeWithMultipleWordsShow",
+			nodeName:     "Game of Thrones S08E06 The Iron Throne.mkv",
+			isFile:       true,
+			wantShowName: "Game of Thrones",
+			wantYear:     "",
+		},
+		{
+			name:         "DottedFormatWithTrailingSeparator",
+			nodeName:     "Better.Call.Saul.1.04.1080p.mkv",
+			isFile:       true,
+			wantShowName: "Better Call Saul",
+			wantYear:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create node structure
+			fileInfo := treeview.FileInfo{
+				FileInfo: core.NewSimpleFileInfo(tt.nodeName, !tt.isFile),
+				Path:     tt.nodeName,
+			}
+			node := treeview.NewNode(tt.nodeName, tt.nodeName, fileInfo)
+
+			// Add parent if specified
+			if tt.parentName != "" {
+				parentInfo := treeview.FileInfo{
+					FileInfo: core.NewSimpleFileInfo(tt.parentName, true),
+					Path:     tt.parentName,
+				}
+				parent := treeview.NewNode(tt.parentName, tt.parentName, parentInfo)
+				parent.AddChild(node)
+			}
+
+			gotShowName, gotYear := ExtractShowInfo(node, tt.isFile)
+
+			if gotShowName != tt.wantShowName {
+				t.Errorf("ExtractShowInfo(%q) showName = %q, want %q", tt.nodeName, gotShowName, tt.wantShowName)
+			}
+			if gotYear != tt.wantYear {
+				t.Errorf("ExtractShowInfo(%q) year = %q, want %q", tt.nodeName, gotYear, tt.wantYear)
+			}
+		})
+	}
+}
+
+func TestProcessEpisodeNode(t *testing.T) {
+	tests := []struct {
+		name         string
+		nodeName     string
+		parentName   string
+		wantShowName string
+		wantYear     string
+		wantSeason   int
+		wantEpisode  int
+		wantFound    bool
+	}{
+		{
+			name:         "StandardEpisodeWithShow",
+			nodeName:     "Breaking Bad S01E01 Pilot.mkv",
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+			wantSeason:   1,
+			wantEpisode:  1,
+			wantFound:    true,
+		},
+		{
+			name:         "EpisodeWithShowAndYear",
+			nodeName:     "The Office (2005) S02E03 Office Olympics.mp4",
+			wantShowName: "The Office",
+			wantYear:     "2005",
+			wantSeason:   2,
+			wantEpisode:  3,
+			wantFound:    true,
+		},
+		{
+			name:         "EpisodeNoShowInFileUsesParent",
+			nodeName:     "S03E05.mkv",
+			parentName:   "Season 03",
+			wantShowName: "",
+			wantYear:     "",
+			wantSeason:   3,
+			wantEpisode:  5,
+			wantFound:    true,
+		},
+		{
+			name:         "EpisodeWithXFormat",
+			nodeName:     "Breaking Bad 1x07 A No-Rough-Stuff-Type Deal.mkv",
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+			wantSeason:   1,
+			wantEpisode:  7,
+			wantFound:    true,
+		},
+		{
+			name:         "DottedFormatEpisode",
+			nodeName:     "The.Office.1.04.The.Alliance.mkv",
+			wantShowName: "The Office",
+			wantYear:     "",
+			wantSeason:   1,
+			wantEpisode:  4,
+			wantFound:    true,
+		},
+		{
+			name:         "DirectoryNode",
+			nodeName:     "Season 01",
+			wantShowName: "",
+			wantYear:     "",
+			wantSeason:   0,
+			wantEpisode:  0,
+			wantFound:    false,
+		},
+		{
+			name:         "NoEpisodePattern",
+			nodeName:     "Behind the Scenes.mkv",
+			wantShowName: "",
+			wantYear:     "",
+			wantSeason:   0,
+			wantEpisode:  0,
+			wantFound:    false,
+		},
+		{
+			name:         "BetterCallSaulDotted",
+			nodeName:     "Better.Call.Saul.1.04.1080p.mkv",
+			wantShowName: "Better Call Saul",
+			wantYear:     "",
+			wantSeason:   1,
+			wantEpisode:  4,
+			wantFound:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create node structure
+			fileInfo := treeview.FileInfo{
+				FileInfo: core.NewSimpleFileInfo(tt.nodeName, tt.nodeName == "Season 01"),
+				Path:     tt.nodeName,
+			}
+			node := treeview.NewNode(tt.nodeName, tt.nodeName, fileInfo)
+
+			// Add parent if specified
+			if tt.parentName != "" {
+				parentInfo := treeview.FileInfo{
+					FileInfo: core.NewSimpleFileInfo(tt.parentName, true),
+					Path:     tt.parentName,
+				}
+				parent := treeview.NewNode(tt.parentName, tt.parentName, parentInfo)
+				parent.AddChild(node)
+			}
+
+			gotShowName, gotYear, gotSeason, gotEpisode, gotFound := ProcessEpisodeNode(node)
+
+			if gotFound != tt.wantFound {
+				t.Errorf("ProcessEpisodeNode(%q) found = %v, want %v", tt.nodeName, gotFound, tt.wantFound)
+			}
+			if gotShowName != tt.wantShowName {
+				t.Errorf("ProcessEpisodeNode(%q) showName = %q, want %q", tt.nodeName, gotShowName, tt.wantShowName)
+			}
+			if gotYear != tt.wantYear {
+				t.Errorf("ProcessEpisodeNode(%q) year = %q, want %q", tt.nodeName, gotYear, tt.wantYear)
+			}
+			if gotSeason != tt.wantSeason {
+				t.Errorf("ProcessEpisodeNode(%q) season = %d, want %d", tt.nodeName, gotSeason, tt.wantSeason)
+			}
+			if gotEpisode != tt.wantEpisode {
+				t.Errorf("ProcessEpisodeNode(%q) episode = %d, want %d", tt.nodeName, gotEpisode, tt.wantEpisode)
+			}
+		})
+	}
+}
+
+func TestExtractShowInfoHierarchy(t *testing.T) {
+	// Test the hierarchy traversal for complex structures
+	tests := []struct {
+		name         string
+		structure    []string // [episode, season, show] names
+		wantShowName string
+		wantYear     string
+	}{
+		{
+			name:         "EpisodeInSeasonInShow",
+			structure:    []string{"S01E01.mkv", "Season 01", "Breaking Bad (2008)"},
+			wantShowName: "Breaking Bad",
+			wantYear:     "2008",
+		},
+		{
+			name:         "EpisodeWithShowInSeasonFolder",
+			structure:    []string{"01.mkv", "Breaking Bad Season 01", "TV Shows"},
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+		},
+		{
+			name:         "EpisodeWithFullShowName",
+			structure:    []string{"Breaking Bad S01E01.mkv", "Season 01", "TV Shows"},
+			wantShowName: "Breaking Bad",
+			wantYear:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build hierarchy from bottom up
+			var node *treeview.Node[treeview.FileInfo]
+
+			for i, name := range tt.structure {
+				fileInfo := treeview.FileInfo{
+					FileInfo: core.NewSimpleFileInfo(name, i > 0),
+					Path:     name,
+				}
+				newNode := treeview.NewNode(name, name, fileInfo)
+
+				if node != nil {
+					newNode.AddChild(node)
+				}
+				node = newNode
+			}
+
+			// Get the episode node (deepest child)
+			for node.Children() != nil && len(node.Children()) > 0 {
+				node = node.Children()[0]
+			}
+
+			gotShowName, gotYear := ExtractShowInfo(node, true)
+
+			if diff := cmp.Diff(tt.wantShowName, gotShowName); diff != "" {
+				t.Errorf("ExtractShowInfo hierarchy mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantYear, gotYear); diff != "" {
+				t.Errorf("ExtractShowInfo year mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

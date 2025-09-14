@@ -422,7 +422,7 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 				if season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node); found {
 					// This is an episode file at depth 0 (episodes command)
 					// Extract show name from the part before the season/episode pattern
-					showName, year := media.ExtractShowNameFromPath(ni.Node.Name(), true)
+					showName, year := media.ExtractShowInfo(ni.Node, true)
 					if showName != "" {
 						// Add the show metadata request
 						showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)

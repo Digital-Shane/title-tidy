@@ -35,16 +35,27 @@ func runShowsCommand(cmd *cobra.Command, args []string) error {
 func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.EnrichedMetadata) {
 	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
 	showMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.EnrichedMetadata)
+	// Store show info for fallback when episodes don't contain show name
+	showInfoCache := make(map[*treeview.Node[treeview.FileInfo]]struct {
+		name string
+		year string
+	})
 
 	for ni := range t.BreadthFirst(context.Background()) {
 		m := core.EnsureMeta(ni.Node)
 		switch ni.Depth {
 		case 0: // Shows
 			m.Type = core.MediaShow
-			showName, year := config.ExtractNameAndYear(ni.Node.Name())
+			showName, year := media.ExtractShowInfo(ni.Node, false)
 			if showName == "" {
 				continue
 			}
+
+			// Cache show info for potential fallback
+			showInfoCache[ni.Node] = struct {
+				name string
+				year string
+			}{showName, year}
 
 			var meta *provider.EnrichedMetadata
 			if metadata != nil {
@@ -70,11 +81,18 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				continue
 			}
 
-			var showName string
-			var year string
+			showName, year := media.ExtractShowInfo(ni.Node, false)
+
+			// If not found in season name, use cached show info from parent
+			if showName == "" && ni.Node.Parent() != nil {
+				if cached, exists := showInfoCache[ni.Node.Parent()]; exists {
+					showName = cached.name
+					year = cached.year
+				}
+			}
+
 			var meta *provider.EnrichedMetadata
 			if ni.Node.Parent() != nil {
-				showName, year = config.ExtractNameAndYear(ni.Node.Parent().Name())
 				meta = showMetadata[ni.Node.Parent()]
 			}
 
@@ -89,20 +107,26 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 
 		case 2: // Episodes
 			m.Type = core.MediaEpisode
-			seasonNumber, episodeNumber, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
+
+			showName, year, seasonNumber, episodeNumber, found := media.ProcessEpisodeNode(ni.Node)
 			if !found || seasonNumber == 0 || episodeNumber == 0 {
 				continue
 			}
 
-			var showName string
-			var year string
+			// If show name wasn't found in episode, use cached info from grandparent (show folder)
+			if showName == "" && ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
+				if cached, exists := showInfoCache[ni.Node.Parent().Parent()]; exists {
+					showName = cached.name
+					year = cached.year
+				}
+			}
+
 			var meta *provider.EnrichedMetadata
 			if ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
-				showName, year = config.ExtractNameAndYear(ni.Node.Parent().Parent().Name())
 				meta = showMetadata[ni.Node.Parent().Parent()]
 			}
 
-			ctx := createFormatContext(cfg, showName, ni.Node.Name(), year, seasonNumber, episodeNumber, meta)
+			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, episodeNumber, meta)
 			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + media.ExtractExtension(ni.Node.Name())
 
 			if linkPath != "" {

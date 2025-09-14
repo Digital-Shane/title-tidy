@@ -46,7 +46,7 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 				continue
 			}
 
-			showName, year := media.ExtractShowNameFromPath(ni.Node.Name(), false)
+			showName, year := media.ExtractShowInfo(ni.Node, false)
 			seasonShowName = showName
 			seasonYear = year
 
@@ -71,21 +71,28 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 
 		} else if ni.Depth == 1 {
 			m.Type = core.MediaEpisode
-			seasonNumber, episodeNumber, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node)
+
+			showName, year, seasonNumber, episodeNumber, found := media.ProcessEpisodeNode(ni.Node)
 			if !found || seasonNumber == 0 || episodeNumber == 0 {
 				continue
 			}
 
+			// If show name wasn't found in episode, use the one from season folder
+			if showName == "" {
+				showName = seasonShowName
+				year = seasonYear
+			}
+
 			var meta *provider.EnrichedMetadata
 			if metadata != nil {
-				episodeKey := util.GenerateMetadataKey("episode", seasonShowName, seasonYear, seasonNumber, episodeNumber)
+				episodeKey := util.GenerateMetadataKey("episode", showName, year, seasonNumber, episodeNumber)
 				meta = metadata[episodeKey]
 				if meta == nil {
 					meta = seasonShowMeta
 				}
 			}
 
-			ctx := createFormatContext(cfg, seasonShowName, ni.Node.Name(), seasonYear, seasonNumber, episodeNumber, meta)
+			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, episodeNumber, meta)
 			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + media.ExtractExtension(ni.Node.Name())
 
 			if linkPath != "" {

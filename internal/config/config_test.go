@@ -1093,7 +1093,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 				Episode:  0,
 				Metadata: &provider.EnrichedMetadata{Rating: 0},
 			},
-			want: "",
+			want: "00 - 00", // Season 0 and Episode 0 are valid (specials/extras)
 		},
 		{
 			name:     "title_fallback_to_movie",

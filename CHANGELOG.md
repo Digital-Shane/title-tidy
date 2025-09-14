@@ -6,8 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [v1.10.0] - 2025-09-14
+### Fixed
+* Show name extraction from dotted format episodes
+* Season 0 and Episode 0 now format correctly as "00" instead of empty string
 ### Updated
 * All command to use cobra for processing
+* Centralized show name extraction logic across all commands
+* Seasons and shows commands now extract show names from episode files first
 ### Removed
 * Coverage check in prep for moving toward integration testing
 

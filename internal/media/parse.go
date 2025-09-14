@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/treeview"
@@ -26,10 +27,10 @@ var (
 	// seasonEpisodeRe matches combined season/episode forms: S01E02, 1x02, s1e2.
 	seasonEpisodeRe = regexp.MustCompile(`(?i)[sx]?(\d+)[ex](\d+)`)
 
-	// dottedSeasonEpisodeRe matches compact dotted forms at start of filename: 1.04, 01.4, 10.12
-	// We purposefully anchor at start (^|separator) to avoid misinterpreting years appearing later
+	// dottedSeasonEpisodeRe matches compact dotted forms: 1.04, 01.4, 10.12
+	// We look for these patterns with word boundaries to avoid false positives
 	// and cap the season to two digits to avoid capturing a leading year like 2024.05.
-	dottedSeasonEpisodeRe = regexp.MustCompile(`(?i)^(?:|[\s_\-\.])([0-9]{1,2})[\. _-]([0-9]{1,2})(?:[^0-9]|$)`)
+	dottedSeasonEpisodeRe = regexp.MustCompile(`(?i)(?:^|[\s_\-\.])([0-9]{1,2})[\. _-]([0-9]{1,2})(?:[^0-9]|$)`)
 
 	// videoRe matches video file extensions used to include media files.
 	videoRe = regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|mpeg|mpg|m4v|3gp|vob|ts|mts|m2ts|rmvb|divx)$`)
@@ -62,6 +63,7 @@ var (
 	seasonEpisodePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)[sx]?\d+[ex]\d+`),          // S01E01, 1x01, s1e1
 		regexp.MustCompile(`(?i)\b(?:s|season)\.? *\d+\b`), // Season 01, S01
+		regexp.MustCompile(`\b\d{1,2}[\. _-]\d{1,2}\b`),    // Dotted format: 1.04, 01.4
 	}
 )
 
@@ -220,30 +222,139 @@ func FindSeasonEpisodeIndex(filename string) int {
 	return earliestIndex
 }
 
-// ExtractShowNameFromPath extracts show name and year from a file or folder path
-// by finding where the season/episode pattern starts and cleaning everything before it.
-// This is moved here from cmd package to avoid import cycles.
-func ExtractShowNameFromPath(path string, removeExtension bool) (showName, year string) {
-	workingPath := path
+// ExtractShowInfo is the single entry point for extracting show name and year
+// from any media file or folder (episodes, seasons, or shows).
+// It first attempts to extract from the current path/filename, then falls back
+// to searching parent directories if needed.
+func ExtractShowInfo(node *treeview.Node[treeview.FileInfo], isFile bool) (showName, year string) {
+	if node == nil {
+		return "", ""
+	}
 
-	// Remove extension if needed (for files)
-	if removeExtension {
-		ext := ExtractExtension(path)
+	name := node.Name()
+	workingPath := name
+
+	// For files, remove extension before processing
+	if isFile {
+		ext := ExtractExtension(name)
 		if ext != "" {
-			workingPath = path[:len(path)-len(ext)]
+			workingPath = name[:len(name)-len(ext)]
 		}
 	}
 
-	// Find where the season/episode pattern starts
-	if idx := FindSeasonEpisodeIndex(workingPath); idx > 0 {
-		// Extract everything before the pattern
+	// First, try to extract show name from the current path/filename
+	// Check if there's a season/episode pattern
+	idx := FindSeasonEpisodeIndex(workingPath)
+	if idx > 0 {
+		// Extract everything before the pattern as potential show name
 		showPart := workingPath[:idx]
-		// ExtractNameAndYear handles all the complex parsing
+
+		// Trim any trailing separator characters (dots, underscores, dashes, spaces)
+		// This handles cases like "Better.Call.Saul." where the trailing dot should be removed
+		showPart = strings.TrimRight(showPart, ".-_ ")
+
 		showName, year = config.ExtractNameAndYear(showPart)
-	} else {
-		// No pattern found, just clean the whole name
-		showName, year = config.ExtractNameAndYear(workingPath)
+
+		// If we found a valid show name, return it
+		if showName != "" {
+			return showName, year
+		}
 	}
 
-	return showName, year
+	// If the pattern starts at the beginning (idx == 0), there's no show name in this file
+	// Go straight to parent search
+	if idx == 0 {
+		// No show name in current file, search parents
+		if parent := node.Parent(); parent != nil {
+			return ExtractShowInfo(parent, false)
+		}
+		return "", ""
+	}
+
+	// Check if this is a season folder - it might have show name before "Season"
+	if _, isSeasonFolder := ExtractSeasonNumber(workingPath); isSeasonFolder {
+		// Check if there's text before "Season" or "S" pattern
+		seasonPatterns := []string{"Season", "season", "SEASON", "S", "s"}
+		earliestSeasonIdx := -1
+
+		for _, pattern := range seasonPatterns {
+			idx := strings.Index(workingPath, pattern)
+			if idx > 0 && (earliestSeasonIdx == -1 || idx < earliestSeasonIdx) {
+				// Make sure this is actually the season pattern, not part of a word
+				if idx == 0 || !unicode.IsLetter(rune(workingPath[idx-1])) {
+					// Also verify the pattern is followed by a number or space+number
+					afterPattern := workingPath[idx+len(pattern):]
+					if len(afterPattern) > 0 {
+						firstChar := rune(afterPattern[0])
+						if unicode.IsDigit(firstChar) || unicode.IsSpace(firstChar) {
+							earliestSeasonIdx = idx
+						}
+					}
+				}
+			}
+		}
+
+		if earliestSeasonIdx > 0 {
+			// Extract everything before the season pattern
+			showPart := workingPath[:earliestSeasonIdx]
+			// Trim any trailing separator characters and spaces
+			showPart = strings.TrimRight(showPart, ".-_ ")
+			showName, year = config.ExtractNameAndYear(showPart)
+			if showName != "" {
+				return showName, year
+			}
+		}
+
+		// No show name in this season folder, look to parent
+		if parent := node.Parent(); parent != nil {
+			return ExtractShowInfo(parent, false)
+		}
+		return "", ""
+	}
+
+	// If no show name found in current path, try to extract from the whole name
+	// (useful for show folders that don't have season/episode patterns)
+	showName, year = config.ExtractNameAndYear(workingPath)
+	if showName != "" {
+		return showName, year
+	}
+
+	// Fallback: search up the directory hierarchy
+	parent := node.Parent()
+	searchDepth := 0
+	maxSearchDepth := 3 // Prevent infinite loops, search up to 3 levels
+
+	for parent != nil && searchDepth < maxSearchDepth {
+		parentName := parent.Name()
+
+		// Try to extract show name from parent
+		showName, year = config.ExtractNameAndYear(parentName)
+		if showName != "" {
+			return showName, year
+		}
+
+		parent = parent.Parent()
+		searchDepth++
+	}
+
+	return "", ""
+}
+
+// ProcessEpisodeNode processes an episode node and extracts all relevant information.
+// This centralizes episode processing logic for use across all commands.
+func ProcessEpisodeNode(node *treeview.Node[treeview.FileInfo]) (showName, year string, season, episode int, found bool) {
+	if node == nil || node.Data().IsDir() {
+		return "", "", 0, 0, false
+	}
+
+	// Parse season and episode numbers
+	season, episode, found = ParseSeasonEpisode(node.Name(), node)
+	if !found {
+		return "", "", 0, 0, false
+	}
+
+	// Extract show information using the centralized function
+	showName, year = ExtractShowInfo(node, true)
+
+	return showName, year, season, episode, true
 }
