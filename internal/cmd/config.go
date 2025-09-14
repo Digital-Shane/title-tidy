@@ -3,6 +3,9 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/provider"
+	providerInit "github.com/Digital-Shane/title-tidy/internal/provider/init"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -19,7 +22,44 @@ and movie naming templates, as well as TMDB API settings and other options.`,
 }
 
 func runConfigCommand(cmd *cobra.Command, args []string) error {
-	model, err := tui.New()
+	// Initialize providers
+	if err := providerInit.LoadBuiltinProviders(); err != nil {
+		return fmt.Errorf("failed to load providers: %w", err)
+	}
+
+	// Load config to get TMDB settings
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Configure TMDB if API key exists
+	if cfg.TMDBAPIKey != "" {
+		tmdbConfig := map[string]interface{}{
+			"api_key":       cfg.TMDBAPIKey,
+			"language":      cfg.TMDBLanguage,
+			"cache_enabled": true,
+		}
+		if err := provider.GlobalRegistry.Configure("tmdb", tmdbConfig); err == nil {
+			// Only enable if configuration succeeded
+			provider.GlobalRegistry.Enable("tmdb")
+		}
+	}
+
+	// Create template registry
+	templateReg := config.NewTemplateRegistry()
+
+	// Register all enabled providers with template registry
+	for _, name := range provider.GlobalRegistry.List() {
+		if p, exists := provider.GlobalRegistry.Get(name); exists {
+			if provider.GlobalRegistry.IsEnabled(name) {
+				templateReg.RegisterProvider(p)
+			}
+		}
+	}
+
+	// Create UI model with registry
+	model, err := tui.NewWithRegistry(templateReg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize config UI: %w", err)
 	}

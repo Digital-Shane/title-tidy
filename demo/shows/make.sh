@@ -17,7 +17,8 @@ touch "$SHOW1_DIR/Season 1/breaking.bad.s01e02.mkv"
 touch "$SHOW1_DIR/Season 1/breaking.bad.s01e02.nfo"
 touch "$SHOW1_DIR/Season 1/Breaking.Bad.1x03.mkv"
 touch "$SHOW1_DIR/Season 1/Breaking.Bad.1x03.png"
-touch "$SHOW1_DIR/Season 1/Better.Call.Saul.1.04.1080p.mkv"  # dotted pattern -> S01E04
+touch "$SHOW1_DIR/Season 1/Episode 4.mkv"
+touch "$SHOW1_DIR/Season 1/Better.Call.Saul.1.04.1080p.mkv"
 touch "$SHOW1_DIR/Season 1/Better.Call.Saul.1.04.1080p.nfo"
 # Season 2 episodes - context fallback (no season token in filename)
 touch "$SHOW1_DIR/s2/Episode 5.mkv"    # S02E05 via parent

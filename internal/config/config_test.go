@@ -10,6 +10,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+// cmpOpts returns comparison options that ignore unexported fields
+func cmpOpts() cmp.Option {
+	return cmp.FilterPath(func(p cmp.Path) bool {
+		// Ignore unexported fields like 'resolver'
+		return p.Last().String() == ".resolver"
+	}, cmp.Ignore())
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
@@ -27,7 +35,7 @@ func TestDefaultConfig(t *testing.T) {
 		TMDBWorkerCount:     10,
 	}
 
-	if diff := cmp.Diff(want, cfg); diff != "" {
+	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
 		t.Errorf("DefaultConfig() mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -71,7 +79,7 @@ func TestLoad_NonExistentFile(t *testing.T) {
 
 	// Should return default config
 	want := DefaultConfig()
-	if diff := cmp.Diff(want, cfg); diff != "" {
+	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
 		t.Errorf("Load() with non-existent file mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -125,7 +133,7 @@ func TestLoad_ValidFile(t *testing.T) {
 		TMDBWorkerCount:     10, // Filled in by Load() with default
 	}
 
-	if diff := cmp.Diff(want, cfg); diff != "" {
+	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
 		t.Errorf("Load() mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -245,7 +253,7 @@ func TestSave(t *testing.T) {
 		t.Fatalf("Failed to parse saved config: %v", err)
 	}
 
-	if diff := cmp.Diff(cfg, &saved); diff != "" {
+	if diff := cmp.Diff(cfg, &saved, cmpOpts()); diff != "" {
 		t.Errorf("Saved config mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -265,7 +273,7 @@ func TestLoad(t *testing.T) {
 
 		// Should return default config
 		want := DefaultConfig()
-		if diff := cmp.Diff(want, cfg); diff != "" {
+		if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
 			t.Errorf("Load() with no file mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -311,7 +319,7 @@ func TestLoad(t *testing.T) {
 			TMDBWorkerCount:     10,      // Default value filled in by Load()
 		}
 
-		if diff := cmp.Diff(expectedConfig, cfg); diff != "" {
+		if diff := cmp.Diff(expectedConfig, cfg, cmpOpts()); diff != "" {
 			t.Errorf("Load() mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -355,7 +363,7 @@ func TestLoad(t *testing.T) {
 			TMDBWorkerCount:     10,      // default
 		}
 
-		if diff := cmp.Diff(want, cfg); diff != "" {
+		if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
 			t.Errorf("Load() partial config mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -411,7 +419,7 @@ func TestFormatConfig_Save(t *testing.T) {
 		var loaded FormatConfig
 		json.Unmarshal(data, &loaded)
 
-		if diff := cmp.Diff(cfg, &loaded); diff != "" {
+		if diff := cmp.Diff(cfg, &loaded, cmpOpts()); diff != "" {
 			t.Errorf("Saved config mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -928,14 +936,17 @@ func TestApplyTemplateWithMetadata(t *testing.T) {
 		PreferLocalMetadata: false,
 	}
 
-	metadata := &provider.EnrichedMetadata{
-		Title:       "The Matrix Reloaded",
-		ShowName:    "Breaking Bad",
-		Year:        "2003",
-		Rating:      8.7,
-		Genres:      []string{"Action", "Sci-Fi"},
-		EpisodeName: "Ozymandias",
-		Tagline:     "Free your mind",
+	metadata := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title:       "The Matrix Reloaded",
+			Year:        "2003",
+			Rating:      8.7,
+			Genres:      []string{"Action", "Sci-Fi"},
+			EpisodeName: "Ozymandias",
+		},
+		Extended: map[string]interface{}{
+			"tagline": "Free your mind",
+		},
 	}
 
 	t.Run("ShowFolderWithMetadata", func(t *testing.T) {
@@ -1018,18 +1029,18 @@ func TestApplyTemplateWithMetadata(t *testing.T) {
 }
 
 func TestResolveVariableComprehensive(t *testing.T) {
-	metadata := &provider.EnrichedMetadata{
-		Title:       "The Matrix",
-		ShowName:    "Breaking Bad",
-		Year:        "2003",
-		Rating:      8.7,
-		Genres:      []string{"Action", "Sci-Fi"},
-		EpisodeName: "Ozymandias",
-		EpisodeAir:  "2013-09-15",
-		SeasonName:  "Season Five",
-		Runtime:     136,
-		Tagline:     "Free your mind",
-		Overview:    "A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.",
+	metadata := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title:       "The Matrix",
+			Year:        "2003",
+			Rating:      8.7,
+			Genres:      []string{"Action", "Sci-Fi"},
+			EpisodeName: "Ozymandias",
+			Overview:    "A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.",
+		},
+		Extended: map[string]interface{}{
+			"tagline": "Free your mind",
+		},
 	}
 
 	tests := []struct {
@@ -1072,7 +1083,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			name:     "empty_metadata_fields",
 			template: "{episode_title} - {air_date} - {tagline}",
 			ctx: &FormatContext{
-				Metadata: &provider.EnrichedMetadata{},
+				Metadata: &provider.Metadata{},
 			},
 			want: "",
 		},
@@ -1091,7 +1102,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			ctx: &FormatContext{
 				Season:   0,
 				Episode:  0,
-				Metadata: &provider.EnrichedMetadata{Rating: 0},
+				Metadata: &provider.Metadata{Core: provider.CoreMetadata{Rating: 0}},
 			},
 			want: "00 - 00", // Season 0 and Episode 0 are valid (specials/extras)
 		},
@@ -1100,7 +1111,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			template: "{title}",
 			ctx: &FormatContext{
 				MovieName: "Fallback Movie",
-				Metadata:  &provider.EnrichedMetadata{},
+				Metadata:  &provider.Metadata{},
 			},
 			want: "Fallback Movie",
 		},
@@ -1109,7 +1120,7 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			template: "{title}",
 			ctx: &FormatContext{
 				ShowName: "Fallback Show",
-				Metadata: &provider.EnrichedMetadata{},
+				Metadata: &provider.Metadata{},
 			},
 			want: "Fallback Show",
 		},
@@ -1193,8 +1204,20 @@ func TestExtractNameAndYear(t *testing.T) {
 		{
 			name:     "dots_and_underscores",
 			input:    "The_Matrix_1999",
-			wantName: "The Matrix 1999",
-			wantYear: "",
+			wantName: "The Matrix",
+			wantYear: "1999",
+		},
+		{
+			name:     "year_with_hyphen_suffix",
+			input:    "Interstellar_2014-file",
+			wantName: "Interstellar",
+			wantYear: "2014",
+		},
+		{
+			name:     "year_with_underscore_suffix",
+			input:    "Inception_2010_director",
+			wantName: "Inception",
+			wantYear: "2010",
 		},
 	}
 

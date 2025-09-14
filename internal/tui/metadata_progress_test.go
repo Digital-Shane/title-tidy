@@ -2,9 +2,9 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -132,15 +132,17 @@ func TestMetadataProgressModel_GetPhaseName(t *testing.T) {
 
 func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 	model := &MetadataProgressModel{
-		metadata: make(map[string]*provider.EnrichedMetadata),
+		metadata: make(map[string]*provider.Metadata),
 		errors:   make([]error, 0),
 		resultCh: make(chan metadataResult, 2),
 	}
 
 	// Send some results
-	testMeta := &provider.EnrichedMetadata{
-		Title: "Test Show",
-		Year:  "2024",
+	testMeta := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title: "Test Show",
+			Year:  "2024",
+		},
 	}
 
 	model.resultCh <- metadataResult{
@@ -159,7 +161,7 @@ func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 			Key:  "show:Error Show:2024",
 		},
 		meta: nil,
-		err:  provider.ErrNoResults,
+		err:  &provider.ProviderError{Code: "NOT_FOUND"},
 	}
 
 	close(model.resultCh)
@@ -297,21 +299,22 @@ func TestCountMetadataItems(t *testing.T) {
 func TestMetadataProgressModel_ErrorHandling(t *testing.T) {
 	model := &MetadataProgressModel{
 		errors: []error{
-			provider.ErrNoResults,
-			provider.ErrInvalidAPIKey,
+			&provider.ProviderError{Code: "NOT_FOUND"},
+			&provider.ProviderError{Code: "AUTH_FAILED"},
 		},
 	}
 
 	// Test that critical errors are returned
 	err := model.Err()
-	if err != provider.ErrInvalidAPIKey {
+	var provErr *provider.ProviderError
+	if !errors.As(err, &provErr) || provErr.Code != "AUTH_FAILED" {
 		t.Errorf("Err() = %v, want ErrInvalidAPIKey", err)
 	}
 
 	// Test with only non-critical errors
 	model.errors = []error{
-		provider.ErrNoResults,
-		provider.ErrNoResults,
+		&provider.ProviderError{Code: "NOT_FOUND"},
+		&provider.ProviderError{Code: "NOT_FOUND"},
 	}
 	model.err = nil
 
@@ -354,12 +357,16 @@ func TestMetadataProgressModel_Initialization(t *testing.T) {
 
 // Test concurrent metadata worker
 func TestMetadataWorker_ProcessesItems(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	model := &MetadataProgressModel{
 		workCh:       make(chan MetadataItem, 2),
 		resultCh:     make(chan metadataResult, 2),
 		msgCh:        make(chan tea.Msg, 10),
-		metadata:     make(map[string]*provider.EnrichedMetadata),
+		metadata:     make(map[string]*provider.Metadata),
 		currentPhase: "Test Phase",
+		ctx:          ctx,
 	}
 
 	// Send test items
@@ -375,9 +382,8 @@ func TestMetadataWorker_ProcessesItems(t *testing.T) {
 		close(model.workCh)
 	}()
 
-	// Run worker
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	// Run worker with timeout
+	// (ctx and cancel already defined above)
 
 	go func() {
 		var wg sync.WaitGroup

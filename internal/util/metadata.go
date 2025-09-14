@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
@@ -25,16 +26,23 @@ func GenerateMetadataKey(mediaType string, name, year string, season, episode in
 // FetchMetadataWithDependencies fetches metadata with proper dependency resolution
 // For episodes/seasons, it ensures show metadata is fetched first
 // Returns both metadata and error so callers can handle rate limiting properly
-func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, year string, season, episode int, isMovie bool, cache map[string]*provider.EnrichedMetadata) (*provider.EnrichedMetadata, error) {
+func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year string, season, episode int, isMovie bool, cache map[string]*provider.Metadata) (*provider.Metadata, error) {
 	if tmdbProvider == nil || name == "" {
 		return nil, nil
 	}
 
-	var meta *provider.EnrichedMetadata
+	var meta *provider.Metadata
 	var err error
+	ctx := context.Background()
 
 	if isMovie {
-		meta, err = tmdbProvider.SearchMovie(name, year)
+		// Fetch movie metadata
+		request := provider.FetchRequest{
+			MediaType: provider.MediaTypeMovie,
+			Name:      name,
+			Year:      year,
+		}
+		meta, err = tmdbProvider.Fetch(ctx, request)
 	} else if season > 0 && episode > 0 {
 		// For episodes, first get show metadata
 		showKey := GenerateMetadataKey("show", name, year, 0, 0)
@@ -42,7 +50,11 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 
 		if showMeta == nil {
 			// Fetch show metadata first
-			showMeta, err = tmdbProvider.SearchTVShow(name)
+			request := provider.FetchRequest{
+				MediaType: provider.MediaTypeShow,
+				Name:      name,
+			}
+			showMeta, err = tmdbProvider.Fetch(ctx, request)
 			if err != nil {
 				return nil, err // Return error (including rate limiting) immediately
 			}
@@ -51,13 +63,22 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 			}
 		}
 
-		if showMeta != nil && showMeta.ID > 0 {
-			meta, err = tmdbProvider.GetEpisodeInfo(showMeta.ID, season, episode)
-			if meta != nil {
-				meta.ShowName = showMeta.ShowName
-				if meta.ShowName == "" {
-					meta.ShowName = showMeta.Title
+		if showMeta != nil {
+			// Extract show ID from metadata
+			showID := ""
+			if tmdbID, ok := showMeta.IDs["tmdb_id"]; ok {
+				showID = tmdbID
+			}
+
+			if showID != "" {
+				// Fetch episode metadata
+				request := provider.FetchRequest{
+					MediaType: provider.MediaTypeEpisode,
+					ID:        showID,
+					Season:    season,
+					Episode:   episode,
 				}
+				meta, err = tmdbProvider.Fetch(ctx, request)
 			}
 		}
 	} else if season > 0 {
@@ -67,7 +88,11 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 
 		if showMeta == nil {
 			// Fetch show metadata first
-			showMeta, err = tmdbProvider.SearchTVShow(name)
+			request := provider.FetchRequest{
+				MediaType: provider.MediaTypeShow,
+				Name:      name,
+			}
+			showMeta, err = tmdbProvider.Fetch(ctx, request)
 			if err != nil {
 				return nil, err // Return error (including rate limiting) immediately
 			}
@@ -76,18 +101,30 @@ func FetchMetadataWithDependencies(tmdbProvider *provider.TMDBProvider, name, ye
 			}
 		}
 
-		if showMeta != nil && showMeta.ID > 0 {
-			meta, err = tmdbProvider.GetSeasonInfo(showMeta.ID, season)
-			if meta != nil {
-				meta.ShowName = showMeta.ShowName
-				if meta.ShowName == "" {
-					meta.ShowName = showMeta.Title
+		if showMeta != nil {
+			// Extract show ID from metadata
+			showID := ""
+			if tmdbID, ok := showMeta.IDs["tmdb_id"]; ok {
+				showID = tmdbID
+			}
+
+			if showID != "" {
+				// Fetch season metadata
+				request := provider.FetchRequest{
+					MediaType: provider.MediaTypeSeason,
+					ID:        showID,
+					Season:    season,
 				}
+				meta, err = tmdbProvider.Fetch(ctx, request)
 			}
 		}
 	} else {
 		// TV Show
-		meta, err = tmdbProvider.SearchTVShow(name)
+		request := provider.FetchRequest{
+			MediaType: provider.MediaTypeShow,
+			Name:      name,
+		}
+		meta, err = tmdbProvider.Fetch(ctx, request)
 	}
 
 	return meta, err

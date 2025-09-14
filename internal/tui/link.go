@@ -77,12 +77,18 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 	// Link children into the new directory
 	for _, child := range node.Children() {
 		cm := core.GetMeta(child)
-		if cm == nil || cm.NewName == "" {
+		if cm == nil {
 			continue
 		}
 
+		// Use NewName if set, otherwise keep original name
+		childName := cm.NewName
+		if childName == "" {
+			childName = child.Name()
+		}
+
 		srcPath := child.Data().Path
-		destPath := filepath.Join(dirPath, cm.NewName)
+		destPath := filepath.Join(dirPath, childName)
 
 		// Check if destination already exists
 		if _, err := os.Stat(destPath); err == nil {
@@ -103,7 +109,7 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 				cm.DestinationPath = destPath
 			} else {
 				log.LogLink(srcPath, destPath, false, err)
-				errs = append(errs, fmt.Errorf("%s -> %s: failed to create hard link (possibly cross-filesystem or unsupported): %w", child.Name(), cm.NewName, err))
+				errs = append(errs, fmt.Errorf("%s -> %s: failed to create hard link (possibly cross-filesystem or unsupported): %w", child.Name(), childName, err))
 				cm.Fail(fmt.Errorf("failed to create hard link (possibly cross-filesystem or unsupported): %w", err))
 			}
 			continue

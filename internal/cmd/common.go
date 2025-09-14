@@ -22,7 +22,7 @@ type CommandConfig struct {
 	MaxDepth       int
 	IncludeDirs    bool
 	IsMovieMode    bool
-	TreeAnnotator  func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, map[string]*provider.EnrichedMetadata)
+	TreeAnnotator  func(*treeview.Tree[treeview.FileInfo], *config.FormatConfig, map[string]*provider.Metadata)
 	TreePreprocess func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
 }
 
@@ -125,7 +125,7 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 }
 
 // fetchMetadataIfEnabled fetches TMDB metadata if configured
-func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *config.FormatConfig) map[string]*provider.EnrichedMetadata {
+func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *config.FormatConfig) map[string]*provider.Metadata {
 	if !formatConfig.EnableTMDBLookup || formatConfig.TMDBAPIKey == "" {
 		return nil
 	}
@@ -220,7 +220,7 @@ func markFilesForDeletion(t *treeview.Tree[treeview.FileInfo]) {
 	}
 }
 
-func createFormatContext(cfg *config.FormatConfig, showName, movieName string, year string, season, episode int, metadata *provider.EnrichedMetadata) *config.FormatContext {
+func createFormatContext(cfg *config.FormatConfig, showName, movieName string, year string, season, episode int, metadata *provider.Metadata) *config.FormatContext {
 	return &config.FormatContext{
 		ShowName:  showName,
 		MovieName: movieName,

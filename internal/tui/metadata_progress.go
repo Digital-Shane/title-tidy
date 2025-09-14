@@ -11,20 +11,13 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/Digital-Shane/title-tidy/internal/util"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
 // MetadataProgressModel displays progress while fetching metadata from TMDB
 type MetadataProgressModel struct {
@@ -40,14 +33,18 @@ type MetadataProgressModel struct {
 	workersMu      sync.RWMutex
 
 	// Results storage
-	metadata     map[string]*provider.EnrichedMetadata
+	metadata     map[string]*provider.Metadata
 	metadataMu   sync.RWMutex
-	tmdbProvider *provider.TMDBProvider
+	tmdbProvider provider.Provider
 
 	// Worker pool
 	workerCount int
 	workCh      chan MetadataItem
 	resultCh    chan metadataResult
+
+	// Cancellation
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// UI components
 	width    int
@@ -83,7 +80,7 @@ type MetadataItem struct {
 // metadataResult represents the result of fetching metadata
 type metadataResult struct {
 	item MetadataItem
-	meta *provider.EnrichedMetadata
+	meta *provider.Metadata
 	err  error
 }
 
@@ -96,12 +93,20 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 	p.Width = 50
 
 	// Initialize TMDB provider if enabled
-	var tmdbProvider *provider.TMDBProvider
+	var tmdbProvider provider.Provider
 	if cfg.EnableTMDBLookup && cfg.TMDBAPIKey != "" {
-		var err error
-		tmdbProvider, err = provider.NewTMDBProvider(cfg.TMDBAPIKey, cfg.TMDBLanguage)
-		if err != nil {
-			// If provider creation fails, continue without TMDB
+		// Create new TMDB provider
+		tmdbProvider = tmdbProv.New()
+
+		// Configure it
+		config := map[string]interface{}{
+			"api_key":       cfg.TMDBAPIKey,
+			"language":      cfg.TMDBLanguage,
+			"cache_enabled": true,
+		}
+
+		if err := tmdbProvider.Configure(config); err != nil {
+			// If provider configuration fails, continue without TMDB
 			tmdbProvider = nil
 		}
 	}
@@ -112,6 +117,9 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		workerCount = 20 // Fallback to default if not configured or invalid
 	}
 
+	// Create context for cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &MetadataProgressModel{
 		tree:         tree,
 		cfg:          cfg,
@@ -120,12 +128,14 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		height:       12,
 		progress:     p,
 		msgCh:        make(chan tea.Msg, 256),
-		metadata:     make(map[string]*provider.EnrichedMetadata),
+		metadata:     make(map[string]*provider.Metadata),
 		tmdbProvider: tmdbProvider,
 		workerCount:  workerCount,
 		workCh:       make(chan MetadataItem, 100),
 		resultCh:     make(chan metadataResult, 100),
 		errors:       make([]error, 0),
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
@@ -137,20 +147,28 @@ func countMetadataItems(tree *treeview.Tree[treeview.FileInfo]) int {
 	for ni := range tree.BreadthFirst(context.Background()) {
 		switch ni.Depth {
 		case 0: // Shows/Movies
-			name, year := config.ExtractNameAndYear(ni.Node.Name())
-			if name != "" {
-				// Check if it's a movie or show based on content
-				isMovie := true
-				for _, child := range ni.Node.Children() {
-					if child.Data().IsDir() {
-						// If has season folders, it's a show
-						if _, found := media.ExtractSeasonNumber(child.Name()); found {
-							isMovie = false
-							break
-						}
+			// Check if it's a movie or show based on content
+			isMovie := true
+			for _, child := range ni.Node.Children() {
+				if child.Data().IsDir() {
+					// If has season folders, it's a show
+					if _, found := media.ExtractSeasonNumber(child.Name()); found {
+						isMovie = false
+						break
 					}
 				}
+			}
 
+			var name, year string
+			if isMovie {
+				// For movies, use ExtractNameAndYear
+				name, year = config.ExtractNameAndYear(ni.Node.Name())
+			} else {
+				// For shows, use ExtractShowInfo which has better parsing
+				name, year = media.ExtractShowInfo(ni.Node, false)
+			}
+
+			if name != "" {
 				var key string
 				if isMovie {
 					key = util.GenerateMetadataKey("movie", name, year, 0, 0)
@@ -164,7 +182,7 @@ func countMetadataItems(tree *treeview.Tree[treeview.FileInfo]) int {
 			}
 		case 1: // Seasons
 			if parent := ni.Node.Parent(); parent != nil {
-				showName, year := config.ExtractNameAndYear(parent.Name())
+				showName, year := media.ExtractShowInfo(parent, false)
 				if season, found := media.ExtractSeasonNumber(ni.Node.Name()); found && showName != "" {
 					key := util.GenerateMetadataKey("season", showName, year, season, 0)
 					if !seen[key] {
@@ -174,16 +192,13 @@ func countMetadataItems(tree *treeview.Tree[treeview.FileInfo]) int {
 				}
 			}
 		case 2: // Episodes
-			if parent := ni.Node.Parent(); parent != nil {
-				if grandparent := parent.Parent(); grandparent != nil {
-					showName, year := config.ExtractNameAndYear(grandparent.Name())
-					if season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node); found && showName != "" {
-						key := util.GenerateMetadataKey("episode", showName, year, season, episode)
-						if !seen[key] {
-							seen[key] = true
-							count++
-						}
-					}
+			// Use ProcessEpisodeNode to get the show name from the episode itself
+			showName, year, season, episode, found := media.ProcessEpisodeNode(ni.Node)
+			if found && showName != "" {
+				key := util.GenerateMetadataKey("episode", showName, year, season, episode)
+				if !seen[key] {
+					seen[key] = true
+					count++
 				}
 			}
 		}
@@ -217,6 +232,13 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 
 	// Process each phase sequentially
 	for phaseNum, phaseItems := range phases {
+		// Check for cancellation at the start of each phase
+		select {
+		case <-m.ctx.Done():
+			return
+		default:
+		}
+
 		if len(phaseItems) == 0 {
 			continue
 		}
@@ -233,11 +255,11 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 		// Start workers for this phase
 		var wg sync.WaitGroup
 
-		// Capture current channels by value to avoid race conditions
-		workCh := m.workCh
-		resultCh := m.resultCh
+		// Create fresh channels for this phase to avoid reusing closed channels
+		workCh := make(chan MetadataItem, len(phaseItems))
+		resultCh := make(chan metadataResult, len(phaseItems))
 
-		// Start worker goroutines with captured channel
+		// Start worker goroutines with the new channels
 		for i := 0; i < m.workerCount; i++ {
 			wg.Add(1)
 			go func(id int) {
@@ -253,7 +275,15 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 		// Send work items and close channel when done
 		// This is now synchronous to avoid race conditions
 		func() {
+			defer close(workCh)
 			for _, item := range phaseItems {
+				// Check for cancellation
+				select {
+				case <-m.ctx.Done():
+					return
+				default:
+				}
+
 				// Skip if already cached
 				m.metadataMu.RLock()
 				if _, exists := m.metadata[item.Key]; exists {
@@ -263,9 +293,13 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 				}
 				m.metadataMu.RUnlock()
 
-				workCh <- item
+				// Try to send item, but respect cancellation
+				select {
+				case workCh <- item:
+				case <-m.ctx.Done():
+					return
+				}
 			}
-			close(workCh)
 		}()
 
 		// Wait for all workers to complete
@@ -300,6 +334,13 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 	}()
 
 	for item := range workCh {
+		// Check for cancellation before processing
+		select {
+		case <-m.ctx.Done():
+			return
+		default:
+		}
+
 		// Create descriptive progress message
 		var currentDesc string
 		if item.IsMovie {
@@ -318,15 +359,24 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 			phase: m.currentPhase,
 			item:  currentDesc,
 		}:
+		case <-m.ctx.Done():
+			return
 		default:
 		}
 
 		// Fetch metadata with retry logic for rate limiting
-		var meta *provider.EnrichedMetadata
+		var meta *provider.Metadata
 		var err error
 		retryCount := 0
 
 		for {
+			// Check for cancellation before each retry
+			select {
+			case <-m.ctx.Done():
+				return
+			default:
+			}
+
 			meta, err = util.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m.metadata)
 
 			// If we got metadata successfully, break out
@@ -336,11 +386,21 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 			}
 
 			// Handle different error types
-			if err == provider.ErrRateLimited {
-				// For rate limiting, NEVER give up - just wait and retry
+			var provErr *provider.ProviderError
+			if errors.As(err, &provErr) && provErr.Code == "RATE_LIMITED" {
+				// For rate limiting, wait with cancellation support
 				// Use exponential backoff starting at 2 seconds, capping at 32 seconds
 				waitTime := time.Duration(2<<uint(min(retryCount, 4))) * time.Second
-				time.Sleep(waitTime)
+
+				// Use a timer so we can respect cancellation during the wait
+				timer := time.NewTimer(waitTime)
+				select {
+				case <-timer.C:
+					// Continue after wait
+				case <-m.ctx.Done():
+					timer.Stop()
+					return
+				}
 				retryCount++
 				// Continue the loop - never break on rate limiting
 				continue
@@ -354,11 +414,15 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 			}
 		}
 
-		// Send result
-		resultCh <- metadataResult{
+		// Send result with cancellation check
+		select {
+		case resultCh <- metadataResult{
 			item: item,
 			meta: meta,
 			err:  err,
+		}:
+		case <-m.ctx.Done():
+			return
 		}
 	}
 }
@@ -372,10 +436,14 @@ func (m *MetadataProgressModel) processResults(resultCh <-chan metadataResult, d
 			m.metadataMu.Unlock()
 		}
 
-		if result.err != nil && result.err != provider.ErrNoResults {
-			m.errorsMu.Lock()
-			m.errors = append(m.errors, fmt.Errorf("%s: %w", result.item.Name, result.err))
-			m.errorsMu.Unlock()
+		if result.err != nil {
+			// Check if it's a NOT_FOUND error (which is expected and not really an error)
+			var provErr *provider.ProviderError
+			if !errors.As(result.err, &provErr) || provErr.Code != "NOT_FOUND" {
+				m.errorsMu.Lock()
+				m.errors = append(m.errors, fmt.Errorf("%s: %w", result.item.Name, result.err))
+				m.errorsMu.Unlock()
+			}
 		}
 
 		m.processedItems++
@@ -455,19 +523,28 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 				}
 			}
 
-			name, year := config.ExtractNameAndYear(ni.Node.Name())
-			if name != "" {
-				// Check if it's a movie or show based on content
-				isMovie := true
-				for _, child := range ni.Node.Children() {
-					if child.Data().IsDir() {
-						// If has season folders, it's a show
-						if _, found := media.ExtractSeasonNumber(child.Name()); found {
-							isMovie = false
-							break
-						}
+			// Check if it's a movie or show based on content
+			isMovie := true
+			for _, child := range ni.Node.Children() {
+				if child.Data().IsDir() {
+					// If has season folders, it's a show
+					if _, found := media.ExtractSeasonNumber(child.Name()); found {
+						isMovie = false
+						break
 					}
 				}
+			}
+
+			var name, year string
+			if isMovie {
+				// For movies, use ExtractNameAndYear
+				name, year = config.ExtractNameAndYear(ni.Node.Name())
+			} else {
+				// For shows, use ExtractShowInfo which has better parsing
+				name, year = media.ExtractShowInfo(ni.Node, false)
+			}
+
+			if name != "" {
 
 				var key string
 				if isMovie {
@@ -494,7 +571,7 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 		switch ni.Depth {
 		case 1: // Seasons - Phase 1
 			if parent := ni.Node.Parent(); parent != nil {
-				showName, year := config.ExtractNameAndYear(parent.Name())
+				showName, year := media.ExtractShowInfo(parent, false)
 				if season, found := media.ExtractSeasonNumber(ni.Node.Name()); found && showName != "" {
 					key := util.GenerateMetadataKey("season", showName, year, season, 0)
 					if !seen[key] {
@@ -510,23 +587,34 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 				}
 			}
 		case 2: // Episodes - Phase 2
-			if parent := ni.Node.Parent(); parent != nil {
-				if grandparent := parent.Parent(); grandparent != nil {
-					showName, year := config.ExtractNameAndYear(grandparent.Name())
-					if season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node); found && showName != "" {
-						key := util.GenerateMetadataKey("episode", showName, year, season, episode)
-						if !seen[key] {
-							seen[key] = true
-							items = append(items, MetadataItem{
-								Name:    showName,
-								Year:    year,
-								Season:  season,
-								Episode: episode,
-								Key:     key,
-								Phase:   2,
-							})
-						}
-					}
+			// Use ProcessEpisodeNode to get the show name from the episode itself
+			showName, year, season, episode, found := media.ProcessEpisodeNode(ni.Node)
+			if found && showName != "" {
+				// First ensure the show metadata is requested (phase 0)
+				showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+				if !seen[showKey] {
+					seen[showKey] = true
+					items = append(items, MetadataItem{
+						Name:    showName,
+						Year:    year,
+						IsMovie: false,
+						Key:     showKey,
+						Phase:   0,
+					})
+				}
+
+				// Then add the episode metadata request (phase 2)
+				key := util.GenerateMetadataKey("episode", showName, year, season, episode)
+				if !seen[key] {
+					seen[key] = true
+					items = append(items, MetadataItem{
+						Name:    showName,
+						Year:    year,
+						Season:  season,
+						Episode: episode,
+						Key:     key,
+						Phase:   2,
+					})
 				}
 			}
 		}
@@ -544,6 +632,10 @@ func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "q" || msg.String() == "esc" {
+			// Cancel the context to stop all workers
+			if m.cancel != nil {
+				m.cancel()
+			}
 			return m, tea.Quit
 		}
 	case metadataProgressMsg:
@@ -679,7 +771,7 @@ func (m *MetadataProgressModel) View() string {
 }
 
 // Metadata returns the fetched metadata
-func (m *MetadataProgressModel) Metadata() map[string]*provider.EnrichedMetadata {
+func (m *MetadataProgressModel) Metadata() map[string]*provider.Metadata {
 	return m.metadata
 }
 
@@ -692,8 +784,11 @@ func (m *MetadataProgressModel) Err() error {
 	if len(m.errors) > 0 {
 		// Check for critical errors that should stop processing
 		for _, err := range m.errors {
-			if errors.Is(err, provider.ErrInvalidAPIKey) || errors.Is(err, provider.ErrAPIUnavailable) {
-				return err
+			var provErr *provider.ProviderError
+			if errors.As(err, &provErr) {
+				if provErr.Code == "AUTH_FAILED" || provErr.Code == "UNAVAILABLE" {
+					return err
+				}
 			}
 		}
 	}

@@ -14,7 +14,7 @@ import (
 
 var (
 	// yearRangeRe extracts a year or year range; only the first year is used in output.
-	yearRangeRe = regexp.MustCompile(`\b((19|20)\d{2})(?:[\s\-–—]+(?:19|20)\d{2})?\b`)
+	yearRangeRe = regexp.MustCompile(`(?:^|[^\d])((19|20)\d{2})(?:[\s\-–—]+(?:19|20)\d{2})?(?:[^\d]|$)`)
 	// encodingTagsRe removes codec/resolution/source tags to isolate the series title.
 	encodingTagsRe = regexp.MustCompile(`(?i)\b(?:HD|HDR|DV|x265|x264|H\.?264|H\.?265|HEVC|AVC|AAC|AC3|DD|DTS|FLAC|MP3|WEB-?DL|BluRay|BDRip|DVDRip|HDTV|720p|1080p|2160p|4K|UHD|SDR|10bit|8bit|PROPER|REPACK|iNTERNAL|LiMiTED|UNRATED|EXTENDED|DiRECTORS?\.?CUT|THEATRICAL|COMPLETE|SEASON|SERIES|MULTI|DUAL|DUBBED|SUBBED|SUB|RETAIL|WS|FS|NTSC|PAL|R[1-6]|UNCUT|UNCENSORED)\b`)
 	// emptyBracketsRe matches any empty brackets (with optional spaces inside)
@@ -36,7 +36,7 @@ type FormatContext struct {
 	Node         *treeview.Node[treeview.FileInfo]
 
 	// External metadata (from providers like TMDB, TVDB, etc.)
-	Metadata *provider.EnrichedMetadata
+	Metadata *provider.Metadata
 
 	// Configuration
 	Config *FormatConfig
@@ -57,6 +57,9 @@ type FormatConfig struct {
 	TMDBLanguage        string `json:"tmdb_language"`
 	PreferLocalMetadata bool   `json:"prefer_local_metadata"`
 	TMDBWorkerCount     int    `json:"tmdb_worker_count"`
+
+	// Template resolver for dynamic variable resolution
+	resolver *TemplateResolver
 }
 
 // DefaultConfig returns the default format configuration
@@ -73,6 +76,7 @@ func DefaultConfig() *FormatConfig {
 		TMDBLanguage:        "en-US",
 		PreferLocalMetadata: true,
 		TMDBWorkerCount:     10,
+		resolver:            NewTemplateResolver(),
 	}
 }
 
@@ -131,6 +135,9 @@ func Load() (*FormatConfig, error) {
 	if cfg.TMDBWorkerCount == 0 {
 		cfg.TMDBWorkerCount = defaults.TMDBWorkerCount
 	}
+
+	// Initialize the template resolver
+	cfg.resolver = NewTemplateResolver()
 
 	return &cfg, nil
 }
@@ -192,167 +199,48 @@ func CleanName(name string) string {
 	return result
 }
 
-// applyShowVariables replaces show and year variables in a template string
-func applyShowVariables(template, show, year string) string {
-	result := strings.ReplaceAll(template, "{show}", show)
-	result = strings.ReplaceAll(result, "{year}", year)
-	return result
-}
-
-// applySeasonVariables replaces season variables in a template string
-func applySeasonVariables(template string, season int) string {
-	result := strings.ReplaceAll(template, "{season}", fmt.Sprintf("%02d", season))
-	return result
-}
-
-// applyEpisodeVariables replaces episode variables in a template string
-func applyEpisodeVariables(template string, episode int) string {
-	result := strings.ReplaceAll(template, "{episode}", fmt.Sprintf("%02d", episode))
-	return result
-}
-
-// resolveVariable resolves a single variable using metadata if available, falling back to local data
-func resolveVariable(varName string, ctx *FormatContext) string {
-	// Check if we should prefer local metadata
-	preferLocal := ctx.Config != nil && ctx.Config.PreferLocalMetadata
-
-	switch varName {
-	case "{show}":
-		if !preferLocal && ctx.Metadata != nil && ctx.Metadata.ShowName != "" {
-			return ctx.Metadata.ShowName
-		}
-		return ctx.ShowName
-
-	case "{movie}":
-		if !preferLocal && ctx.Metadata != nil && ctx.Metadata.Title != "" {
-			return ctx.Metadata.Title
-		}
-		return ctx.MovieName
-
-	case "{title}":
-		// Generic title - works for both movies and shows
-		if !preferLocal && ctx.Metadata != nil {
-			if ctx.Metadata.Title != "" {
-				return ctx.Metadata.Title
-			}
-			if ctx.Metadata.ShowName != "" {
-				return ctx.Metadata.ShowName
-			}
-		}
-		if ctx.MovieName != "" {
-			return ctx.MovieName
-		}
-		return ctx.ShowName
-
-	case "{year}":
-		if !preferLocal && ctx.Metadata != nil && ctx.Metadata.Year != "" {
-			return ctx.Metadata.Year
-		}
-		return ctx.Year
-
-	case "{season}":
-		if ctx.Season >= 0 {
-			return fmt.Sprintf("%02d", ctx.Season)
-		}
-		return ""
-
-	case "{episode}":
-		if ctx.Episode >= 0 {
-			return fmt.Sprintf("%02d", ctx.Episode)
-		}
-		return ""
-
-	case "{episode_title}":
-		if ctx.Metadata != nil && ctx.Metadata.EpisodeName != "" {
-			return ctx.Metadata.EpisodeName
-		}
-		return ""
-
-	case "{air_date}":
-		if ctx.Metadata != nil && ctx.Metadata.EpisodeAir != "" {
-			return ctx.Metadata.EpisodeAir
-		}
-		return ""
-
-	case "{rating}":
-		if ctx.Metadata != nil && ctx.Metadata.Rating > 0 {
-			return fmt.Sprintf("%.1f", ctx.Metadata.Rating)
-		}
-		return ""
-
-	case "{genres}":
-		if ctx.Metadata != nil && len(ctx.Metadata.Genres) > 0 {
-			return strings.Join(ctx.Metadata.Genres, ", ")
-		}
-		return ""
-
-	case "{runtime}":
-		if ctx.Metadata != nil && ctx.Metadata.Runtime > 0 {
-			return fmt.Sprintf("%d", ctx.Metadata.Runtime)
-		}
-		return ""
-
-	case "{tagline}":
-		if ctx.Metadata != nil && ctx.Metadata.Tagline != "" {
-			return ctx.Metadata.Tagline
-		}
-		return ""
-	}
-
-	return varName // Return unchanged if not recognized
-}
-
-// applyMetadataVariables replaces all variables in a template using metadata-aware resolution
-func applyMetadataVariables(template string, ctx *FormatContext, cfg *FormatConfig) string {
-	// Ensure config is set
-	if ctx.Config == nil {
-		ctx.Config = cfg
-	}
-
-	result := template
-
-	// List of all supported variables
-	variables := []string{
-		"{title}", "{year}",
-		"{season}",
-		"{episode}", "{episode_title}",
-		"{air_date}", "{rating}", "{genres}",
-		"{runtime}", "{tagline}",
-	}
-
-	// Replace each variable
-	for _, varName := range variables {
-		if strings.Contains(result, varName) {
-			value := resolveVariable(varName, ctx)
-			result = strings.ReplaceAll(result, varName, value)
-		}
-	}
-
-	return result
-}
-
 // ApplyShowFolderTemplate applies the show folder template using the provided context
 func (cfg *FormatConfig) ApplyShowFolderTemplate(ctx *FormatContext) string {
-	result := applyMetadataVariables(cfg.ShowFolder, ctx, cfg)
-	return CleanName(result)
+	// Ensure resolver is initialized
+	if cfg.resolver == nil {
+		cfg.resolver = NewTemplateResolver()
+	}
+
+	result, _ := cfg.resolver.Resolve(cfg.ShowFolder, ctx, ctx.Metadata, nil)
+	return result
 }
 
 // ApplySeasonFolderTemplate applies the season folder template using the provided context
 func (cfg *FormatConfig) ApplySeasonFolderTemplate(ctx *FormatContext) string {
-	result := applyMetadataVariables(cfg.SeasonFolder, ctx, cfg)
-	return CleanName(result)
+	// Ensure resolver is initialized
+	if cfg.resolver == nil {
+		cfg.resolver = NewTemplateResolver()
+	}
+
+	result, _ := cfg.resolver.Resolve(cfg.SeasonFolder, ctx, ctx.Metadata, nil)
+	return result
 }
 
 // ApplyEpisodeTemplate applies the episode template using the provided context
 func (cfg *FormatConfig) ApplyEpisodeTemplate(ctx *FormatContext) string {
-	result := applyMetadataVariables(cfg.Episode, ctx, cfg)
-	return CleanName(result)
+	// Ensure resolver is initialized
+	if cfg.resolver == nil {
+		cfg.resolver = NewTemplateResolver()
+	}
+
+	result, _ := cfg.resolver.Resolve(cfg.Episode, ctx, ctx.Metadata, nil)
+	return result
 }
 
 // ApplyMovieTemplate applies the movie template using the provided context
 func (cfg *FormatConfig) ApplyMovieTemplate(ctx *FormatContext) string {
-	result := applyMetadataVariables(cfg.Movie, ctx, cfg)
-	return CleanName(result)
+	// Ensure resolver is initialized
+	if cfg.resolver == nil {
+		cfg.resolver = NewTemplateResolver()
+	}
+
+	result, _ := cfg.resolver.Resolve(cfg.Movie, ctx, ctx.Metadata, nil)
+	return result
 }
 
 // ExtractNameAndYear cleans a filename and extracts the name and year components.
@@ -372,8 +260,8 @@ func ExtractNameAndYear(name string) (string, string) {
 		// Extract just the first year from the match (yearMatches[1] is the full first year)
 		year = yearMatches[1]
 
-		// Find the position of the year match
-		yearIndex := strings.Index(formatted, yearMatches[0])
+		// Find the position of the actual year within the formatted string
+		yearIndex := strings.Index(formatted, year)
 		if yearIndex != -1 {
 			// Keep only the part before the year
 			formatted = formatted[:yearIndex]

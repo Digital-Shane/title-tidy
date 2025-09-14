@@ -119,14 +119,21 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta
 	// Rename children into the new directory
 	for _, child := range node.Children() {
 		cm := core.GetMeta(child)
-		if cm == nil || cm.NewName == "" {
+		if cm == nil {
 			continue
 		}
+
+		// Use NewName if set, otherwise keep original name
+		childName := cm.NewName
+		if childName == "" {
+			childName = child.Name()
+		}
+
 		oldChildPath := child.Data().Path
-		newChildPath := filepath.Join(dirPath, cm.NewName)
+		newChildPath := filepath.Join(dirPath, childName)
 		if err := os.Rename(oldChildPath, newChildPath); err != nil {
 			log.LogRename(oldChildPath, newChildPath, false, err)
-			errs = append(errs, fmt.Errorf("%s -> %s: %w", child.Name(), cm.NewName, cm.Fail(err)))
+			errs = append(errs, fmt.Errorf("%s -> %s: %w", child.Name(), childName, cm.Fail(err)))
 			continue
 		}
 		log.LogRename(oldChildPath, newChildPath, true, nil)
