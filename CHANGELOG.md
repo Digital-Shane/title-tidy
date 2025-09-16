@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.10.1] - 2025-09-16
+### Fixed
+* Episode file parsing to not mistake episode codes for the show name
+* Show name extraction when underscores are used in file names
+* Movie commands `--no-dir` ignoring subtitle files
+### Updated
+* Provider system to be more dynamic in preparation of adding more providers
+* Config screen to dynamically load template options from the providers definitions
+* Config screen to only show template options for specific providers when the respective provider is enabled
+### Added
+* `networks` and `imdb_id` as possible metadata from tmdb
+
 ## [v1.10.0] - 2025-09-14
 ### Fixed
 * Show name extraction from dotted format episodes

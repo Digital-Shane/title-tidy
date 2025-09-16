@@ -62,13 +62,12 @@ func TestConfigScrolling(t *testing.T) {
 		t.Error("Alt+Space should toggle autoScroll")
 	}
 
-	// Test scroll pause on manual intervention
+	// Test that manual scrolling disables auto-scroll
 	m.autoScroll = true
-	m.scrollPaused = false
 	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m = updatedModel.(*Model)
-	if !m.scrollPaused {
-		t.Error("Manual scrolling should pause auto-scroll")
+	if m.autoScroll {
+		t.Error("Manual scrolling should disable auto-scroll")
 	}
 
 	// Test view rendering with scroll indicator
@@ -141,7 +140,6 @@ func TestScrollTickMsg(t *testing.T) {
 
 	// Test auto-scroll tick
 	model.autoScroll = true
-	model.scrollPaused = false
 
 	initialOffset := model.variablesView.YOffset
 	updatedModel, cmd := model.Update(scrollTickMsg{})

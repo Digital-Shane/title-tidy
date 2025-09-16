@@ -96,7 +96,9 @@ Customize how your media files and folders are named:
 * `{rating}` - TMDB rating score (e.g., "8.5")
 * `{genres}` - Comma-separated genre list (e.g., "Drama, Crime")
 * `{runtime}` - Runtime in minutes
-* `{tagline}` - Movie or show tagline
+* `{tagline}` - Movie tagline
+* `{imdb_id}` - IMDB ID
+* `{networks}` - TV Network that created the show (e.g., "HBO")
 
 **Template Examples:**
 * `S{season}E{episode}` → "S01E01"

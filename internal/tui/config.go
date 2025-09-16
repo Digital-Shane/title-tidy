@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -66,9 +69,9 @@ type Model struct {
 	height           int
 	saveStatus       string
 	err              error
-	variablesView    viewport.Model // viewport for scrolling variables list
-	autoScroll       bool           // whether auto-scrolling is enabled
-	scrollPaused     bool           // whether scrolling is temporarily paused
+	variablesView    viewport.Model           // viewport for scrolling variables list
+	autoScroll       bool                     // whether auto-scrolling is enabled
+	templateRegistry *config.TemplateRegistry // registry for template variables
 }
 
 // New creates a new configuration UI model
@@ -125,6 +128,16 @@ func New() (*Model, error) {
 	return m, nil
 }
 
+// NewWithRegistry creates a new configuration UI model with a template registry
+func NewWithRegistry(templateReg *config.TemplateRegistry) (*Model, error) {
+	m, err := New()
+	if err != nil {
+		return nil, err
+	}
+	m.templateRegistry = templateReg
+	return m, nil
+}
+
 // Init initializes the model
 func (m *Model) Init() tea.Cmd {
 	return m.tickCmd()
@@ -141,7 +154,7 @@ func (m *Model) tickCmd() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case scrollTickMsg:
-		if m.autoScroll && !m.scrollPaused {
+		if m.autoScroll {
 			// Only auto-scroll if content doesn't fit in viewport
 			// Add some buffer to prevent unnecessary scrolling when content barely fits
 			if m.variablesView.TotalLineCount() > m.variablesView.Height+1 {
@@ -210,14 +223,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// Manual scroll up in variables view
-			m.scrollPaused = true
+			// Manual scroll up in variables view - disable auto-scroll
+			if m.autoScroll {
+				m.autoScroll = false
+			}
 			m.variablesView.ScrollUp(1)
-			// Resume auto-scroll after a delay
-			go func() {
-				time.Sleep(3 * time.Second)
-				m.scrollPaused = false
-			}()
 			return m, nil
 
 		case tea.KeyDown:
@@ -239,34 +249,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// Manual scroll down in variables view
-			m.scrollPaused = true
+			// Manual scroll down in variables view - disable auto-scroll
+			if m.autoScroll {
+				m.autoScroll = false
+			}
 			m.variablesView.ScrollDown(1)
-			// Resume auto-scroll after a delay
-			go func() {
-				time.Sleep(3 * time.Second)
-				m.scrollPaused = false
-			}()
 			return m, nil
 
 		case tea.KeyPgUp:
-			// Page up in variables view
-			m.scrollPaused = true
+			// Page up in variables view - disable auto-scroll
+			if m.autoScroll {
+				m.autoScroll = false
+			}
 			m.variablesView.HalfPageUp()
-			go func() {
-				time.Sleep(3 * time.Second)
-				m.scrollPaused = false
-			}()
 			return m, nil
 
 		case tea.KeyPgDown:
-			// Page down in variables view
-			m.scrollPaused = true
+			// Page down in variables view - disable auto-scroll
+			if m.autoScroll {
+				m.autoScroll = false
+			}
 			m.variablesView.HalfPageDown()
-			go func() {
-				time.Sleep(3 * time.Second)
-				m.scrollPaused = false
-			}()
 			return m, nil
 
 		case tea.KeyTab:
@@ -346,6 +349,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeSection == SectionTMDB && m.tmdbSubfocus == 0 {
 				// Enter toggles TMDB enabled
 				m.tmdbEnabled = !m.tmdbEnabled
+				// Update variables display to show/hide TMDB variables
+				m.updateVariablesContent()
 			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 3 && m.tmdbEnabled {
 				// Enter toggles prefer local metadata (only when TMDB is enabled)
 				m.tmdbPreferLocal = !m.tmdbPreferLocal
@@ -366,6 +371,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeSection == SectionTMDB && m.tmdbSubfocus == 0 {
 				// Space toggles TMDB enabled
 				m.tmdbEnabled = !m.tmdbEnabled
+				// Update variables display to show/hide TMDB variables
+				m.updateVariablesContent()
 				return m, nil
 			} else if m.activeSection == SectionTMDB && m.tmdbSubfocus == 3 && m.tmdbEnabled {
 				// Space toggles prefer local metadata (only when TMDB is enabled)
@@ -549,11 +556,7 @@ func (m *Model) renderVariablesViewport() string {
 	scrollIndicator := ""
 	if m.variablesView.TotalLineCount() > m.variablesView.Height+1 {
 		if m.autoScroll {
-			if m.scrollPaused {
-				scrollIndicator = " [Paused]"
-			} else {
-				scrollIndicator = " [Auto-scrolling]"
-			}
+			scrollIndicator = " [Auto-scrolling]"
 		} else {
 			scrollIndicator = " [Manual]"
 		}
@@ -718,6 +721,10 @@ func (m *Model) buildPreview(width, maxHeight int) string {
 	labelStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#9ca3af"))
 
+	hintStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#fbbf24")).
+		Italic(true)
+
 	lines := []string{
 		titleStyle.Render("Live Previews:"),
 		"",
@@ -738,9 +745,33 @@ func (m *Model) buildPreview(width, maxHeight int) string {
 		lines = append(lines, line)
 	}
 
-	// Truncate if too tall
+	// Add hint about TMDB if it's not enabled and we're in a template section
+	if !m.tmdbEnabled && (m.activeSection == SectionShowFolder ||
+		m.activeSection == SectionSeasonFolder ||
+		m.activeSection == SectionEpisode ||
+		m.activeSection == SectionMovie) {
+		// Add spacing before hint
+		lines = append(lines, "")
+		lines = append(lines, hintStyle.Render("💡 Enable TMDB for more template options"))
+		lines = append(lines, hintStyle.Render("   (rating, genres, tagline, etc.)"))
+	}
+
+	// Truncate if too tall (but keep the hint if present)
 	if maxHeight > 0 && len(lines) > maxHeight {
-		lines = lines[:maxHeight]
+		// Check if we have a hint (last 3 lines)
+		hasHint := !m.tmdbEnabled && (m.activeSection == SectionShowFolder ||
+			m.activeSection == SectionSeasonFolder ||
+			m.activeSection == SectionEpisode ||
+			m.activeSection == SectionMovie)
+
+		if hasHint && len(lines) >= 3 && maxHeight > 3 {
+			// Keep the hint at the bottom
+			hintLines := lines[len(lines)-3:]
+			lines = lines[:maxHeight-3]
+			lines = append(lines, hintLines...)
+		} else {
+			lines = lines[:maxHeight]
+		}
 	}
 
 	return strings.Join(lines, "\n")
@@ -796,6 +827,67 @@ type variable struct {
 }
 
 func (m *Model) getVariablesForSection() []variable {
+	// Special handling for logging and TMDB sections
+	switch m.activeSection {
+	case SectionLogging:
+		return []variable{
+			{"Space/Enter", "Toggle logging on/off", ""},
+			{"↑/↓ arrows", "Switch to fields", ""},
+			{"Retention", "Auto-cleanup old logs", "Days to keep log files"},
+		}
+	case SectionTMDB:
+		return []variable{
+			{"Space/Enter", "Toggle TMDB lookup", ""},
+			{"↑/↓ arrows", "Switch between fields", ""},
+			{"API Key", "TMDB API key (32 hex chars)", "Get from themoviedb.org (NOT Read Token)"},
+			{"Language", "Content language", "en-US, fr-FR, etc."},
+			{"Prefer Local", "Use local metadata first", "Falls back to TMDB if needed"},
+		}
+	}
+
+	// Use template registry if available for template sections
+	if m.templateRegistry != nil {
+		var mediaType provider.MediaType
+		switch m.activeSection {
+		case SectionShowFolder:
+			mediaType = provider.MediaTypeShow
+		case SectionSeasonFolder:
+			mediaType = provider.MediaTypeSeason
+		case SectionEpisode:
+			mediaType = provider.MediaTypeEpisode
+		case SectionMovie:
+			mediaType = provider.MediaTypeMovie
+		default:
+			return nil
+		}
+
+		// Get variables from registry
+		vars := m.templateRegistry.GetVariablesForMediaType(mediaType)
+		result := make([]variable, 0, len(vars))
+
+		// Convert provider variables to UI variables, filtering by enabled providers
+		for _, v := range vars {
+			// Skip TMDB variables if TMDB is not enabled
+			if v.Provider == "tmdb" && !m.tmdbEnabled {
+				continue
+			}
+
+			// Format the variable name with braces
+			varName := "{" + v.Name + "}"
+			result = append(result, variable{
+				name:        varName,
+				description: v.Description,
+				example:     v.Example,
+			})
+		}
+
+		// If we got variables from registry, return them
+		if len(result) > 0 {
+			return result
+		}
+	}
+
+	// Fallback to hardcoded variables if registry unavailable or empty
 	switch m.activeSection {
 	case SectionShowFolder:
 		return []variable{
@@ -829,20 +921,6 @@ func (m *Model) getVariablesForSection() []variable {
 			{"{genres}", "Genres", "Action, Sci-Fi"},
 			{"{runtime}", "Runtime in minutes", "136"},
 			{"{tagline}", "Tagline", "Welcome to the Real World"},
-		}
-	case SectionLogging:
-		return []variable{
-			{"Space/Enter", "Toggle logging on/off", ""},
-			{"↑/↓ arrows", "Switch to fields", ""},
-			{"Retention", "Auto-cleanup old logs", "Days to keep log files"},
-		}
-	case SectionTMDB:
-		return []variable{
-			{"Space/Enter", "Toggle TMDB lookup", ""},
-			{"↑/↓ arrows", "Switch between fields", ""},
-			{"API Key", "TMDB API key (32 hex chars)", "Get from themoviedb.org (NOT Read Token)"},
-			{"Language", "Content language", "en-US, fr-FR, etc."},
-			{"Prefer Local", "Use local metadata first", "Falls back to TMDB if needed"},
 		}
 	}
 	return nil
@@ -915,54 +993,96 @@ func (m *Model) generatePreviews() []preview {
 	}
 
 	// Create demo metadata for shows (Breaking Bad)
-	showMetadata := &provider.EnrichedMetadata{
-		Title:       "Breaking Bad",
-		ShowName:    "Breaking Bad",
-		Year:        "2008",
-		Rating:      8.5,
-		Genres:      []string{"Drama", "Crime"},
-		Runtime:     48,
-		Tagline:     "All Hail the King",
-		SeasonName:  "Season 01",
-		EpisodeName: "Gray Matter",
-		EpisodeAir:  "2008-02-24",
+	showMetadata := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title:       "Breaking Bad",
+			Year:        "2008",
+			Rating:      8.5,
+			Genres:      []string{"Drama", "Crime"},
+			EpisodeName: "Gray Matter",
+		},
+		IDs: map[string]string{
+			"imdb_id": "tt0903747",
+		},
+		Extended: map[string]interface{}{
+			"tagline":  "All Hail the King",
+			"networks": "AMC",
+		},
 	}
 
 	// Create demo metadata for movies (The Matrix)
-	movieMetadata := &provider.EnrichedMetadata{
-		Title:   "The Matrix",
-		Year:    "1999",
-		Rating:  8.7,
-		Genres:  []string{"Action", "Sci-Fi"},
-		Runtime: 136,
-		Tagline: "Welcome to the Real World",
+	movieMetadata := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title:  "The Matrix",
+			Year:   "1999",
+			Rating: 8.7,
+			Genres: []string{"Action", "Sci-Fi"},
+		},
+		IDs: map[string]string{
+			"imdb_id": "tt0133093",
+		},
+		Extended: map[string]interface{}{
+			"tagline": "Welcome to the Real World",
+			"studios": "Warner Bros.",
+		},
 	}
 
 	icons := selectConfigIcons()
+
+	// Create contexts for preview
+	showCtx := &config.FormatContext{
+		ShowName: "Breaking Bad",
+		Year:     "2008",
+		Metadata: showMetadata,
+	}
+	seasonCtx := &config.FormatContext{
+		ShowName: "Breaking Bad",
+		Year:     "2008",
+		Season:   1,
+		Metadata: showMetadata,
+	}
+	episodeCtx := &config.FormatContext{
+		ShowName: "Breaking Bad",
+		Year:     "2008",
+		Season:   1,
+		Episode:  7,
+		Metadata: showMetadata,
+	}
+	movieCtx := &config.FormatContext{
+		MovieName: "The Matrix",
+		Year:      "1999",
+		Metadata:  movieMetadata,
+	}
+
+	// Use template registry if available for better variable resolution
+	var showPreview, seasonPreview, episodePreview, moviePreview string
+
+	if m.templateRegistry != nil {
+		// Use template registry for dynamic variable resolution
+		showPreview, _ = m.templateRegistry.ResolveTemplate(cfg.ShowFolder, showCtx, showMetadata)
+		showPreview = config.CleanName(showPreview)
+
+		seasonPreview, _ = m.templateRegistry.ResolveTemplate(cfg.SeasonFolder, seasonCtx, showMetadata)
+		seasonPreview = config.CleanName(seasonPreview)
+
+		episodePreview, _ = m.templateRegistry.ResolveTemplate(cfg.Episode, episodeCtx, showMetadata)
+		episodePreview = config.CleanName(episodePreview) + ".mkv"
+
+		moviePreview, _ = m.templateRegistry.ResolveTemplate(cfg.Movie, movieCtx, movieMetadata)
+		moviePreview = config.CleanName(moviePreview)
+	} else {
+		// Fallback to old method
+		showPreview = cfg.ApplyShowFolderTemplate(showCtx)
+		seasonPreview = cfg.ApplySeasonFolderTemplate(seasonCtx)
+		episodePreview = cfg.ApplyEpisodeTemplate(episodeCtx) + ".mkv"
+		moviePreview = cfg.ApplyMovieTemplate(movieCtx)
+	}
+
 	return []preview{
-		{icons["title"], "Show", cfg.ApplyShowFolderTemplate(&config.FormatContext{
-			ShowName: "Breaking Bad",
-			Year:     "2008",
-			Metadata: showMetadata,
-		})},
-		{icons["folder"], "Season", cfg.ApplySeasonFolderTemplate(&config.FormatContext{
-			ShowName: "Breaking Bad",
-			Year:     "2008",
-			Season:   1,
-			Metadata: showMetadata,
-		})},
-		{icons["episode"], "Episode", cfg.ApplyEpisodeTemplate(&config.FormatContext{
-			ShowName: "Breaking Bad",
-			Year:     "2008",
-			Season:   1,
-			Episode:  7,
-			Metadata: showMetadata,
-		}) + ".mkv"},
-		{icons["movie"], "Movie", cfg.ApplyMovieTemplate(&config.FormatContext{
-			MovieName: "The Matrix",
-			Year:      "1999",
-			Metadata:  movieMetadata,
-		})},
+		{icons["title"], "Show", showPreview},
+		{icons["folder"], "Season", seasonPreview},
+		{icons["episode"], "Episode", episodePreview},
+		{icons["movie"], "Movie", moviePreview},
 	}
 }
 
@@ -1292,18 +1412,30 @@ func validateTMDBAPIKey(apiKey string) tea.Cmd {
 		}
 
 		// Try to create a TMDB provider with the API key
-		tmdbProvider, err := provider.NewTMDBProvider(apiKey, "en-US")
-		if err != nil {
-			// If provider creation fails (e.g., invalid API key format), it's invalid
+		tmdbProvider := tmdbProv.New()
+		config := map[string]interface{}{
+			"api_key":       apiKey,
+			"language":      "en-US",
+			"cache_enabled": false, // Disable cache for validation
+		}
+
+		if err := tmdbProvider.Configure(config); err != nil {
+			// If provider configuration fails, it's invalid
 			return tmdbValidationMsg{apiKey: apiKey, valid: false}
 		}
 
 		// Try to search for a well-known movie to validate the API key
 		// Using "The Matrix" as it's a popular movie that should always return results
-		_, err = tmdbProvider.SearchMovie("The Matrix", "1999")
+		request := provider.FetchRequest{
+			MediaType: provider.MediaTypeMovie,
+			Name:      "The Matrix",
+			Year:      "1999",
+		}
+		_, err := tmdbProvider.Fetch(context.Background(), request)
 		if err != nil {
 			// Check if the error is specifically an invalid API key error
-			if err == provider.ErrInvalidAPIKey {
+			var provErr *provider.ProviderError
+			if errors.As(err, &provErr) && provErr.Code == "AUTH_FAILED" {
 				return tmdbValidationMsg{apiKey: apiKey, valid: false}
 			}
 			// For other errors (network, etc.), we'll consider it invalid

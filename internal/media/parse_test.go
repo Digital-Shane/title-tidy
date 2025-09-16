@@ -522,6 +522,18 @@ func TestExtractShowInfoHierarchy(t *testing.T) {
 			wantShowName: "Breaking Bad",
 			wantYear:     "",
 		},
+		{
+			name:         "EpisodeOnlyE05InSeasonFolder",
+			structure:    []string{"E05 S02E05.mkv", "The Mandalorian Season 02", "TV Shows"},
+			wantShowName: "The Mandalorian",
+			wantYear:     "",
+		},
+		{
+			name:         "EpisodeWordInSeasonFolder",
+			structure:    []string{"Episode 4 S02E04.mkv", "The Mandalorian Season 02", "TV Shows"},
+			wantShowName: "The Mandalorian",
+			wantYear:     "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -554,6 +566,60 @@ func TestExtractShowInfoHierarchy(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantYear, gotYear); diff != "" {
 				t.Errorf("ExtractShowInfo year mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestFindSeasonEpisodeIndex(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		wantIdx  int
+	}{
+		{
+			name:     "EpisodeOnlyE05",
+			filename: "E05 S02E05.mkv",
+			wantIdx:  0,
+		},
+		{
+			name:     "EpisodeWordEpisode4",
+			filename: "Episode 4 S02E04.mkv",
+			wantIdx:  0,
+		},
+		{
+			name:     "ShowWithS02E03",
+			filename: "The Mandalorian S02E03.mkv",
+			wantIdx:  15,
+		},
+		{
+			name:     "SeasonEpisodeS01E02",
+			filename: "The Mandalorian S01E02.mkv",
+			wantIdx:  15,
+		},
+		{
+			name:     "NoPattern",
+			filename: "RandomFile.mkv",
+			wantIdx:  -1,
+		},
+		{
+			name:     "LowerCaseE05",
+			filename: "e05.mkv",
+			wantIdx:  0,
+		},
+		{
+			name:     "EpisodeWithUnderscore",
+			filename: "Episode_4.mkv",
+			wantIdx:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotIdx := FindSeasonEpisodeIndex(tt.filename)
+			if gotIdx != tt.wantIdx {
+				t.Errorf("FindSeasonEpisodeIndex(%v) = %v, want %v",
+					tt.filename, gotIdx, tt.wantIdx)
 			}
 		})
 	}

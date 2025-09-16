@@ -32,9 +32,9 @@ func runShowsCommand(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.EnrichedMetadata) {
+func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
 	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
-	showMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.EnrichedMetadata)
+	showMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.Metadata)
 	// Store show info for fallback when episodes don't contain show name
 	showInfoCache := make(map[*treeview.Node[treeview.FileInfo]]struct {
 		name string
@@ -57,7 +57,7 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				year string
 			}{showName, year}
 
-			var meta *provider.EnrichedMetadata
+			var meta *provider.Metadata
 			if metadata != nil {
 				key := util.GenerateMetadataKey("show", showName, year, 0, 0)
 				meta = metadata[key]
@@ -91,7 +91,7 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				}
 			}
 
-			var meta *provider.EnrichedMetadata
+			var meta *provider.Metadata
 			if ni.Node.Parent() != nil {
 				meta = showMetadata[ni.Node.Parent()]
 			}
@@ -113,16 +113,38 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				continue
 			}
 
-			// If show name wasn't found in episode, use cached info from grandparent (show folder)
-			if showName == "" && ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
+			// Store the parent show's name for comparison
+			var parentShowName string
+			var parentShowYear string
+			if ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
 				if cached, exists := showInfoCache[ni.Node.Parent().Parent()]; exists {
-					showName = cached.name
-					year = cached.year
+					parentShowName = cached.name
+					parentShowYear = cached.year
 				}
 			}
 
-			var meta *provider.EnrichedMetadata
-			if ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
+			// If show name wasn't found in episode, use parent info
+			if showName == "" {
+				showName = parentShowName
+				year = parentShowYear
+			}
+
+			// Look up metadata based on the actual show name extracted from the episode
+			var meta *provider.Metadata
+			if metadata != nil && showName != "" {
+				// First try to find metadata for this specific episode
+				key := util.GenerateMetadataKey("episode", showName, year, seasonNumber, episodeNumber)
+				meta = metadata[key]
+
+				// If no episode metadata, try show metadata
+				if meta == nil {
+					key = util.GenerateMetadataKey("show", showName, year, 0, 0)
+					meta = metadata[key]
+				}
+			}
+
+			// Only use parent metadata if the show names match (not a different show in the folder)
+			if meta == nil && showName == parentShowName && ni.Node.Parent() != nil && ni.Node.Parent().Parent() != nil {
 				meta = showMetadata[ni.Node.Parent().Parent()]
 			}
 

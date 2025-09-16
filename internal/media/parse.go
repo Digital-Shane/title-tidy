@@ -38,14 +38,8 @@ var (
 	// subtitleRe matches subtitle file extensions (case‑insensitive).
 	subtitleRe = regexp.MustCompile(`(?i)\.(srt|sub|idx|ass|ssa|smi|vtt|sbv|sami|usf|stl|dks|pjs|jss|psb|rt|scc|cap|sup|dfxp|ttml)$`)
 
-	// yearRangeRe extracts a year or year range; only the first year is used in output.
-	yearRangeRe = regexp.MustCompile(`\b((19|20)\d{2})(?:[\s\-–—]+(?:19|20)\d{2})?\b`)
-
 	// episodeNumberRe captures a loose episode number when SxxExx not present.
 	episodeNumberRe = regexp.MustCompile(`(?:^|[\s\.\-_]|[Ee])(\d+)(?:[\s\.\-_]|$)`)
-
-	// encodingTagsRe removes codec/resolution/source tags to isolate the series title.
-	encodingTagsRe = regexp.MustCompile(`(?i)\b(?:HD|HDR|DV|x265|x264|H\.?264|H\.?265|HEVC|AVC|AAC|AC3|DD|DTS|FLAC|MP3|WEB-?DL|BluRay|BDRip|DVDRip|HDTV|720p|1080p|2160p|4K|UHD|SDR|10bit|8bit|PROPER|REPACK|iNTERNAL|LiMiTED|UNRATED|EXTENDED|DiRECTORS?\.?CUT|THEATRICAL|COMPLETE|SEASON|SERIES|MULTI|DUAL|DUBBED|SUBBED|SUB|RETAIL|WS|FS|NTSC|PAL|R[1-6]|UNCUT|UNCENSORED)\b`)
 
 	// langPattern matches trailing language codes before subtitle extension: .en, .eng, .en-US.
 	langPattern = regexp.MustCompile(`(\.[a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4})?)$`)
@@ -61,9 +55,12 @@ var (
 
 	// seasonEpisodePatterns are used to find where season/episode info starts in a filename
 	seasonEpisodePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)[sx]?\d+[ex]\d+`),          // S01E01, 1x01, s1e1
-		regexp.MustCompile(`(?i)\b(?:s|season)\.? *\d+\b`), // Season 01, S01
-		regexp.MustCompile(`\b\d{1,2}[\. _-]\d{1,2}\b`),    // Dotted format: 1.04, 01.4
+		regexp.MustCompile(`(?i)[sx]?\d+[ex]\d+`),                // S01E01, 1x01, s1e1
+		regexp.MustCompile(`(?i)[\s._-](?:s|season)[\s._-]*\d+`), // _Season_02, .Season.02, -Season-02, Season 02
+		regexp.MustCompile(`(?i)^(?:s|season)[\s._-]*\d+`),       // Season at start of string
+		regexp.MustCompile(`\b\d{1,2}[\. _-]\d{1,2}\b`),          // Dotted format: 1.04, 01.4
+		regexp.MustCompile(`(?i)^[eE]\d+`),                       // Episode at start: E01, E05, e12
+		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`),            // Episode at start: Episode 4, Episode_5
 	}
 )
 
@@ -118,8 +115,34 @@ func extractSubtitleSuffix(filename string) string {
 // ExtractSeasonNumber attempts to extract a season number from a string.
 // Returns the season number and true if found, or 0 and false if not found.
 func ExtractSeasonNumber(input string) (int, bool) {
-	// Table-driven: check patterns in order and return the first parsed integer.
-	return firstIntFromRegexps(input, seasonRe, seasonAltRe, simpleNumberRe)
+	// First try explicit season patterns
+	if num, found := firstIntFromRegexps(input, seasonRe, seasonAltRe); found {
+		return num, found
+	}
+
+	// For simple number patterns, be more restrictive
+	// Only match if it's a standalone number that's not a 4-digit year
+	if matches := simpleNumberRe.FindStringSubmatch(input); len(matches) > 0 {
+		for i := 1; i < len(matches); i++ {
+			if matches[i] != "" {
+				if num, err := strconv.Atoi(matches[i]); err == nil {
+					// Reject 4-digit numbers (likely years) and numbers > 100 (unlikely season numbers)
+					if num >= 1900 && num <= 2100 {
+						continue // This looks like a year, skip it
+					}
+					if num > 0 && num <= 100 {
+						// if this is the whole string and it's just a number, it's probably a season folder
+						trimmed := strings.TrimSpace(input)
+						if trimmed == matches[i] {
+							return num, true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return 0, false
 }
 
 // ParseSeasonEpisode extracts season and episode numbers from a filename using node context.
@@ -262,6 +285,7 @@ func ExtractShowInfo(node *treeview.Node[treeview.FileInfo], isFile bool) (showN
 	}
 
 	// If the pattern starts at the beginning (idx == 0), there's no show name in this file
+	// This happens with files like "E05.mkv" or "Episode 4.mkv"
 	// Go straight to parent search
 	if idx == 0 {
 		// No show name in current file, search parents

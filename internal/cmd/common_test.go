@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
@@ -246,10 +247,12 @@ func TestCreateFormatContext(t *testing.T) {
 		Movie:        "{title} ({year})",
 	}
 
-	metadata := &provider.EnrichedMetadata{
-		Title:  "Enhanced Title",
-		Year:   "2023",
-		Rating: 8.5,
+	metadata := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title:  "Enhanced Title",
+			Year:   "2023",
+			Rating: 8.5,
+		},
 	}
 
 	tests := []struct {
@@ -259,7 +262,7 @@ func TestCreateFormatContext(t *testing.T) {
 		year      string
 		season    int
 		episode   int
-		metadata  *provider.EnrichedMetadata
+		metadata  *provider.Metadata
 		want      *config.FormatContext
 	}{
 		{
@@ -299,7 +302,10 @@ func TestCreateFormatContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := createFormatContext(cfg, tt.showName, tt.movieName, tt.year, tt.season, tt.episode, tt.metadata)
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmp.FilterPath(func(p cmp.Path) bool {
+				// Ignore unexported fields in FormatConfig like 'resolver'
+				return strings.Contains(p.String(), ".resolver")
+			}, cmp.Ignore())); diff != "" {
 				t.Errorf("createFormatContext() mismatch (-want +got):\n%s", diff)
 			}
 		})

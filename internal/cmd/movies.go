@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"path/filepath"
-	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -41,6 +40,9 @@ func runMoviesCommand(cmd *cobra.Command, args []string) error {
 
 func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.FormatConfig, noDir bool) []*treeview.Node[treeview.FileInfo] {
 	if noDir {
+		// First pass: process video files and build a map of base names to new names
+		videoRenames := make(map[string]string) // maps original base name to new base name
+
 		for _, n := range nodes {
 			if n.Data().IsDir() {
 				continue
@@ -56,10 +58,35 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 				formatted, year := config.ExtractNameAndYear(base)
 
 				ctx := createFormatContext(cfg, "", formatted, year, 0, 0, nil)
-				m.NewName = cfg.ApplyMovieTemplate(ctx) + media.ExtractExtension(n.Name())
-			} else if media.IsSubtitle(n.Name()) {
+				newBase := cfg.ApplyMovieTemplate(ctx)
+				m.NewName = newBase + media.ExtractExtension(n.Name())
+
+				// Store the rename mapping for subtitle matching
+				videoRenames[base] = newBase
+			}
+		}
+
+		// Second pass: process subtitle files and match them to videos
+		for _, n := range nodes {
+			if n.Data().IsDir() {
+				continue
+			}
+			if media.IsSubtitle(n.Name()) {
 				m := core.EnsureMeta(n)
 				m.Type = core.MediaMovieFile
+
+				// Extract base name and try to match with a video
+				subBase := n.Name()
+				subExt := media.ExtractExtension(subBase)
+				if subExt != "" {
+					subBase = subBase[:len(subBase)-len(subExt)]
+				}
+
+				// Try to find matching video rename
+				if newBase, found := videoRenames[subBase]; found {
+					// Found a matching video, rename subtitle to match
+					m.NewName = newBase + subExt
+				}
 			}
 		}
 		return nodes
@@ -97,10 +124,6 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 				if ext := media.ExtractExtension(otherBaseName); ext != "" {
 					otherBaseName = otherBaseName[:len(otherBaseName)-len(ext)]
 				}
-				// Remove language codes and subtitle suffixes like .en.srt -> base name
-				if idx := strings.LastIndex(otherBaseName, "."); idx != -1 {
-					otherBaseName = otherBaseName[:idx]
-				}
 				if otherBaseName == videoBaseName {
 					children = append(children, other)
 					usedNodes[other] = true
@@ -117,6 +140,11 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 		})
 		virtualDir.SetChildren(children)
 
+		// Mark virtual directory with proper metadata flags
+		virtualMeta := core.EnsureMeta(virtualDir)
+		virtualMeta.IsVirtual = true
+		virtualMeta.NeedsDirectory = true
+
 		result = append(result, virtualDir)
 	}
 
@@ -129,7 +157,7 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 	return result
 }
 
-func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.EnrichedMetadata) {
+func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
 	for ni := range t.All(context.Background()) {
 		m := core.EnsureMeta(ni.Node)
 
@@ -138,7 +166,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 				m.Type = core.MediaMovie
 				movieName, year := config.ExtractNameAndYear(ni.Node.Name())
 
-				var meta *provider.EnrichedMetadata
+				var meta *provider.Metadata
 				if metadata != nil {
 					key := util.GenerateMetadataKey("movie", movieName, year, 0, 0)
 					meta = metadata[key]
@@ -164,7 +192,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 				if ni.Node.Parent() != nil {
 					movieName, year := config.ExtractNameAndYear(ni.Node.Parent().Name())
 
-					var meta *provider.EnrichedMetadata
+					var meta *provider.Metadata
 					if metadata != nil {
 						key := util.GenerateMetadataKey("movie", movieName, year, 0, 0)
 						meta = metadata[key]
@@ -181,6 +209,23 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 				}
 			} else if media.IsSubtitle(ni.Node.Name()) {
 				m.Type = core.MediaMovieFile
+
+				// Match subtitle naming to the parent movie
+				if ni.Node.Parent() != nil {
+					movieName, year := config.ExtractNameAndYear(ni.Node.Parent().Name())
+
+					var meta *provider.Metadata
+					if metadata != nil {
+						key := util.GenerateMetadataKey("movie", movieName, year, 0, 0)
+						meta = metadata[key]
+					}
+
+					ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
+					baseNewName := cfg.ApplyMovieTemplate(ctx)
+
+					// Preserve the subtitle extension including language codes
+					m.NewName = baseNewName + media.ExtractExtension(ni.Node.Name())
+				}
 
 				if linkPath != "" {
 					if parentMeta := core.GetMeta(ni.Node.Parent()); parentMeta != nil && parentMeta.NewName != "" {

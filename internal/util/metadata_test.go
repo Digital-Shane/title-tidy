@@ -84,7 +84,7 @@ func TestGenerateMetadataKey(t *testing.T) {
 }
 
 func TestFetchMetadataWithDependencies_NilProvider(t *testing.T) {
-	cache := make(map[string]*provider.EnrichedMetadata)
+	cache := make(map[string]*provider.Metadata)
 
 	got, err := FetchMetadataWithDependencies(nil, "Test Show", "2020", 1, 1, false, cache)
 
@@ -95,7 +95,7 @@ func TestFetchMetadataWithDependencies_NilProvider(t *testing.T) {
 
 func TestFetchMetadataWithDependencies_EmptyName(t *testing.T) {
 	// Create a mock provider (we'll use nil since we expect early return)
-	cache := make(map[string]*provider.EnrichedMetadata)
+	cache := make(map[string]*provider.Metadata)
 
 	got, err := FetchMetadataWithDependencies(nil, "", "2020", 1, 1, false, cache)
 
@@ -107,14 +107,14 @@ func TestFetchMetadataWithDependencies_EmptyName(t *testing.T) {
 func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name     string
-		provider *provider.TMDBProvider
+		provider provider.Provider
 		itemName string
 		year     string
 		season   int
 		episode  int
 		isMovie  bool
-		cache    map[string]*provider.EnrichedMetadata
-		want     *provider.EnrichedMetadata
+		cache    map[string]*provider.Metadata
+		want     *provider.Metadata
 	}{
 		{
 			name:     "nil provider",
@@ -124,7 +124,7 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 			season:   0,
 			episode:  0,
 			isMovie:  true,
-			cache:    make(map[string]*provider.EnrichedMetadata),
+			cache:    make(map[string]*provider.Metadata),
 			want:     nil,
 		},
 		{
@@ -135,7 +135,7 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 			season:   0,
 			episode:  0,
 			isMovie:  true,
-			cache:    make(map[string]*provider.EnrichedMetadata),
+			cache:    make(map[string]*provider.Metadata),
 			want:     nil,
 		},
 		{
@@ -146,7 +146,7 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 			season:   0,
 			episode:  0,
 			isMovie:  true,
-			cache:    make(map[string]*provider.EnrichedMetadata),
+			cache:    make(map[string]*provider.Metadata),
 			want:     nil,
 		},
 		{
@@ -157,7 +157,7 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 			season:   1,
 			episode:  5,
 			isMovie:  false,
-			cache:    make(map[string]*provider.EnrichedMetadata),
+			cache:    make(map[string]*provider.Metadata),
 			want:     nil,
 		},
 		{
@@ -168,7 +168,7 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 			season:   2,
 			episode:  0,
 			isMovie:  false,
-			cache:    make(map[string]*provider.EnrichedMetadata),
+			cache:    make(map[string]*provider.Metadata),
 			want:     nil,
 		},
 		{
@@ -179,7 +179,7 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 			season:   0,
 			episode:  0,
 			isMovie:  false,
-			cache:    make(map[string]*provider.EnrichedMetadata),
+			cache:    make(map[string]*provider.Metadata),
 			want:     nil,
 		},
 	}
@@ -194,57 +194,10 @@ func TestFetchMetadataWithDependencies_ErrorHandling(t *testing.T) {
 	}
 }
 
-// MockTMDBProvider for testing
-type MockTMDBProvider struct {
-	searchMovieFunc  func(name, year string) (*provider.EnrichedMetadata, error)
-	searchTVShowFunc func(name string) (*provider.EnrichedMetadata, error)
-	getEpisodeFunc   func(showID, season, episode int) (*provider.EnrichedMetadata, error)
-	getSeasonFunc    func(showID, season int) (*provider.EnrichedMetadata, error)
-}
-
-func (m *MockTMDBProvider) SearchMovie(name, year string) (*provider.EnrichedMetadata, error) {
-	if m.searchMovieFunc != nil {
-		return m.searchMovieFunc(name, year)
-	}
-	return nil, nil
-}
-
-func (m *MockTMDBProvider) SearchTVShow(name string) (*provider.EnrichedMetadata, error) {
-	if m.searchTVShowFunc != nil {
-		return m.searchTVShowFunc(name)
-	}
-	return nil, nil
-}
-
-func (m *MockTMDBProvider) GetEpisodeInfo(showID, season, episode int) (*provider.EnrichedMetadata, error) {
-	if m.getEpisodeFunc != nil {
-		return m.getEpisodeFunc(showID, season, episode)
-	}
-	return nil, nil
-}
-
-func (m *MockTMDBProvider) GetSeasonInfo(showID, season int) (*provider.EnrichedMetadata, error) {
-	if m.getSeasonFunc != nil {
-		return m.getSeasonFunc(showID, season)
-	}
-	return nil, nil
-}
+// This mock is no longer needed with the new provider interface
 
 func TestFetchMetadataWithDependencies_Movie(t *testing.T) {
-	cache := make(map[string]*provider.EnrichedMetadata)
-	expectedMeta := &provider.EnrichedMetadata{
-		ID:    123,
-		Title: "Test Movie",
-	}
-
-	_ = &MockTMDBProvider{
-		searchMovieFunc: func(name, year string) (*provider.EnrichedMetadata, error) {
-			if name == "Test Movie" && year == "2020" {
-				return expectedMeta, nil
-			}
-			return nil, nil
-		},
-	}
+	cache := make(map[string]*provider.Metadata)
 
 	// Test the function - note we can't actually test the full function due to interface constraints
 	// but we can test the key generation and basic flow
@@ -255,15 +208,15 @@ func TestFetchMetadataWithDependencies_Movie(t *testing.T) {
 		t.Errorf("GenerateMetadataKey for movie = %q, want %q", key, want)
 	}
 
-	// Test with mock - this will test the movie path but return nil due to interface limitations
-	got, err := FetchMetadataWithDependencies((*provider.TMDBProvider)(nil), "Test Movie", "2020", 0, 0, true, cache)
+	// Test with nil provider
+	got, err := FetchMetadataWithDependencies(nil, "Test Movie", "2020", 0, 0, true, cache)
 	if got != nil || err != nil {
 		t.Errorf("FetchMetadataWithDependencies with nil provider = (%v, %v), want (nil, nil)", got, err)
 	}
 }
 
 func TestFetchMetadataWithDependencies_Show(t *testing.T) {
-	cache := make(map[string]*provider.EnrichedMetadata)
+	cache := make(map[string]*provider.Metadata)
 
 	// Test show key generation
 	key := GenerateMetadataKey("show", "Test Show", "2020", 0, 0)
@@ -281,7 +234,7 @@ func TestFetchMetadataWithDependencies_Show(t *testing.T) {
 }
 
 func TestFetchMetadataWithDependencies_Episode(t *testing.T) {
-	cache := make(map[string]*provider.EnrichedMetadata)
+	cache := make(map[string]*provider.Metadata)
 
 	// Test episode key generation
 	key := GenerateMetadataKey("episode", "Test Show", "2020", 1, 5)
@@ -299,7 +252,7 @@ func TestFetchMetadataWithDependencies_Episode(t *testing.T) {
 }
 
 func TestFetchMetadataWithDependencies_Season(t *testing.T) {
-	cache := make(map[string]*provider.EnrichedMetadata)
+	cache := make(map[string]*provider.Metadata)
 
 	// Test season key generation
 	key := GenerateMetadataKey("season", "Test Show", "2020", 2, 0)
@@ -361,14 +314,17 @@ func TestFetchMetadataWithDependencies_CacheInteraction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cache := make(map[string]*provider.EnrichedMetadata)
+			cache := make(map[string]*provider.Metadata)
 
 			if tt.prePopulateCache {
 				// Pre-populate with show metadata
-				cache["show:Test Show:2020"] = &provider.EnrichedMetadata{
-					ID:       123,
-					Title:    "Test Show",
-					ShowName: "Test Show",
+				cache["show:Test Show:2020"] = &provider.Metadata{
+					Core: provider.CoreMetadata{
+						Title: "Test Show",
+					},
+					IDs: map[string]string{
+						"tmdb_id": "123",
+					},
 				}
 			}
 

@@ -31,9 +31,9 @@ func runSeasonsCommand(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.EnrichedMetadata) {
+func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
 	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
-	var seasonShowMeta *provider.EnrichedMetadata
+	var seasonShowMeta *provider.Metadata
 	var seasonShowName string
 	var seasonYear string
 
@@ -50,7 +50,7 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			seasonShowName = showName
 			seasonYear = year
 
-			var meta *provider.EnrichedMetadata
+			var meta *provider.Metadata
 			if metadata != nil {
 				showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
 				seasonShowMeta = metadata[showKey]
@@ -83,11 +83,20 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 				year = seasonYear
 			}
 
-			var meta *provider.EnrichedMetadata
-			if metadata != nil {
+			var meta *provider.Metadata
+			if metadata != nil && showName != "" {
+				// First try to find metadata for this specific episode
 				episodeKey := util.GenerateMetadataKey("episode", showName, year, seasonNumber, episodeNumber)
 				meta = metadata[episodeKey]
+
+				// If no episode metadata, try show metadata
 				if meta == nil {
+					showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+					meta = metadata[showKey]
+				}
+
+				// Only use parent metadata if the show names match (not a different show in the folder)
+				if meta == nil && showName == seasonShowName {
 					meta = seasonShowMeta
 				}
 			}

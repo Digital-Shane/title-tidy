@@ -31,7 +31,7 @@ func runEpisodesCommand(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.EnrichedMetadata) {
+func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
 	for ni := range t.All(context.Background()) {
 		if ni.Node.Data().IsDir() {
 			continue
@@ -45,7 +45,7 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 			continue
 		}
 
-		var meta *provider.EnrichedMetadata
+		var meta *provider.Metadata
 		if metadata != nil {
 			key := util.GenerateMetadataKey("episode", showName, year, season, episode)
 			meta = metadata[key]

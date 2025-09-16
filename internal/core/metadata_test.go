@@ -68,7 +68,7 @@ func TestMediaMeta_fail(t *testing.T) {
 	t.Parallel()
 	m := &MediaMeta{}
 	sentinel := errors.New("boom")
-	if got := m.Fail(sentinel); got != sentinel {
+	if got := m.Fail(sentinel); !errors.Is(got, sentinel) {
 		t.Errorf("MediaMeta.fail() = %v, want %v", got, sentinel)
 	}
 	if m.RenameStatus != RenameStatusError {
