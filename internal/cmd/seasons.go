@@ -5,9 +5,8 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/title-tidy/internal/util"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/treeview"
 	"github.com/spf13/cobra"
 )
@@ -37,32 +36,38 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 	var seasonShowName string
 	var seasonYear string
 
-	for ni := range t.All(context.Background()) {
+	ctx := context.Background()
+
+	for ni := range t.All(ctx) {
 		m := core.EnsureMeta(ni.Node)
 		if ni.Depth == 0 {
 			m.Type = core.MediaSeason
-			seasonNumber, found := media.ExtractSeasonNumber(ni.Node.Name())
-			if !found {
+
+			seasonMeta, err := fetchLocalMetadata(ctx, ni.Node, provider.MediaTypeSeason)
+			if err != nil || seasonMeta == nil {
 				continue
 			}
 
-			showName, year := media.ExtractShowInfo(ni.Node, false)
-			seasonShowName = showName
-			seasonYear = year
+			if seasonMeta.Core.SeasonNum == 0 {
+				continue
+			}
+
+			seasonShowName = seasonMeta.Core.Title
+			seasonYear = seasonMeta.Core.Year
 
 			var meta *provider.Metadata
 			if metadata != nil {
-				showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+				showKey := provider.GenerateMetadataKey("show", seasonMeta.Core.Title, seasonMeta.Core.Year, 0, 0)
 				seasonShowMeta = metadata[showKey]
 
-				seasonKey := util.GenerateMetadataKey("season", showName, year, seasonNumber, 0)
+				seasonKey := provider.GenerateMetadataKey("season", seasonMeta.Core.Title, seasonMeta.Core.Year, seasonMeta.Core.SeasonNum, 0)
 				meta = metadata[seasonKey]
 				if meta == nil {
 					meta = seasonShowMeta
 				}
 			}
 
-			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, 0, meta)
+			ctx := createFormatContext(cfg, seasonMeta.Core.Title, "", seasonMeta.Core.Year, seasonMeta.Core.SeasonNum, 0, meta)
 			m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
 
 			if linkPath != "" {
@@ -72,8 +77,14 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 		} else if ni.Depth == 1 {
 			m.Type = core.MediaEpisode
 
-			showName, year, seasonNumber, episodeNumber, found := media.ProcessEpisodeNode(ni.Node)
-			if !found || seasonNumber == 0 || episodeNumber == 0 {
+			episodeMeta, err := fetchLocalMetadata(ctx, ni.Node, provider.MediaTypeEpisode)
+			if err != nil || episodeMeta == nil {
+				continue
+			}
+
+			showName := episodeMeta.Core.Title
+			year := episodeMeta.Core.Year
+			if episodeMeta.Core.SeasonNum == 0 || episodeMeta.Core.EpisodeNum == 0 {
 				continue
 			}
 
@@ -86,12 +97,12 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			var meta *provider.Metadata
 			if metadata != nil && showName != "" {
 				// First try to find metadata for this specific episode
-				episodeKey := util.GenerateMetadataKey("episode", showName, year, seasonNumber, episodeNumber)
+				episodeKey := provider.GenerateMetadataKey("episode", showName, year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum)
 				meta = metadata[episodeKey]
 
 				// If no episode metadata, try show metadata
 				if meta == nil {
-					showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+					showKey := provider.GenerateMetadataKey("show", showName, year, 0, 0)
 					meta = metadata[showKey]
 				}
 
@@ -101,8 +112,8 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 				}
 			}
 
-			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, episodeNumber, meta)
-			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + media.ExtractExtension(ni.Node.Name())
+			ctx := createFormatContext(cfg, showName, "", year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum, meta)
+			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
 
 			if linkPath != "" {
 				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {

@@ -72,7 +72,7 @@ func (p *Provider) Capabilities() provider.ProviderCapabilities {
 // SupportedVariables returns the template variables this provider supports
 func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 	return []provider.TemplateVariable{
-		// Note: We don't provide title or year as those come from the core provider
+		// Note: We don't provide title or year as those come from the local provider
 		// We only provide TMDB-specific metadata
 
 		// Ratings and Reviews

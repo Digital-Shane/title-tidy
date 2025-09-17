@@ -63,7 +63,7 @@ _publish_gif gif_path:
 # 2. Run matching demo/make.sh to generate demo data under demo/data
 # 3. Run title-tidy <canonical-mode> inside the generated dataset directory
 # 4. After the command exits, remove the generated demo/data directory
-demo target:
+demo target *flags:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	mode=$(just _validate_mode {{target}})
@@ -83,7 +83,13 @@ demo target:
 		exit 1
 	fi
 	echo "Entering demo dataset directory: $data_dir"
-	( cd "$data_dir" && echo "Running: title-tidy $mode" && title-tidy "$mode" --no-nfo --no-img)
+	default_flags=(--no-nfo --no-img)
+	if [ -n "{{flags}}" ]; then
+		flags=( {{flags}} )
+	else
+		flags=( "${default_flags[@]}" )
+	fi
+	( cd "$data_dir" && echo "Running: title-tidy $mode ${flags[*]}" && title-tidy "$mode" "${flags[@]}" )
 	echo "Cleaning up demo dataset: $data_dir"
 	rm -rf "$data_dir"
 	echo "Demo $mode complete and cleaned."

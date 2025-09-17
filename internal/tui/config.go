@@ -10,6 +10,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -1060,16 +1061,16 @@ func (m *Model) generatePreviews() []preview {
 	if m.templateRegistry != nil {
 		// Use template registry for dynamic variable resolution
 		showPreview, _ = m.templateRegistry.ResolveTemplate(cfg.ShowFolder, showCtx, showMetadata)
-		showPreview = config.CleanName(showPreview)
+		showPreview = local.CleanName(showPreview)
 
 		seasonPreview, _ = m.templateRegistry.ResolveTemplate(cfg.SeasonFolder, seasonCtx, showMetadata)
-		seasonPreview = config.CleanName(seasonPreview)
+		seasonPreview = local.CleanName(seasonPreview)
 
 		episodePreview, _ = m.templateRegistry.ResolveTemplate(cfg.Episode, episodeCtx, showMetadata)
-		episodePreview = config.CleanName(episodePreview) + ".mkv"
+		episodePreview = local.CleanName(episodePreview) + ".mkv"
 
 		moviePreview, _ = m.templateRegistry.ResolveTemplate(cfg.Movie, movieCtx, movieMetadata)
-		moviePreview = config.CleanName(moviePreview)
+		moviePreview = local.CleanName(moviePreview)
 	} else {
 		// Fallback to old method
 		showPreview = cfg.ApplyShowFolderTemplate(showCtx)

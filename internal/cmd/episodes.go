@@ -5,9 +5,8 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/title-tidy/internal/util"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/treeview"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +31,9 @@ func runEpisodesCommand(cmd *cobra.Command, args []string) error {
 }
 
 func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
-	for ni := range t.All(context.Background()) {
+	ctx := context.Background()
+
+	for ni := range t.All(ctx) {
 		if ni.Node.Data().IsDir() {
 			continue
 		}
@@ -40,18 +41,34 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 		m := core.EnsureMeta(ni.Node)
 		m.Type = core.MediaEpisode
 
-		showName, year, season, episode, found := media.ProcessEpisodeNode(ni.Node)
-		if !found {
+		fetchMeta, err := fetchLocalMetadata(ctx, ni.Node, provider.MediaTypeEpisode)
+		if err != nil || fetchMeta == nil {
+			continue
+		}
+
+		if fetchMeta.Core.SeasonNum == 0 || fetchMeta.Core.EpisodeNum == 0 {
 			continue
 		}
 
 		var meta *provider.Metadata
 		if metadata != nil {
-			key := util.GenerateMetadataKey("episode", showName, year, season, episode)
+			key := provider.GenerateMetadataKey(
+				"episode",
+				fetchMeta.Core.Title,
+				fetchMeta.Core.Year,
+				fetchMeta.Core.SeasonNum,
+				fetchMeta.Core.EpisodeNum,
+			)
 			meta = metadata[key]
 
 			if meta == nil {
-				showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
+				showKey := provider.GenerateMetadataKey(
+					"show",
+					fetchMeta.Core.Title,
+					fetchMeta.Core.Year,
+					0,
+					0,
+				)
 				showMeta := metadata[showKey]
 				if showMeta != nil {
 					meta = showMeta
@@ -59,8 +76,16 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 			}
 		}
 
-		ctx := createFormatContext(cfg, showName, "", year, season, episode, meta)
-		m.NewName = cfg.ApplyEpisodeTemplate(ctx) + media.ExtractExtension(ni.Node.Name())
+		ctx := createFormatContext(
+			cfg,
+			fetchMeta.Core.Title,
+			"",
+			fetchMeta.Core.Year,
+			fetchMeta.Core.SeasonNum,
+			fetchMeta.Core.EpisodeNum,
+			meta,
+		)
+		m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
 
 		if linkPath != "" {
 			m.DestinationPath = linkPath

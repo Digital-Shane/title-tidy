@@ -6,6 +6,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,9 @@ configured format templates.
 The tool supports interactive preview mode and instant application mode, with optional
 TMDB metadata lookup for enhanced naming accuracy.`,
 }
+
+// localProvider is shared across the command package since it is stateless.
+var localProvider = local.New()
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.

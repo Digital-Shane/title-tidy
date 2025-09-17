@@ -10,7 +10,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/title-tidy/internal/media"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
@@ -693,7 +693,7 @@ func (m *RenameModel) calculateStats() Statistics {
 		case core.MediaMovieFile:
 			stats.movieFileCount++
 		}
-		if !node.Data().IsDir() && media.IsSubtitle(node.Data().Name()) {
+		if !node.Data().IsDir() && local.IsSubtitle(node.Data().Name()) {
 			stats.subtitleCount++
 		}
 		if mm.MarkedForDeletion {

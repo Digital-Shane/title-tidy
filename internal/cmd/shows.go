@@ -6,9 +6,8 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/title-tidy/internal/util"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/treeview"
 	"github.com/spf13/cobra"
 )
@@ -41,13 +40,19 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 		year string
 	})
 
-	for ni := range t.BreadthFirst(context.Background()) {
+	ctx := context.Background()
+
+	for ni := range t.BreadthFirst(ctx) {
 		m := core.EnsureMeta(ni.Node)
 		switch ni.Depth {
 		case 0: // Shows
 			m.Type = core.MediaShow
-			showName, year := media.ExtractShowInfo(ni.Node, false)
-			if showName == "" {
+			showMeta, err := fetchLocalMetadata(ctx, ni.Node, provider.MediaTypeShow)
+			if err != nil || showMeta == nil {
+				continue
+			}
+
+			if showMeta.Core.Title == "" {
 				continue
 			}
 
@@ -55,15 +60,15 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			showInfoCache[ni.Node] = struct {
 				name string
 				year string
-			}{showName, year}
+			}{showMeta.Core.Title, showMeta.Core.Year}
 
 			var meta *provider.Metadata
 			if metadata != nil {
-				key := util.GenerateMetadataKey("show", showName, year, 0, 0)
+				key := provider.GenerateMetadataKey("show", showMeta.Core.Title, showMeta.Core.Year, 0, 0)
 				meta = metadata[key]
 			}
 
-			ctx := createFormatContext(cfg, showName, "", year, 0, 0, meta)
+			ctx := createFormatContext(cfg, showMeta.Core.Title, "", showMeta.Core.Year, 0, 0, meta)
 			m.NewName = cfg.ApplyShowFolderTemplate(ctx)
 
 			if meta != nil {
@@ -76,12 +81,17 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 
 		case 1: // Seasons
 			m.Type = core.MediaSeason
-			seasonNumber, found := media.ExtractSeasonNumber(ni.Node.Name())
-			if !found {
+			seasonMeta, err := fetchLocalMetadata(ctx, ni.Node, provider.MediaTypeSeason)
+			if err != nil || seasonMeta == nil {
 				continue
 			}
 
-			showName, year := media.ExtractShowInfo(ni.Node, false)
+			if seasonMeta.Core.SeasonNum == 0 {
+				continue
+			}
+
+			showName := seasonMeta.Core.Title
+			year := seasonMeta.Core.Year
 
 			// If not found in season name, use cached show info from parent
 			if showName == "" && ni.Node.Parent() != nil {
@@ -96,7 +106,7 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				meta = showMetadata[ni.Node.Parent()]
 			}
 
-			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, 0, meta)
+			ctx := createFormatContext(cfg, showName, "", year, seasonMeta.Core.SeasonNum, 0, meta)
 			m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
 
 			if linkPath != "" {
@@ -108,8 +118,14 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 		case 2: // Episodes
 			m.Type = core.MediaEpisode
 
-			showName, year, seasonNumber, episodeNumber, found := media.ProcessEpisodeNode(ni.Node)
-			if !found || seasonNumber == 0 || episodeNumber == 0 {
+			episodeMeta, err := fetchLocalMetadata(ctx, ni.Node, provider.MediaTypeEpisode)
+			if err != nil || episodeMeta == nil {
+				continue
+			}
+
+			showName := episodeMeta.Core.Title
+			year := episodeMeta.Core.Year
+			if episodeMeta.Core.SeasonNum == 0 || episodeMeta.Core.EpisodeNum == 0 {
 				continue
 			}
 
@@ -133,12 +149,12 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			var meta *provider.Metadata
 			if metadata != nil && showName != "" {
 				// First try to find metadata for this specific episode
-				key := util.GenerateMetadataKey("episode", showName, year, seasonNumber, episodeNumber)
+				key := provider.GenerateMetadataKey("episode", showName, year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum)
 				meta = metadata[key]
 
 				// If no episode metadata, try show metadata
 				if meta == nil {
-					key = util.GenerateMetadataKey("show", showName, year, 0, 0)
+					key = provider.GenerateMetadataKey("show", showName, year, 0, 0)
 					meta = metadata[key]
 				}
 			}
@@ -148,8 +164,8 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				meta = showMetadata[ni.Node.Parent().Parent()]
 			}
 
-			ctx := createFormatContext(cfg, showName, "", year, seasonNumber, episodeNumber, meta)
-			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + media.ExtractExtension(ni.Node.Name())
+			ctx := createFormatContext(cfg, showName, "", year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum, meta)
+			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
 
 			if linkPath != "" {
 				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {

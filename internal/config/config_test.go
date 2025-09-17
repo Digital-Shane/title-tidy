@@ -741,124 +741,6 @@ func TestApplyMovieTemplate(t *testing.T) {
 	}
 }
 
-func TestCleanName(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "empty_parentheses",
-			input: "Movie ()",
-			want:  "Movie",
-		},
-		{
-			name:  "empty_brackets",
-			input: "Movie []",
-			want:  "Movie",
-		},
-		{
-			name:  "empty_braces",
-			input: "Movie {}",
-			want:  "Movie",
-		},
-		{
-			name:  "empty_angle_brackets",
-			input: "Movie <>",
-			want:  "Movie",
-		},
-		{
-			name:  "spaces_in_parentheses",
-			input: "Movie (  )",
-			want:  "Movie",
-		},
-		{
-			name:  "spaces_in_brackets",
-			input: "Movie [   ]",
-			want:  "Movie",
-		},
-		{
-			name:  "spaces_in_braces",
-			input: "Movie { }",
-			want:  "Movie",
-		},
-		{
-			name:  "spaces_in_angle_brackets",
-			input: "Movie <  >",
-			want:  "Movie",
-		},
-		{
-			name:  "multiple_empty_brackets",
-			input: "Movie () [] {}",
-			want:  "Movie",
-		},
-		{
-			name:  "nested_empty_brackets",
-			input: "Movie ([{}])",
-			want:  "Movie",
-		},
-		{
-			name:  "keep_non_empty_brackets",
-			input: "Movie (2020) [HD]",
-			want:  "Movie (2020) [HD]",
-		},
-		{
-			name:  "leading_dash",
-			input: "- Movie",
-			want:  "Movie",
-		},
-		{
-			name:  "trailing_dash",
-			input: "Movie -",
-			want:  "Movie",
-		},
-		{
-			name:  "both_dashes",
-			input: "- Movie -",
-			want:  "Movie",
-		},
-		{
-			name:  "extra_spaces",
-			input: "  Movie   ",
-			want:  "Movie",
-		},
-		{
-			name:  "complex_mix",
-			input: "- Movie () [  ] { } <> -",
-			want:  "Movie",
-		},
-		{
-			name:  "empty_string",
-			input: "",
-			want:  "",
-		},
-		{
-			name:  "only_brackets",
-			input: "() [] {} <>",
-			want:  "",
-		},
-		{
-			name:  "template_with_missing_year",
-			input: "The Matrix ()",
-			want:  "The Matrix",
-		},
-		{
-			name:  "template_with_missing_fields",
-			input: "Show [] - Season {}",
-			want:  "Show - Season",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := CleanName(tt.input)
-			if got != tt.want {
-				t.Errorf("CleanName(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestNeedsMetadata(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1039,7 +921,9 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			Overview:    "A computer hacker learns from mysterious rebels about the true nature of his reality and his role in the war against its controllers.",
 		},
 		Extended: map[string]interface{}{
-			"tagline": "Free your mind",
+			"tagline":  "Free your mind",
+			"runtime":  136,
+			"air_date": "2013-09-15",
 		},
 	}
 
@@ -1159,74 +1043,6 @@ func TestResolveVariableComprehensive(t *testing.T) {
 
 			if got != tt.want {
 				t.Errorf("Template resolution = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractNameAndYear(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		wantName string
-		wantYear string
-	}{
-		{
-			name:     "movie_with_year",
-			input:    "The Matrix (1999)",
-			wantName: "The Matrix",
-			wantYear: "1999",
-		},
-		{
-			name:     "movie_with_year_brackets",
-			input:    "The Matrix [1999]",
-			wantName: "The Matrix",
-			wantYear: "1999",
-		},
-		{
-			name:     "movie_no_year",
-			input:    "The Matrix",
-			wantName: "The Matrix",
-			wantYear: "",
-		},
-		{
-			name:     "year_only",
-			input:    "(2020)",
-			wantName: "",
-			wantYear: "2020",
-		},
-		{
-			name:     "complex_name",
-			input:    "The.Matrix.1999.1080p.BluRay",
-			wantName: "The Matrix",
-			wantYear: "1999",
-		},
-		{
-			name:     "dots_and_underscores",
-			input:    "The_Matrix_1999",
-			wantName: "The Matrix",
-			wantYear: "1999",
-		},
-		{
-			name:     "year_with_hyphen_suffix",
-			input:    "Interstellar_2014-file",
-			wantName: "Interstellar",
-			wantYear: "2014",
-		},
-		{
-			name:     "year_with_underscore_suffix",
-			input:    "Inception_2010_director",
-			wantName: "Inception",
-			wantYear: "2010",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotName, gotYear := ExtractNameAndYear(tt.input)
-			if gotName != tt.wantName || gotYear != tt.wantYear {
-				t.Errorf("ExtractNameAndYear(%q) = (%q, %q), want (%q, %q)",
-					tt.input, gotName, gotYear, tt.wantName, tt.wantYear)
 			}
 		})
 	}

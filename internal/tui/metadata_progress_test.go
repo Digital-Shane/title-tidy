@@ -9,9 +9,11 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/go-cmp/cmp"
+	csmap "github.com/mhmtszr/concurrent-swiss-map"
 )
 
 // Test helper functions
@@ -93,6 +95,21 @@ func TestMetadataProgressModel_OrganizeItemsByPhase(t *testing.T) {
 	// Test phase organization
 	phases := model.organizeItemsByPhase()
 
+	// Debug: Print ALL collected items
+	t.Logf("All collected items:")
+	for _, phase := range phases {
+		for _, item := range phase {
+			t.Logf("  - Key: %s, Name: %s, Year: %s, IsMovie: %v, Phase: %d",
+				item.Key, item.Name, item.Year, item.IsMovie, item.Phase)
+		}
+	}
+
+	// Debug: Print what's in phase 0
+	t.Logf("Phase 0 items specifically:")
+	for _, item := range phases[0] {
+		t.Logf("  - Key: %s, Name: %s, IsMovie: %v, Phase: %d", item.Key, item.Name, item.IsMovie, item.Phase)
+	}
+
 	// Check phase 0 (shows/movies)
 	if len(phases[0]) != 2 {
 		t.Errorf("Phase 0 item count = %d, want 2", len(phases[0]))
@@ -132,7 +149,7 @@ func TestMetadataProgressModel_GetPhaseName(t *testing.T) {
 
 func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 	model := &MetadataProgressModel{
-		metadata: make(map[string]*provider.Metadata),
+		metadata: csmap.Create[string, *provider.Metadata](),
 		errors:   make([]error, 0),
 		resultCh: make(chan metadataResult, 2),
 	}
@@ -172,7 +189,7 @@ func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 	<-done
 
 	// Check metadata was stored
-	if got, exists := model.metadata["show:Test Show:2024"]; !exists {
+	if got, exists := model.Get("show:Test Show:2024"); !exists {
 		t.Error("Expected metadata not stored")
 	} else if !cmp.Equal(got, testMeta) {
 		t.Errorf("Stored metadata differs: %v", cmp.Diff(testMeta, got))
@@ -288,7 +305,7 @@ func TestCountMetadataItems(t *testing.T) {
 
 	tree := testNewTree(show1, movie1)
 
-	count := countMetadataItems(tree)
+	count := countMetadataItems(tree, local.New())
 
 	// Should count 1 show + 1 season + 1 movie = 3
 	if count != 3 {
@@ -364,7 +381,7 @@ func TestMetadataWorker_ProcessesItems(t *testing.T) {
 		workCh:       make(chan MetadataItem, 2),
 		resultCh:     make(chan metadataResult, 2),
 		msgCh:        make(chan tea.Msg, 10),
-		metadata:     make(map[string]*provider.Metadata),
+		metadata:     csmap.Create[string, *provider.Metadata](),
 		currentPhase: "Test Phase",
 		ctx:          ctx,
 	}

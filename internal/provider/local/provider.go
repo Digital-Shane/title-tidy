@@ -1,21 +1,27 @@
-package core
+package local
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/treeview"
 )
 
 const (
-	providerName = "core"
+	providerName = "local"
 )
 
-// Provider implements the provider.Provider interface for core local variables
-type Provider struct{}
+// Provider implements the provider.Provider interface for local filesystem metadata
+type Provider struct {
+	parserEngine *ParserEngine
+}
 
-// New creates a new core provider instance
+// New creates a new local provider instance
 func New() *Provider {
-	return &Provider{}
+	return &Provider{
+		parserEngine: NewParserEngine(),
+	}
 }
 
 // Name returns the provider name
@@ -25,7 +31,7 @@ func (p *Provider) Name() string {
 
 // Description returns the provider description
 func (p *Provider) Description() string {
-	return "Core variables extracted from local filesystem"
+	return "Local variables extracted from the filesystem"
 }
 
 // Capabilities returns what this provider can do
@@ -99,7 +105,7 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 
 // ConfigSchema returns the configuration schema for this provider
 func (p *Provider) ConfigSchema() provider.ConfigSchema {
-	// Core provider has no configuration
+	// Local provider has no configuration
 	return provider.ConfigSchema{
 		Fields: []provider.ConfigField{},
 	}
@@ -107,18 +113,60 @@ func (p *Provider) ConfigSchema() provider.ConfigSchema {
 
 // Configure applies configuration to the provider
 func (p *Provider) Configure(config map[string]interface{}) error {
-	// Core provider doesn't need configuration
+	// Local provider doesn't need configuration
 	return nil
 }
 
-// Fetch retrieves metadata based on the request
+// Fetch retrieves metadata based on the request by parsing the provided name
 func (p *Provider) Fetch(ctx context.Context, request provider.FetchRequest) (*provider.Metadata, error) {
-	// Core provider doesn't fetch metadata
-	// Core variables are resolved from FormatContext in the template resolver
-	return nil, &provider.ProviderError{
-		Provider: providerName,
-		Code:     "NOT_IMPLEMENTED",
-		Message:  "Core provider does not fetch metadata",
-		Retry:    false,
+	// Validate request
+	if request.Name == "" {
+		return nil, &provider.ProviderError{
+			Provider: providerName,
+			Code:     "INVALID_REQUEST",
+			Message:  "Name is required for parsing",
+			Retry:    false,
+		}
 	}
+
+	// Extract node from Extra if available
+	var node *treeview.Node[treeview.FileInfo]
+	if request.Extra != nil {
+		if n, ok := request.Extra["node"].(*treeview.Node[treeview.FileInfo]); ok {
+			node = n
+		}
+	}
+
+	// Parse using the parser engine
+	metadata, err := p.parserEngine.Parse(request.MediaType, request.Name, node)
+	if err != nil {
+		// Wrap error if it's not already a ProviderError
+		if _, isProviderError := err.(*provider.ProviderError); !isProviderError {
+			return nil, &provider.ProviderError{
+				Provider: providerName,
+				Code:     "PARSE_ERROR",
+				Message:  fmt.Sprintf("Failed to parse %s: %v", request.Name, err),
+				Retry:    false,
+			}
+		}
+		return nil, err
+	}
+
+	// Add additional request data to metadata if provided
+	if request.Year != "" && metadata.Core.Year == "" {
+		metadata.Core.Year = request.Year
+	}
+	if request.Season > 0 && metadata.Core.SeasonNum == 0 {
+		metadata.Core.SeasonNum = request.Season
+	}
+	if request.Episode > 0 && metadata.Core.EpisodeNum == 0 {
+		metadata.Core.EpisodeNum = request.Episode
+	}
+
+	return metadata, nil
+}
+
+// Detect analyses a tree node and returns parsed metadata alongside the detected media type.
+func (p *Provider) Detect(node *treeview.Node[treeview.FileInfo]) (provider.MediaType, *provider.Metadata, error) {
+	return p.parserEngine.DetectNode(node)
 }
