@@ -168,7 +168,7 @@ func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 			Key:  "show:Test Show:2024",
 		},
 		meta: testMeta,
-		err:  nil,
+		errs: nil,
 	}
 
 	// Send an error result
@@ -178,7 +178,7 @@ func TestMetadataProgressModel_ProcessResults(t *testing.T) {
 			Key:  "show:Error Show:2024",
 		},
 		meta: nil,
-		err:  &provider.ProviderError{Code: "NOT_FOUND"},
+		errs: []error{&provider.ProviderError{Code: "NOT_FOUND"}},
 	}
 
 	close(model.resultCh)

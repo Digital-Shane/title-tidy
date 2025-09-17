@@ -13,6 +13,7 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/ryanbradynd05/go-tmdb v0.0.0-20230108222638-2a68dc6ff40c
 	github.com/spf13/cobra v1.10.1
+	gopkg.in/vansante/go-ffprobe.v2 v2.2.1
 )
 
 require (

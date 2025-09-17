@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.11.0] - 2025-09-17
+### Added
+* New ffprobe provider that can pull audio and video codecs for renames.
+### Updated
+* Config UI tmdb screen to a generic provider screen capable of configuring all providers.
+
 ## [v1.10.2] - 2025-09-17
 ### Fixed
 * Panic during cache access

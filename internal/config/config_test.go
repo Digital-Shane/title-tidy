@@ -748,6 +748,16 @@ func TestNeedsMetadata(t *testing.T) {
 		expected bool
 	}{
 		{
+			name: "no_metadata_variables",
+			config: &FormatConfig{
+				ShowFolder:   "Show",
+				SeasonFolder: "Season",
+				Episode:      "Episode",
+				Movie:        "Movie",
+			},
+			expected: false,
+		},
+		{
 			name: "has_title_variable",
 			config: &FormatConfig{
 				ShowFolder:   "{title} ({year})",
@@ -788,12 +798,12 @@ func TestNeedsMetadata(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "has_title_variable",
+			name: "has_video_codec",
 			config: &FormatConfig{
 				ShowFolder:   "{title} ({year})",
 				SeasonFolder: "Season {season}",
 				Episode:      "S{season}E{episode}",
-				Movie:        "{title} ({year})",
+				Movie:        "{title} ({year}) [{video_codec}]",
 			},
 			expected: true,
 		},

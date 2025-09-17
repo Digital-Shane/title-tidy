@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strings"
+	"sync"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	ffprobeProv "github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -47,6 +51,7 @@ type FormatConfig struct {
 	TMDBLanguage        string `json:"tmdb_language"`
 	PreferLocalMetadata bool   `json:"prefer_local_metadata"`
 	TMDBWorkerCount     int    `json:"tmdb_worker_count"`
+	EnableFFProbe       bool   `json:"enable_ffprobe"`
 
 	// Template resolver for dynamic variable resolution
 	resolver *TemplateResolver
@@ -134,16 +139,67 @@ func Load() (*FormatConfig, error) {
 
 // NeedsMetadata checks if any template uses variables that would benefit from metadata
 func (cfg *FormatConfig) NeedsMetadata() bool {
-	// Pattern matches any metadata-related variable
-	// Includes both metadata-only vars and vars that benefit from metadata
-	metadataVarPattern := `\{(?:episode_title|air_date|rating|genres|runtime|tagline|title)\}`
-	re := regexp.MustCompile(metadataVarPattern)
+	metadataVars := metadataVariableNames()
+	if len(metadataVars) == 0 {
+		return false
+	}
 
-	// Combine all templates to check
 	allTemplates := cfg.ShowFolder + cfg.SeasonFolder + cfg.Episode + cfg.Movie
+	for _, name := range metadataVars {
+		placeholder := "{" + name + "}"
+		if strings.Contains(allTemplates, placeholder) {
+			return true
+		}
+	}
+	return false
+}
 
-	// Check if any template contains metadata variables
-	return re.MatchString(allTemplates)
+var (
+	metadataVarOnce  sync.Once
+	metadataVarCache []string
+)
+
+func metadataVariableNames() []string {
+	metadataVarOnce.Do(func() {
+		providers := gatherMetadataProviders()
+		unique := make(map[string]struct{})
+		for _, p := range providers {
+			if p == nil {
+				continue
+			}
+			for _, v := range p.SupportedVariables() {
+				unique[v.Name] = struct{}{}
+			}
+		}
+
+		metadataVarCache = make([]string, 0, len(unique))
+		for name := range unique {
+			metadataVarCache = append(metadataVarCache, name)
+		}
+	})
+
+	return metadataVarCache
+}
+
+func gatherMetadataProviders() []provider.Provider {
+	registryProviders := provider.GlobalRegistry.List()
+	if len(registryProviders) > 0 {
+		providers := make([]provider.Provider, 0, len(registryProviders))
+		for _, name := range registryProviders {
+			if p, ok := provider.GlobalRegistry.Get(name); ok {
+				providers = append(providers, p)
+			}
+		}
+		if len(providers) > 0 {
+			return providers
+		}
+	}
+
+	return []provider.Provider{
+		local.New(),
+		tmdbProv.New(),
+		ffprobeProv.New(),
+	}
 }
 
 // Save writes the configuration to disk

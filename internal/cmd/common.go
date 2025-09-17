@@ -126,7 +126,15 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 
 // fetchMetadataIfEnabled fetches TMDB metadata if configured
 func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *config.FormatConfig) map[string]*provider.Metadata {
-	if !formatConfig.EnableTMDBLookup || formatConfig.TMDBAPIKey == "" {
+	shouldFetch := false
+	if formatConfig.EnableTMDBLookup && formatConfig.TMDBAPIKey != "" {
+		shouldFetch = true
+	}
+	if formatConfig.EnableFFProbe {
+		shouldFetch = true
+	}
+
+	if !shouldFetch {
 		return nil
 	}
 
