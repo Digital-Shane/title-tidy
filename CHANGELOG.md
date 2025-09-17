@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.10.2] - 2025-09-17
+### Fixed
+* Panic during cache access
+### Updated
+* Go dependencies
+* Renamed core provider to local
+* Moved all file and folder parsing to the local provider
+
 ## [v1.10.1] - 2025-09-16
 ### Fixed
 * Episode file parsing to not mistake episode codes for the show name

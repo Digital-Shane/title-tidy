@@ -8,8 +8,8 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
@@ -171,7 +171,7 @@ func createMediaFilter(includeDirectories bool) func(info treeview.FileInfo) boo
 		if includeDirectories && info.IsDir() {
 			return true
 		}
-		return media.IsSubtitle(info.Name()) || media.IsVideo(info.Name()) || media.IsNFO(info.Name()) || media.IsImage(info.Name())
+		return local.IsSubtitle(info.Name()) || local.IsVideo(info.Name()) || local.IsNFO(info.Name()) || local.IsImage(info.Name())
 	}
 }
 
@@ -199,16 +199,16 @@ func markFilesForDeletion(t *treeview.Tree[treeview.FileInfo]) {
 		name := ni.Node.Name()
 		shouldDelete := false
 
-		if noSample && media.IsSample(name) {
+		if noSample && local.IsSample(name) {
 			shouldDelete = true
 		}
 
 		if !ni.Node.Data().IsDir() {
-			if noNfo && media.IsNFO(name) {
+			if noNfo && local.IsNFO(name) {
 				shouldDelete = true
 			}
 
-			if noImg && media.IsImage(name) {
+			if noImg && local.IsImage(name) {
 				shouldDelete = true
 			}
 		}
@@ -230,4 +230,27 @@ func createFormatContext(cfg *config.FormatConfig, showName, movieName string, y
 		Metadata:  metadata,
 		Config:    cfg,
 	}
+}
+
+func fetchLocalMetadata(ctx context.Context, node *treeview.Node[treeview.FileInfo], mediaType provider.MediaType) (*provider.Metadata, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	return localProvider.Fetch(ctx, provider.FetchRequest{
+		MediaType: mediaType,
+		Name:      node.Name(),
+		Extra: map[string]interface{}{
+			"node": node,
+		},
+	})
+}
+
+func detectLocalMedia(node *treeview.Node[treeview.FileInfo]) (provider.MediaType, *provider.Metadata, error) {
+	if node == nil {
+		var mt provider.MediaType
+		return mt, nil, nil
+	}
+
+	return localProvider.Detect(node)
 }

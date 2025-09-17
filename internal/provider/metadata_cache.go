@@ -1,13 +1,17 @@
-package util
+package provider
 
 import (
 	"context"
 	"fmt"
-
-	"github.com/Digital-Shane/title-tidy/internal/provider"
 )
 
-// GenerateMetadataKey creates a unique key for caching metadata
+// MetadataCache provides safe access to cached provider metadata.
+type MetadataCache interface {
+	Get(key string) (*Metadata, bool)
+	Set(key string, meta *Metadata)
+}
+
+// GenerateMetadataKey creates a unique key for caching metadata.
 func GenerateMetadataKey(mediaType string, name, year string, season, episode int) string {
 	switch mediaType {
 	case "movie":
@@ -23,22 +27,37 @@ func GenerateMetadataKey(mediaType string, name, year string, season, episode in
 	}
 }
 
-// FetchMetadataWithDependencies fetches metadata with proper dependency resolution
-// For episodes/seasons, it ensures show metadata is fetched first
-// Returns both metadata and error so callers can handle rate limiting properly
-func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year string, season, episode int, isMovie bool, cache map[string]*provider.Metadata) (*provider.Metadata, error) {
+// FetchMetadataWithDependencies fetches metadata with proper dependency resolution.
+// For episodes/seasons, it ensures show metadata is fetched first.
+// Returns both metadata and error so callers can handle rate limiting properly.
+func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, season, episode int, isMovie bool, cache MetadataCache) (*Metadata, error) {
 	if tmdbProvider == nil || name == "" {
 		return nil, nil
 	}
 
-	var meta *provider.Metadata
+	var meta *Metadata
 	var err error
 	ctx := context.Background()
 
+	getFromCache := func(key string) *Metadata {
+		if cache == nil {
+			return nil
+		}
+		meta, _ := cache.Get(key)
+		return meta
+	}
+
+	setInCache := func(key string, meta *Metadata) {
+		if cache == nil || meta == nil {
+			return
+		}
+		cache.Set(key, meta)
+	}
+
 	if isMovie {
 		// Fetch movie metadata
-		request := provider.FetchRequest{
-			MediaType: provider.MediaTypeMovie,
+		request := FetchRequest{
+			MediaType: MediaTypeMovie,
 			Name:      name,
 			Year:      year,
 		}
@@ -46,12 +65,12 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 	} else if season > 0 && episode > 0 {
 		// For episodes, first get show metadata
 		showKey := GenerateMetadataKey("show", name, year, 0, 0)
-		showMeta := cache[showKey]
+		showMeta := getFromCache(showKey)
 
 		if showMeta == nil {
 			// Fetch show metadata first
-			request := provider.FetchRequest{
-				MediaType: provider.MediaTypeShow,
+			request := FetchRequest{
+				MediaType: MediaTypeShow,
 				Name:      name,
 			}
 			showMeta, err = tmdbProvider.Fetch(ctx, request)
@@ -59,7 +78,7 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 				return nil, err // Return error (including rate limiting) immediately
 			}
 			if showMeta != nil {
-				cache[showKey] = showMeta
+				setInCache(showKey, showMeta)
 			}
 		}
 
@@ -72,8 +91,8 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 
 			if showID != "" {
 				// Fetch episode metadata
-				request := provider.FetchRequest{
-					MediaType: provider.MediaTypeEpisode,
+				request := FetchRequest{
+					MediaType: MediaTypeEpisode,
 					ID:        showID,
 					Season:    season,
 					Episode:   episode,
@@ -84,12 +103,12 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 	} else if season > 0 {
 		// For seasons, first get show metadata
 		showKey := GenerateMetadataKey("show", name, year, 0, 0)
-		showMeta := cache[showKey]
+		showMeta := getFromCache(showKey)
 
 		if showMeta == nil {
 			// Fetch show metadata first
-			request := provider.FetchRequest{
-				MediaType: provider.MediaTypeShow,
+			request := FetchRequest{
+				MediaType: MediaTypeShow,
 				Name:      name,
 			}
 			showMeta, err = tmdbProvider.Fetch(ctx, request)
@@ -97,7 +116,7 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 				return nil, err // Return error (including rate limiting) immediately
 			}
 			if showMeta != nil {
-				cache[showKey] = showMeta
+				setInCache(showKey, showMeta)
 			}
 		}
 
@@ -110,8 +129,8 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 
 			if showID != "" {
 				// Fetch season metadata
-				request := provider.FetchRequest{
-					MediaType: provider.MediaTypeSeason,
+				request := FetchRequest{
+					MediaType: MediaTypeSeason,
 					ID:        showID,
 					Season:    season,
 				}
@@ -120,8 +139,8 @@ func FetchMetadataWithDependencies(tmdbProvider provider.Provider, name, year st
 		}
 	} else {
 		// TV Show
-		request := provider.FetchRequest{
-			MediaType: provider.MediaTypeShow,
+		request := FetchRequest{
+			MediaType: MediaTypeShow,
 			Name:      name,
 		}
 		meta, err = tmdbProvider.Fetch(ctx, request)

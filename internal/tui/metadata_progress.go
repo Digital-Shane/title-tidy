@@ -9,21 +9,22 @@ import (
 	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
-	"github.com/Digital-Shane/title-tidy/internal/media"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
-	"github.com/Digital-Shane/title-tidy/internal/util"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	csmap "github.com/mhmtszr/concurrent-swiss-map"
 )
 
 // MetadataProgressModel displays progress while fetching metadata from TMDB
 type MetadataProgressModel struct {
 	// Tree to process
-	tree *treeview.Tree[treeview.FileInfo]
-	cfg  *config.FormatConfig
+	tree          *treeview.Tree[treeview.FileInfo]
+	cfg           *config.FormatConfig
+	localProvider *local.Provider
 
 	// Progress tracking
 	totalItems     int
@@ -33,8 +34,7 @@ type MetadataProgressModel struct {
 	workersMu      sync.RWMutex
 
 	// Results storage
-	metadata     map[string]*provider.Metadata
-	metadataMu   sync.RWMutex
+	metadata     *csmap.CsMap[string, *provider.Metadata]
 	tmdbProvider provider.Provider
 
 	// Worker pool
@@ -55,6 +55,22 @@ type MetadataProgressModel struct {
 	err      error
 	errors   []error
 	errorsMu sync.Mutex
+}
+
+// Get reads cached metadata using the concurrent map.
+func (m *MetadataProgressModel) Get(key string) (*provider.Metadata, bool) {
+	if m.metadata == nil {
+		return nil, false
+	}
+	return m.metadata.Load(key)
+}
+
+// Set stores metadata using the concurrent map.
+func (m *MetadataProgressModel) Set(key string, meta *provider.Metadata) {
+	if meta == nil || m.metadata == nil {
+		return
+	}
+	m.metadata.Store(key, meta)
 }
 
 // metadataProgressMsg updates progress
@@ -84,10 +100,17 @@ type metadataResult struct {
 	err  error
 }
 
+type localNodeInfo struct {
+	mediaType provider.MediaType
+	metadata  *provider.Metadata
+}
+
 // NewMetadataProgressModel creates a new metadata progress model
 func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) *MetadataProgressModel {
+	localProvider := local.New()
+
 	// Count items that need metadata
-	items := countMetadataItems(tree)
+	items := countMetadataItems(tree, localProvider)
 
 	p := progress.New(progress.WithGradient(string(colorPrimary), string(colorAccent)))
 	p.Width = 50
@@ -121,85 +144,115 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &MetadataProgressModel{
-		tree:         tree,
-		cfg:          cfg,
-		totalItems:   items,
-		width:        80,
-		height:       12,
-		progress:     p,
-		msgCh:        make(chan tea.Msg, 256),
-		metadata:     make(map[string]*provider.Metadata),
-		tmdbProvider: tmdbProvider,
-		workerCount:  workerCount,
-		workCh:       make(chan MetadataItem, 100),
-		resultCh:     make(chan metadataResult, 100),
-		errors:       make([]error, 0),
-		ctx:          ctx,
-		cancel:       cancel,
+		tree:          tree,
+		cfg:           cfg,
+		localProvider: localProvider,
+		totalItems:    items,
+		width:         80,
+		height:        12,
+		progress:      p,
+		msgCh:         make(chan tea.Msg, 256),
+		metadata:      csmap.Create[string, *provider.Metadata](),
+		tmdbProvider:  tmdbProvider,
+		workerCount:   workerCount,
+		workCh:        make(chan MetadataItem, 100),
+		resultCh:      make(chan metadataResult, 100),
+		errors:        make([]error, 0),
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
+func analyzeNodeCached(provider *local.Provider, cache map[*treeview.Node[treeview.FileInfo]]*localNodeInfo, failures map[*treeview.Node[treeview.FileInfo]]struct{}, node *treeview.Node[treeview.FileInfo]) *localNodeInfo {
+	if node == nil {
+		return nil
+	}
+
+	if info, ok := cache[node]; ok {
+		return info
+	}
+
+	if _, failed := failures[node]; failed {
+		return nil
+	}
+
+	mediaType, meta, err := provider.Detect(node)
+	if err != nil || meta == nil {
+		failures[node] = struct{}{}
+		return nil
+	}
+
+	info := &localNodeInfo{
+		mediaType: mediaType,
+		metadata:  meta,
+	}
+	meta.Core.MediaType = mediaType
+	cache[node] = info
+	return info
+}
+
+func addKey(seen map[string]bool, key string) bool {
+	if key == "" || seen[key] {
+		return false
+	}
+	seen[key] = true
+	return true
+}
+
 // countMetadataItems counts unique items that need metadata fetching
-func countMetadataItems(tree *treeview.Tree[treeview.FileInfo]) int {
+func countMetadataItems(tree *treeview.Tree[treeview.FileInfo], localProv *local.Provider) int {
 	seen := make(map[string]bool)
+	cache := make(map[*treeview.Node[treeview.FileInfo]]*localNodeInfo)
+	failures := make(map[*treeview.Node[treeview.FileInfo]]struct{})
 	count := 0
 
 	for ni := range tree.BreadthFirst(context.Background()) {
-		switch ni.Depth {
-		case 0: // Shows/Movies
-			// Check if it's a movie or show based on content
-			isMovie := true
-			for _, child := range ni.Node.Children() {
-				if child.Data().IsDir() {
-					// If has season folders, it's a show
-					if _, found := media.ExtractSeasonNumber(child.Name()); found {
-						isMovie = false
-						break
-					}
-				}
-			}
+		info := analyzeNodeCached(localProv, cache, failures, ni.Node)
+		if info == nil || info.metadata == nil {
+			continue
+		}
 
-			var name, year string
-			if isMovie {
-				// For movies, use ExtractNameAndYear
-				name, year = config.ExtractNameAndYear(ni.Node.Name())
-			} else {
-				// For shows, use ExtractShowInfo which has better parsing
-				name, year = media.ExtractShowInfo(ni.Node, false)
+		meta := info.metadata
+		switch info.mediaType {
+		case provider.MediaTypeMovie:
+			if meta.Core.Title == "" {
+				continue
 			}
-
-			if name != "" {
-				var key string
-				if isMovie {
-					key = util.GenerateMetadataKey("movie", name, year, 0, 0)
-				} else {
-					key = util.GenerateMetadataKey("show", name, year, 0, 0)
-				}
-				if !seen[key] {
-					seen[key] = true
-					count++
-				}
+			key := provider.GenerateMetadataKey("movie", meta.Core.Title, meta.Core.Year, 0, 0)
+			if addKey(seen, key) {
+				count++
 			}
-		case 1: // Seasons
-			if parent := ni.Node.Parent(); parent != nil {
-				showName, year := media.ExtractShowInfo(parent, false)
-				if season, found := media.ExtractSeasonNumber(ni.Node.Name()); found && showName != "" {
-					key := util.GenerateMetadataKey("season", showName, year, season, 0)
-					if !seen[key] {
-						seen[key] = true
-						count++
-					}
-				}
+		case provider.MediaTypeShow:
+			if meta.Core.Title == "" {
+				continue
 			}
-		case 2: // Episodes
-			// Use ProcessEpisodeNode to get the show name from the episode itself
-			showName, year, season, episode, found := media.ProcessEpisodeNode(ni.Node)
-			if found && showName != "" {
-				key := util.GenerateMetadataKey("episode", showName, year, season, episode)
-				if !seen[key] {
-					seen[key] = true
-					count++
-				}
+			key := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
+			if addKey(seen, key) {
+				count++
+			}
+		case provider.MediaTypeSeason:
+			if meta.Core.Title == "" {
+				continue
+			}
+			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
+			if addKey(seen, showKey) {
+				count++
+			}
+			seasonKey := provider.GenerateMetadataKey("season", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, 0)
+			if addKey(seen, seasonKey) {
+				count++
+			}
+		case provider.MediaTypeEpisode:
+			if meta.Core.Title == "" {
+				continue
+			}
+			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
+			if addKey(seen, showKey) {
+				count++
+			}
+			episodeKey := provider.GenerateMetadataKey("episode", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, meta.Core.EpisodeNum)
+			if addKey(seen, episodeKey) {
+				count++
 			}
 		}
 	}
@@ -285,13 +338,10 @@ func (m *MetadataProgressModel) fetchMetadataAsync() {
 				}
 
 				// Skip if already cached
-				m.metadataMu.RLock()
-				if _, exists := m.metadata[item.Key]; exists {
-					m.metadataMu.RUnlock()
+				if _, exists := m.Get(item.Key); exists {
 					m.processedItems++
 					continue
 				}
-				m.metadataMu.RUnlock()
 
 				// Try to send item, but respect cancellation
 				select {
@@ -377,7 +427,7 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 			default:
 			}
 
-			meta, err = util.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m.metadata)
+			meta, err = provider.FetchMetadataWithDependencies(m.tmdbProvider, item.Name, item.Year, item.Season, item.Episode, item.IsMovie, m)
 
 			// If we got metadata successfully, break out
 			if meta != nil {
@@ -431,9 +481,7 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 func (m *MetadataProgressModel) processResults(resultCh <-chan metadataResult, done chan bool) {
 	for result := range resultCh {
 		if result.meta != nil {
-			m.metadataMu.Lock()
-			m.metadata[result.item.Key] = result.meta
-			m.metadataMu.Unlock()
+			m.Set(result.item.Key, result.meta)
 		}
 
 		if result.err != nil {
@@ -481,142 +529,90 @@ func (m *MetadataProgressModel) getPhaseName(phase int) string {
 func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 	var items []MetadataItem
 	seen := make(map[string]bool)
+	cache := make(map[*treeview.Node[treeview.FileInfo]]*localNodeInfo)
+	failures := make(map[*treeview.Node[treeview.FileInfo]]struct{})
+	localProv := m.localProvider
+	if localProv == nil {
+		localProv = local.New()
+		m.localProvider = localProv
+	}
 
-	// First pass: collect all shows/movies (depth 0) - Phase 0
-	for ni := range m.tree.BreadthFirst(context.Background()) {
-		if ni.Depth == 0 {
-			// Check if this is an episode file (contains season/episode pattern)
-			if !ni.Node.Data().IsDir() {
-				if season, episode, found := media.ParseSeasonEpisode(ni.Node.Name(), ni.Node); found {
-					// This is an episode file at depth 0 (episodes command)
-					// Extract show name from the part before the season/episode pattern
-					showName, year := media.ExtractShowInfo(ni.Node, true)
-					if showName != "" {
-						// Add the show metadata request
-						showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
-						if !seen[showKey] {
-							seen[showKey] = true
-							items = append(items, MetadataItem{
-								Name:    showName,
-								Year:    year,
-								IsMovie: false,
-								Key:     showKey,
-								Phase:   0,
-							})
-						}
-
-						// Add the episode metadata request
-						episodeKey := util.GenerateMetadataKey("episode", showName, year, season, episode)
-						if !seen[episodeKey] {
-							seen[episodeKey] = true
-							items = append(items, MetadataItem{
-								Name:    showName,
-								Year:    year,
-								Season:  season,
-								Episode: episode,
-								Key:     episodeKey,
-								Phase:   2, // Episodes are phase 2
-							})
-						}
-					}
-					continue // Skip the regular movie/show detection
-				}
-			}
-
-			// Check if it's a movie or show based on content
-			isMovie := true
-			for _, child := range ni.Node.Children() {
-				if child.Data().IsDir() {
-					// If has season folders, it's a show
-					if _, found := media.ExtractSeasonNumber(child.Name()); found {
-						isMovie = false
-						break
-					}
-				}
-			}
-
-			var name, year string
-			if isMovie {
-				// For movies, use ExtractNameAndYear
-				name, year = config.ExtractNameAndYear(ni.Node.Name())
-			} else {
-				// For shows, use ExtractShowInfo which has better parsing
-				name, year = media.ExtractShowInfo(ni.Node, false)
-			}
-
-			if name != "" {
-
-				var key string
-				if isMovie {
-					key = util.GenerateMetadataKey("movie", name, year, 0, 0)
-				} else {
-					key = util.GenerateMetadataKey("show", name, year, 0, 0)
-				}
-				if !seen[key] {
-					seen[key] = true
-					items = append(items, MetadataItem{
-						Name:    name,
-						Year:    year,
-						IsMovie: isMovie,
-						Key:     key,
-						Phase:   0,
-					})
-				}
-			}
+	addItem := func(key string, item MetadataItem) {
+		if addKey(seen, key) {
+			items = append(items, item)
 		}
 	}
 
-	// Second pass: collect seasons and episodes (only for shows, not movies)
 	for ni := range m.tree.BreadthFirst(context.Background()) {
-		switch ni.Depth {
-		case 1: // Seasons - Phase 1
-			if parent := ni.Node.Parent(); parent != nil {
-				showName, year := media.ExtractShowInfo(parent, false)
-				if season, found := media.ExtractSeasonNumber(ni.Node.Name()); found && showName != "" {
-					key := util.GenerateMetadataKey("season", showName, year, season, 0)
-					if !seen[key] {
-						seen[key] = true
-						items = append(items, MetadataItem{
-							Name:   showName,
-							Year:   year,
-							Season: season,
-							Key:    key,
-							Phase:  1,
-						})
-					}
-				}
-			}
-		case 2: // Episodes - Phase 2
-			// Use ProcessEpisodeNode to get the show name from the episode itself
-			showName, year, season, episode, found := media.ProcessEpisodeNode(ni.Node)
-			if found && showName != "" {
-				// First ensure the show metadata is requested (phase 0)
-				showKey := util.GenerateMetadataKey("show", showName, year, 0, 0)
-				if !seen[showKey] {
-					seen[showKey] = true
-					items = append(items, MetadataItem{
-						Name:    showName,
-						Year:    year,
-						IsMovie: false,
-						Key:     showKey,
-						Phase:   0,
-					})
-				}
+		info := analyzeNodeCached(localProv, cache, failures, ni.Node)
+		if info == nil || info.metadata == nil {
+			continue
+		}
 
-				// Then add the episode metadata request (phase 2)
-				key := util.GenerateMetadataKey("episode", showName, year, season, episode)
-				if !seen[key] {
-					seen[key] = true
-					items = append(items, MetadataItem{
-						Name:    showName,
-						Year:    year,
-						Season:  season,
-						Episode: episode,
-						Key:     key,
-						Phase:   2,
-					})
-				}
+		meta := info.metadata
+		switch info.mediaType {
+		case provider.MediaTypeMovie:
+			if meta.Core.Title == "" {
+				continue
 			}
+			key := provider.GenerateMetadataKey("movie", meta.Core.Title, meta.Core.Year, 0, 0)
+			addItem(key, MetadataItem{
+				Name:    meta.Core.Title,
+				Year:    meta.Core.Year,
+				IsMovie: true,
+				Key:     key,
+				Phase:   0,
+			})
+		case provider.MediaTypeShow:
+			if meta.Core.Title == "" {
+				continue
+			}
+			key := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
+			addItem(key, MetadataItem{
+				Name:  meta.Core.Title,
+				Year:  meta.Core.Year,
+				Key:   key,
+				Phase: 0,
+			})
+		case provider.MediaTypeSeason:
+			if meta.Core.Title == "" {
+				continue
+			}
+			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
+			addItem(showKey, MetadataItem{
+				Name:  meta.Core.Title,
+				Year:  meta.Core.Year,
+				Key:   showKey,
+				Phase: 0,
+			})
+			seasonKey := provider.GenerateMetadataKey("season", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, 0)
+			addItem(seasonKey, MetadataItem{
+				Name:   meta.Core.Title,
+				Year:   meta.Core.Year,
+				Season: meta.Core.SeasonNum,
+				Key:    seasonKey,
+				Phase:  1,
+			})
+		case provider.MediaTypeEpisode:
+			if meta.Core.Title == "" {
+				continue
+			}
+			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
+			addItem(showKey, MetadataItem{
+				Name:  meta.Core.Title,
+				Year:  meta.Core.Year,
+				Key:   showKey,
+				Phase: 0,
+			})
+			episodeKey := provider.GenerateMetadataKey("episode", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, meta.Core.EpisodeNum)
+			addItem(episodeKey, MetadataItem{
+				Name:    meta.Core.Title,
+				Year:    meta.Core.Year,
+				Season:  meta.Core.SeasonNum,
+				Episode: meta.Core.EpisodeNum,
+				Key:     episodeKey,
+				Phase:   2,
+			})
 		}
 	}
 
@@ -772,7 +768,15 @@ func (m *MetadataProgressModel) View() string {
 
 // Metadata returns the fetched metadata
 func (m *MetadataProgressModel) Metadata() map[string]*provider.Metadata {
-	return m.metadata
+	if m.metadata == nil {
+		return nil
+	}
+	result := make(map[string]*provider.Metadata, m.metadata.Count())
+	m.metadata.Range(func(key string, value *provider.Metadata) bool {
+		result[key] = value
+		return false
+	})
+	return result
 }
 
 // Err returns any error

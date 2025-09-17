@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 )
 
 // TemplateRegistry manages template variables from all providers
@@ -194,7 +195,7 @@ func (r *TemplateResolver) Resolve(template string, ctx *FormatContext, metadata
 	}
 
 	// Clean up the result
-	result = CleanName(result)
+	result = local.CleanName(result)
 
 	return result, nil
 }

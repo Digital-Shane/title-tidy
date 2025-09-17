@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/title-tidy/internal/media"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/lipgloss"
@@ -53,12 +53,16 @@ func statusNoneType(t core.MediaType) func(*treeview.Node[treeview.FileInfo]) bo
 
 // needsDir matches virtual nodes that require a directory to be created
 func needsDir() func(*treeview.Node[treeview.FileInfo]) bool {
-	return metaRule(func(mm *core.MediaMeta) bool { return mm.RenameStatus == core.RenameStatusNone && mm.NeedsDirectory })
+	return metaRule(func(mm *core.MediaMeta) bool {
+		return mm.RenameStatus == core.RenameStatusNone && mm.NeedsDirectory
+	})
 }
 
 // markedForDeletion matches nodes marked for deletion
 func markedForDeletion() func(*treeview.Node[treeview.FileInfo]) bool {
-	return metaRule(func(mm *core.MediaMeta) bool { return mm.MarkedForDeletion && mm.RenameStatus == core.RenameStatusNone })
+	return metaRule(func(mm *core.MediaMeta) bool {
+		return mm.MarkedForDeletion && mm.RenameStatus == core.RenameStatusNone
+	})
 }
 
 // deletionSuccess matches successfully deleted nodes
@@ -103,7 +107,7 @@ func CreateRenameProvider() *treeview.DefaultNodeProvider[treeview.FileInfo] {
 	episodeIconRule := treeview.WithIconRule(statusNoneType(core.MediaEpisode), iconSet["episode"])
 	movieIconRule := treeview.WithIconRule(statusNoneType(core.MediaMovie), iconSet["movie"])
 	movieFileIconRule := treeview.WithIconRule(func(n *treeview.Node[treeview.FileInfo]) bool {
-		if media.IsSubtitle(n.Name()) {
+		if local.IsSubtitle(n.Name()) {
 			return false
 		}
 		return statusNoneType(core.MediaMovieFile)(n)

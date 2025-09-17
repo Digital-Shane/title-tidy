@@ -6,19 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/treeview"
-)
-
-var (
-	// yearRangeRe extracts a year or year range; only the first year is used in output.
-	yearRangeRe = regexp.MustCompile(`(?:^|[^\d])((19|20)\d{2})(?:[\s\-–—]+(?:19|20)\d{2})?(?:[^\d]|$)`)
-	// encodingTagsRe removes codec/resolution/source tags to isolate the series title.
-	encodingTagsRe = regexp.MustCompile(`(?i)\b(?:HD|HDR|DV|x265|x264|H\.?264|H\.?265|HEVC|AVC|AAC|AC3|DD|DTS|FLAC|MP3|WEB-?DL|BluRay|BDRip|DVDRip|HDTV|720p|1080p|2160p|4K|UHD|SDR|10bit|8bit|PROPER|REPACK|iNTERNAL|LiMiTED|UNRATED|EXTENDED|DiRECTORS?\.?CUT|THEATRICAL|COMPLETE|SEASON|SERIES|MULTI|DUAL|DUBBED|SUBBED|SUB|RETAIL|WS|FS|NTSC|PAL|R[1-6]|UNCUT|UNCENSORED)\b`)
-	// emptyBracketsRe matches any empty brackets (with optional spaces inside)
-	emptyBracketsRe = regexp.MustCompile(`\s*[\(\[\{<]\s*[\)\]\}>]`)
 )
 
 // FormatContext holds all the contextual information needed for formatting media names.
@@ -181,24 +171,6 @@ func (cfg *FormatConfig) Save() error {
 	return nil
 }
 
-// CleanName removes empty brackets, trims spaces and separators
-func CleanName(name string) string {
-	result := name
-
-	// Keep removing empty brackets until none remain (handles nested cases)
-	for emptyBracketsRe.MatchString(result) {
-		result = emptyBracketsRe.ReplaceAllString(result, "")
-	}
-
-	// Clean up template artifacts
-	result = strings.TrimSpace(result)
-	result = strings.TrimPrefix(result, "-")
-	result = strings.TrimSuffix(result, "-")
-	result = strings.TrimSpace(result)
-
-	return result
-}
-
 // ApplyShowFolderTemplate applies the show folder template using the provided context
 func (cfg *FormatConfig) ApplyShowFolderTemplate(ctx *FormatContext) string {
 	// Ensure resolver is initialized
@@ -243,42 +215,6 @@ func (cfg *FormatConfig) ApplyMovieTemplate(ctx *FormatContext) string {
 	return result
 }
 
-// ExtractNameAndYear cleans a filename and extracts the name and year components.
-// Returns the cleaned name and year (year may be empty).
-func ExtractNameAndYear(name string) (string, string) {
-	if name == "" {
-		return name, ""
-	}
-
-	formatted := name
-	year := ""
-
-	// First, look for a year or year range in the name
-	yearMatches := yearRangeRe.FindStringSubmatch(formatted)
-
-	if len(yearMatches) > 1 {
-		// Extract just the first year from the match (yearMatches[1] is the full first year)
-		year = yearMatches[1]
-
-		// Find the position of the actual year within the formatted string
-		yearIndex := strings.Index(formatted, year)
-		if yearIndex != -1 {
-			// Keep only the part before the year
-			formatted = formatted[:yearIndex]
-			formatted = strings.TrimRight(formatted, " ([{-_")
-		}
-	}
-
-	// Replace separators with spaces
-	formatted = strings.ReplaceAll(formatted, ".", " ")
-	formatted = strings.ReplaceAll(formatted, "-", " ")
-	formatted = strings.ReplaceAll(formatted, "_", " ")
-
-	// Remove common encoding tags
-	formatted = encodingTagsRe.ReplaceAllString(formatted, "")
-
-	// Clean up extra spaces
-	formatted = strings.TrimSpace(strings.Join(strings.Fields(formatted), " "))
-
-	return formatted, year
-}
+// Deprecated: ExtractNameAndYear has been moved to internal/provider/local.
+// This stub is kept for documentation purposes only.
+// Use local.ExtractNameAndYear instead.
