@@ -67,7 +67,7 @@ title-tidy [command]
 title-tidy config
 ```
 
-Title Tidy allows you to completely customize how your media files are named using configurable templates, metadata enrichment from TMDB, and logging settings:
+Title Tidy allows you to completely customize how your media files are named using configurable templates, metadata enrichment from multiple providers, and logging settings. Your configuration is saved to `~/.title-tidy/config.json` and will be used for all future renames.
 
 ![config demo](https://vhs.charm.sh/vhs-2qcRVzJI8fANyCOWQXO7wi.gif)
 
@@ -100,6 +100,10 @@ Customize how your media files and folders are named:
 * `{imdb_id}` - IMDB ID
 * `{networks}` - TV Network that created the show (e.g., "HBO")
 
+**ffprobe Metadata Variables (when ffprobe is enabled):**
+* `{video_codec}` - Video codec used in the media container file (episodes and movies only)
+* `{audio_codec}` - Audio codec used in the media container file (episodes and movies only)
+
 **Template Examples:**
 * `S{season}E{episode}` → "S01E01"
 * `{title} - S{season}E{episode} - {episode_title}` → "Breaking Bad - S01E01 - Pilot"
@@ -128,7 +132,11 @@ Enhance your media naming with rich metadata from The Movie Database:
 
 When TMDB is enabled, Title Tidy will automatically fetch metadata for your media files, including proper titles, episode names, ratings, genres, and more. This data can be used in your naming templates to create information-rich filenames.
 
-Your configuration is saved to `~/.title-tidy/config.json` and will be used for all future renames.
+#### ffprobe Integration
+
+The ffprobe integration only allows Enable/Disable in the configuration.
+
+When ffprobe is enabled, Title Tidy will automatically scan your media files to extract the video and audio codec in use for use in file names.
 
 ### Shows
 
