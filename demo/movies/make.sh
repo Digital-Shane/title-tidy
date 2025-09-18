@@ -5,25 +5,30 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="$DIR/data"
 rm -rf "$OUT" && mkdir -p "$OUT"
 
+VIDEO_SRC="$OUT/.source-video.mp4"
+"$DIR/../generate-test-video.sh" "$VIDEO_SRC"
+
 # Movie 1: The Shawshank Redemption - Directory with noisy name + video + subtitles languages
 MOV1_RAW="The.Shawshank.Redemption.1994.1080p.x265"
 mkdir -p "$OUT/$MOV1_RAW"
-touch "$OUT/$MOV1_RAW/The.Shawshank.Redemption.1994.1080p.x265.mkv"
+cp "$VIDEO_SRC" "$OUT/$MOV1_RAW/The.Shawshank.Redemption.1994.1080p.x265.mkv"
 touch "$OUT/$MOV1_RAW/The.Shawshank.Redemption.1994.en.srt"
 touch "$OUT/$MOV1_RAW/The.Shawshank.Redemption.1994.en-US.srt"
 
 # Movie 2: Inception - Standalone file -> should create virtual directory
-touch "$OUT/Inception.2010.720p.BluRay.mkv"
+cp "$VIDEO_SRC" "$OUT/Inception.2010.720p.BluRay.mkv"
 
 # Movie 3: Interstellar - Standalone file with mixed case ext
-touch "$OUT/Interstellar_2014-file.mp4"
+cp "$VIDEO_SRC" "$OUT/Interstellar_2014-file.mp4"
 
 # Movie 4: The Dark Knight - Directory already clean
 mkdir -p "$OUT/The Dark Knight (2008)"
-touch "$OUT/The Dark Knight (2008)/The.Dark.Knight.2008.1080p.mkv"
+cp "$VIDEO_SRC" "$OUT/The Dark Knight (2008)/The.Dark.Knight.2008.1080p.mkv"
 
 # Movie 5: Pulp Fiction - Standalone with subtitle file pair
-touch "$OUT/Pulp.Fiction.1994.mkv"
+cp "$VIDEO_SRC" "$OUT/Pulp.Fiction.1994.mkv"
 touch "$OUT/Pulp.Fiction.1994.en.srt"
+
+rm -f "$VIDEO_SRC"
 
 echo "Demo dataset for 'movies' created at $OUT"

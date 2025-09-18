@@ -41,6 +41,7 @@ var (
 		// UI elements
 		"stats":    "📊",
 		"chart":    "📊",
+		"chip":     "🧠",
 		"title":    "📺",
 		"calendar": "📅",
 		"key":      "🔑",
@@ -82,6 +83,7 @@ var (
 		// UI elements
 		"stats":    "[*]",
 		"chart":    "[#]",
+		"chip":     "[T]",
 		"title":    "[TV]",
 		"calendar": "[C]",
 		"key":      "[K]",

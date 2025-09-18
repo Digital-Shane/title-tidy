@@ -46,15 +46,19 @@ func runConfigCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if cfg.EnableFFProbe {
+		if err := provider.GlobalRegistry.Enable("ffprobe"); err != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "Warning: failed to enable ffprobe provider: %v\n", err)
+		}
+	}
+
 	// Create template registry
 	templateReg := config.NewTemplateRegistry()
 
 	// Register all enabled providers with template registry
 	for _, name := range provider.GlobalRegistry.List() {
 		if p, exists := provider.GlobalRegistry.Get(name); exists {
-			if provider.GlobalRegistry.IsEnabled(name) {
-				templateReg.RegisterProvider(p)
-			}
+			templateReg.RegisterProvider(p)
 		}
 	}
 

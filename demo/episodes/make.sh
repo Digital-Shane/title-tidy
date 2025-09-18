@@ -4,12 +4,17 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="$DIR/data"
 rm -rf "$OUT" && mkdir -p "$OUT"
+
+VIDEO_SRC="$OUT/.source-video.mp4"
+"$DIR/../generate-test-video.sh" "$VIDEO_SRC"
 # Put mixed episode naming forms directly inside the season dir
-touch "$OUT/Better.Call.Saul.S03E01.mkv"
-touch "$OUT/better.call.saul.s03e02.mkv"
-touch "$OUT/Breaking.Bad.3x03.mkv"
-touch "$OUT/Breaking.Bad.3.04.mkv"
-touch "$OUT/Better.Call.Saul.S03E07.en-US.srt"
+cp "$VIDEO_SRC" "$OUT/Better.Call.Saul.S03E01.mkv"
+cp "$VIDEO_SRC" "$OUT/better.call.saul.s03e02.mkv"
+cp "$VIDEO_SRC" "$OUT/Breaking.Bad.3x03.mkv"
+cp "$VIDEO_SRC" "$OUT/Breaking.Bad.3.04.mkv"
+touch "$OUT/Better.Call.Saul.S03E01.en-US.srt"
+
+rm -f "$VIDEO_SRC"
 
 echo "Demo dataset for 'episodes' created at $OUT"
 echo "To test: cd '$OUT' && rename-media episodes"

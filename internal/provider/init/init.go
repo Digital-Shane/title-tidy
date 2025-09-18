@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 )
@@ -27,7 +28,11 @@ func LoadBuiltinProviders() error {
 		return fmt.Errorf("failed to register TMDB provider: %w", err)
 	}
 
-	// Future providers
+	// Register ffprobe provider
+	ffprobeProvider := ffprobe.New()
+	if err := provider.GlobalRegistry.Register("ffprobe", ffprobeProvider, 50); err != nil {
+		return fmt.Errorf("failed to register ffprobe provider: %w", err)
+	}
 
 	return nil
 }
