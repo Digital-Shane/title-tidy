@@ -52,7 +52,7 @@ func (p *Provider) Name() string {
 
 // Description returns the provider description
 func (p *Provider) Description() string {
-	return "The Movie Database (TMDB) - Comprehensive movie and TV show metadata"
+	return "The Movie Database (TMDB) provided metadata"
 }
 
 // Capabilities returns what this provider can do

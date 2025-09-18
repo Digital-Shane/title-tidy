@@ -12,6 +12,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
@@ -37,6 +38,7 @@ type MetadataProgressModel struct {
 	// Results storage
 	metadata        *csmap.CsMap[string, *provider.Metadata]
 	tmdbProvider    provider.Provider
+	omdbProvider    provider.Provider
 	ffprobeProvider provider.Provider
 	activeProviders []string
 
@@ -139,15 +141,29 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		}
 	}
 
+	// Initialize OMDb provider if enabled
+	var omdbProvider provider.Provider
+	if cfg.EnableOMDBLookup && cfg.OMDBAPIKey != "" {
+		omdbProvider = omdb.New()
+		if err := omdbProvider.Configure(map[string]interface{}{
+			"api_key": cfg.OMDBAPIKey,
+		}); err != nil {
+			omdbProvider = nil
+		}
+	}
+
 	// Initialize ffprobe provider if enabled
 	var ffprobeProvider provider.Provider
 	if cfg.EnableFFProbe {
 		ffprobeProvider = ffprobe.New()
 	}
 
-	activeProviders := make([]string, 0, 2)
+	activeProviders := make([]string, 0, 3)
 	if tmdbProvider != nil {
 		activeProviders = append(activeProviders, "TMDB")
+	}
+	if omdbProvider != nil {
+		activeProviders = append(activeProviders, "OMDb")
 	}
 	if ffprobeProvider != nil {
 		activeProviders = append(activeProviders, "ffprobe")
@@ -173,6 +189,7 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		msgCh:           make(chan tea.Msg, 256),
 		metadata:        csmap.Create[string, *provider.Metadata](),
 		tmdbProvider:    tmdbProvider,
+		omdbProvider:    omdbProvider,
 		ffprobeProvider: ffprobeProvider,
 		activeProviders: activeProviders,
 		workerCount:     workerCount,
@@ -283,7 +300,7 @@ func countMetadataItems(tree *treeview.Tree[treeview.FileInfo], localProv *local
 
 // Init starts the async metadata fetching
 func (m *MetadataProgressModel) Init() tea.Cmd {
-	if m.tmdbProvider == nil && m.ffprobeProvider == nil {
+	if m.tmdbProvider == nil && m.omdbProvider == nil && m.ffprobeProvider == nil {
 		// No metadata providers are enabled, skip fetching
 		m.done = true
 		return tea.Quit
@@ -436,13 +453,28 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 		}
 
 		tmdbMeta, tmdbErr := m.fetchTMDBMetadata(item)
+		omdbMeta, omdbErr := m.fetchOMDBMetadata(item)
 		ffprobeMeta, ffprobeErr := m.fetchFFProbeMetadata(item)
 
-		combined := mergeMetadata(item, tmdbMeta, ffprobeMeta)
+		base := tmdbMeta
+		extra := make([]*provider.Metadata, 0, 2)
+		if base == nil && omdbMeta != nil {
+			base = omdbMeta
+		} else if omdbMeta != nil {
+			extra = append(extra, omdbMeta)
+		}
+		if ffprobeMeta != nil {
+			extra = append(extra, ffprobeMeta)
+		}
 
-		errs := make([]error, 0, 2)
+		combined := mergeMetadata(item, base, extra...)
+
+		errs := make([]error, 0, 3)
 		if tmdbErr != nil {
 			errs = append(errs, tmdbErr)
+		}
+		if omdbErr != nil {
+			errs = append(errs, omdbErr)
 		}
 		if ffprobeErr != nil {
 			errs = append(errs, ffprobeErr)
@@ -509,6 +541,29 @@ func (m *MetadataProgressModel) fetchTMDBMetadata(item MetadataItem) (*provider.
 
 		return nil, err
 	}
+}
+
+func (m *MetadataProgressModel) fetchOMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
+	if m.omdbProvider == nil {
+		return nil, nil
+	}
+
+	select {
+	case <-m.ctx.Done():
+		return nil, m.ctx.Err()
+	default:
+	}
+
+	meta, err := provider.FetchMetadataWithDependencies(
+		m.omdbProvider,
+		item.Name,
+		item.Year,
+		item.Season,
+		item.Episode,
+		item.IsMovie,
+		m,
+	)
+	return meta, err
 }
 
 func (m *MetadataProgressModel) fetchFFProbeMetadata(item MetadataItem) (*provider.Metadata, error) {

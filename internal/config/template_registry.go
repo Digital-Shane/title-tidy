@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -15,6 +16,7 @@ type TemplateRegistry struct {
 	mu        sync.RWMutex
 	variables map[string]provider.TemplateVariable // variable name -> definition
 	providers map[string]provider.Provider         // provider name -> provider
+	varOwners map[string][]string                  // variable name -> providers that supply it
 	resolver  *TemplateResolver
 }
 
@@ -23,6 +25,7 @@ func NewTemplateRegistry() *TemplateRegistry {
 	return &TemplateRegistry{
 		variables: make(map[string]provider.TemplateVariable),
 		providers: make(map[string]provider.Provider),
+		varOwners: make(map[string][]string),
 		resolver:  NewTemplateResolver(),
 	}
 }
@@ -44,12 +47,14 @@ func (r *TemplateRegistry) RegisterProvider(p provider.Provider) error {
 		// Ensure provider name is set
 		v.Provider = name
 
+		owners := r.varOwners[v.Name]
+		if !slices.Contains(owners, name) {
+			r.varOwners[v.Name] = append(owners, name)
+		}
+
 		// Check for conflicts with existing variables
 		if _, exists := r.variables[v.Name]; exists {
-			// Variable already exists from another provider
-			// We'll keep track of all providers that can supply this variable
-			// by storing in the description or creating a multi-provider variable
-			continue // For now, first registered wins
+			continue
 		}
 
 		r.variables[v.Name] = v
@@ -73,6 +78,14 @@ func (r *TemplateRegistry) UnregisterProvider(name string) {
 	// Remove variables that came from this provider
 	for varName, v := range r.variables {
 		if v.Provider == name {
+			delete(r.variables, varName)
+		}
+	}
+
+	for varName, owners := range r.varOwners {
+		r.varOwners[varName] = removeProvider(owners, name)
+		if len(r.varOwners[varName]) == 0 {
+			delete(r.varOwners, varName)
 			delete(r.variables, varName)
 		}
 	}
@@ -120,11 +133,24 @@ func (r *TemplateRegistry) GetVariablesByProvider(providerName string) []provide
 	defer r.mu.RUnlock()
 
 	result := []provider.TemplateVariable{}
-	for _, v := range r.variables {
-		if v.Provider == providerName {
-			result = append(result, v)
+	for name, v := range r.variables {
+		if slices.Contains(r.varOwners[name], providerName) {
+			clone := v
+			clone.Provider = providerName
+			result = append(result, clone)
 		}
 	}
+	return result
+}
+
+// VariableProviders returns all providers that can supply a given variable.
+func (r *TemplateRegistry) VariableProviders(variableName string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	owners := r.varOwners[variableName]
+	result := make([]string, len(owners))
+	copy(result, owners)
 	return result
 }
 
@@ -153,6 +179,16 @@ func (r *TemplateRegistry) GetProviders() []provider.Provider {
 	result := make([]provider.Provider, 0, len(r.providers))
 	for _, p := range r.providers {
 		result = append(result, p)
+	}
+	return result
+}
+
+func removeProvider(list []string, name string) []string {
+	result := make([]string, 0, len(list))
+	for _, item := range list {
+		if item != name {
+			result = append(result, item)
+		}
 	}
 	return result
 }
@@ -202,34 +238,16 @@ func (r *TemplateResolver) Resolve(template string, ctx *FormatContext, metadata
 
 // resolveVariable resolves a single variable to its value
 func (r *TemplateResolver) resolveVariable(varName string, ctx *FormatContext, metadata *provider.Metadata, providers map[string]provider.Provider) (string, error) {
-	// Check if we should prefer local metadata
-	preferLocal := ctx.Config != nil && ctx.Config.PreferLocalMetadata
-
-	// For variables that can come from both sources, check preference
+	// For variables that can come from both local context and metadata, prefer metadata
 	switch varName {
 	case "title", "show", "movie", "year":
-		if preferLocal {
-			// Try core variables first
-			if value := r.resolveCoreVariable(varName, ctx); value != "" {
+		if metadata != nil {
+			if value := r.resolveFromMetadata(varName, metadata); value != "" {
 				return value, nil
 			}
-			// Fall back to metadata
-			if metadata != nil {
-				if value := r.resolveFromMetadata(varName, metadata); value != "" {
-					return value, nil
-				}
-			}
-		} else {
-			// Try metadata first
-			if metadata != nil {
-				if value := r.resolveFromMetadata(varName, metadata); value != "" {
-					return value, nil
-				}
-			}
-			// Fall back to core variables
-			if value := r.resolveCoreVariable(varName, ctx); value != "" {
-				return value, nil
-			}
+		}
+		if value := r.resolveCoreVariable(varName, ctx); value != "" {
+			return value, nil
 		}
 	case "season", "episode":
 		// These always come from core variables

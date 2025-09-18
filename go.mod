@@ -3,9 +3,10 @@ module github.com/Digital-Shane/title-tidy
 go 1.24.0
 
 require (
+	github.com/Digital-Shane/omdb v1.1.0
 	github.com/Digital-Shane/treeview v1.8.1
 	github.com/charmbracelet/bubbles v0.21.0
-	github.com/charmbracelet/bubbletea v1.3.9
+	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/go-cmp v0.7.0
 	github.com/mattn/go-runewidth v0.0.16

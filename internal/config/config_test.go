@@ -22,17 +22,18 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	want := &FormatConfig{
-		ShowFolder:          "{title} ({year})",
-		SeasonFolder:        "Season {season}",
-		Episode:             "S{season}E{episode}",
-		Movie:               "{title} ({year})",
-		LogRetentionDays:    30,
-		EnableLogging:       true,
-		TMDBAPIKey:          "",
-		EnableTMDBLookup:    false,
-		TMDBLanguage:        "en-US",
-		PreferLocalMetadata: true,
-		TMDBWorkerCount:     10,
+		ShowFolder:       "{title} ({year})",
+		SeasonFolder:     "Season {season}",
+		Episode:          "S{season}E{episode}",
+		Movie:            "{title} ({year})",
+		LogRetentionDays: 30,
+		EnableLogging:    true,
+		TMDBAPIKey:       "",
+		EnableTMDBLookup: false,
+		TMDBLanguage:     "en-US",
+		TMDBWorkerCount:  10,
+		OMDBAPIKey:       "",
+		EnableOMDBLookup: false,
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -120,17 +121,18 @@ func TestLoad_ValidFile(t *testing.T) {
 	}
 
 	want := &FormatConfig{
-		ShowFolder:          "custom {title}",
-		SeasonFolder:        "custom Season {season}",
-		Episode:             "custom E{episode}",
-		Movie:               "custom {title}",
-		LogRetentionDays:    60,
-		EnableLogging:       false,
-		TMDBAPIKey:          "",
-		EnableTMDBLookup:    false,
-		TMDBLanguage:        "en-US", // Filled in by Load() with default
-		PreferLocalMetadata: false,
-		TMDBWorkerCount:     10, // Filled in by Load() with default
+		ShowFolder:       "custom {title}",
+		SeasonFolder:     "custom Season {season}",
+		Episode:          "custom E{episode}",
+		Movie:            "custom {title}",
+		LogRetentionDays: 60,
+		EnableLogging:    false,
+		TMDBAPIKey:       "",
+		EnableTMDBLookup: false,
+		TMDBLanguage:     "en-US", // Filled in by Load() with default
+		TMDBWorkerCount:  10,      // Filled in by Load() with default
+		OMDBAPIKey:       "",
+		EnableOMDBLookup: false,
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -306,17 +308,18 @@ func TestLoad(t *testing.T) {
 
 		// Expected config should include default values filled in by Load()
 		expectedConfig := &FormatConfig{
-			ShowFolder:          "{title} - {year}",
-			SeasonFolder:        "S{season}",
-			Episode:             "{code} {title}",
-			Movie:               "{title} [{year}]",
-			LogRetentionDays:    30,    // Default value filled in by Load()
-			EnableLogging:       false, // Not set in JSON, so false
-			TMDBAPIKey:          "",
-			EnableTMDBLookup:    false,
-			TMDBLanguage:        "en-US", // Default value filled in by Load()
-			PreferLocalMetadata: false,   // Not set in JSON, so false
-			TMDBWorkerCount:     10,      // Default value filled in by Load()
+			ShowFolder:       "{title} - {year}",
+			SeasonFolder:     "S{season}",
+			Episode:          "{code} {title}",
+			Movie:            "{title} [{year}]",
+			LogRetentionDays: 30,    // Default value filled in by Load()
+			EnableLogging:    false, // Not set in JSON, so false
+			TMDBAPIKey:       "",
+			EnableTMDBLookup: false,
+			TMDBLanguage:     "en-US", // Default value filled in by Load()
+			TMDBWorkerCount:  10,      // Default value filled in by Load()
+			OMDBAPIKey:       "",
+			EnableOMDBLookup: false,
 		}
 
 		if diff := cmp.Diff(expectedConfig, cfg, cmpOpts()); diff != "" {
@@ -350,17 +353,18 @@ func TestLoad(t *testing.T) {
 
 		// Should fill in missing fields with defaults
 		want := &FormatConfig{
-			ShowFolder:          "{title}",
-			SeasonFolder:        "Season {season}", // default
-			Episode:             "{code}",
-			Movie:               "{title} ({year})", // default
-			LogRetentionDays:    30,                 // default
-			EnableLogging:       false,              // Not set in JSON, so false
-			TMDBAPIKey:          "",
-			EnableTMDBLookup:    false,
-			TMDBLanguage:        "en-US", // default
-			PreferLocalMetadata: false,   // Not set in JSON, so false
-			TMDBWorkerCount:     10,      // default
+			ShowFolder:       "{title}",
+			SeasonFolder:     "Season {season}", // default
+			Episode:          "{code}",
+			Movie:            "{title} ({year})", // default
+			LogRetentionDays: 30,                 // default
+			EnableLogging:    false,              // Not set in JSON, so false
+			TMDBAPIKey:       "",
+			EnableTMDBLookup: false,
+			TMDBLanguage:     "en-US", // default
+			TMDBWorkerCount:  10,      // default
+			OMDBAPIKey:       "",
+			EnableOMDBLookup: false,
 		}
 
 		if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -821,11 +825,10 @@ func TestNeedsMetadata(t *testing.T) {
 
 func TestApplyTemplateWithMetadata(t *testing.T) {
 	cfg := &FormatConfig{
-		ShowFolder:          "{title} ({year}) [{rating}]",
-		SeasonFolder:        "Season {season} - {genres}",
-		Episode:             "S{season}E{episode} - {episode_title}",
-		Movie:               "{title} ({year}) - {tagline}",
-		PreferLocalMetadata: false,
+		ShowFolder:   "{title} ({year}) [{rating}]",
+		SeasonFolder: "Season {season} - {genres}",
+		Episode:      "S{season}E{episode} - {episode_title}",
+		Movie:        "{title} ({year}) - {tagline}",
 	}
 
 	metadata := &provider.Metadata{
@@ -901,23 +904,6 @@ func TestApplyTemplateWithMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("PreferLocalMetadata", func(t *testing.T) {
-		cfgLocal := &FormatConfig{
-			ShowFolder:          "{title} ({year})",
-			PreferLocalMetadata: true,
-		}
-		ctx := &FormatContext{
-			ShowName: "Local Show",
-			Year:     "2020",
-			Metadata: metadata,
-			Config:   cfgLocal,
-		}
-		got := cfgLocal.ApplyShowFolderTemplate(ctx)
-		want := "Local Show (2020)"
-		if got != want {
-			t.Errorf("ApplyShowFolderTemplateWithContext() with PreferLocal = %q, want %q", got, want)
-		}
-	})
 }
 
 func TestResolveVariableComprehensive(t *testing.T) {
@@ -1017,17 +1003,6 @@ func TestResolveVariableComprehensive(t *testing.T) {
 				Metadata: &provider.Metadata{},
 			},
 			want: "Fallback Show",
-		},
-		{
-			name:     "prefer_local_metadata",
-			template: "{title} - {year}",
-			ctx: &FormatContext{
-				ShowName: "Local Show",
-				Year:     "2020",
-				Metadata: metadata,
-				Config:   &FormatConfig{PreferLocalMetadata: true},
-			},
-			want: "Local Show - 2020",
 		},
 	}
 

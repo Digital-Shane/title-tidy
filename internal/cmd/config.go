@@ -33,8 +33,8 @@ func runConfigCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Configure TMDB if API key exists
-	if cfg.TMDBAPIKey != "" {
+	// Configure TMDB if enabled and configured
+	if cfg.EnableTMDBLookup && cfg.TMDBAPIKey != "" {
 		tmdbConfig := map[string]interface{}{
 			"api_key":       cfg.TMDBAPIKey,
 			"language":      cfg.TMDBLanguage,
@@ -43,6 +43,16 @@ func runConfigCommand(cmd *cobra.Command, args []string) error {
 		if err := provider.GlobalRegistry.Configure("tmdb", tmdbConfig); err == nil {
 			// Only enable if configuration succeeded
 			provider.GlobalRegistry.Enable("tmdb")
+		}
+	}
+
+	// Configure OMDb if enabled and configured
+	if cfg.EnableOMDBLookup && cfg.OMDBAPIKey != "" {
+		omdbConfig := map[string]interface{}{
+			"api_key": cfg.OMDBAPIKey,
+		}
+		if err := provider.GlobalRegistry.Configure("omdb", omdbConfig); err == nil {
+			provider.GlobalRegistry.Enable("omdb")
 		}
 	}
 

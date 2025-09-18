@@ -130,6 +130,9 @@ func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *c
 	if formatConfig.EnableTMDBLookup && formatConfig.TMDBAPIKey != "" {
 		shouldFetch = true
 	}
+	if formatConfig.EnableOMDBLookup && formatConfig.OMDBAPIKey != "" {
+		shouldFetch = true
+	}
 	if formatConfig.EnableFFProbe {
 		shouldFetch = true
 	}

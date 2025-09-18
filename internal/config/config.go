@@ -11,6 +11,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	ffprobeProv "github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	omdbProv "github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/Digital-Shane/treeview"
 )
@@ -46,12 +47,13 @@ type FormatConfig struct {
 	EnableLogging    bool   `json:"enable_logging"`
 
 	// TMDB Integration settings
-	TMDBAPIKey          string `json:"tmdb_api_key"`
-	EnableTMDBLookup    bool   `json:"enable_tmdb_lookup"`
-	TMDBLanguage        string `json:"tmdb_language"`
-	PreferLocalMetadata bool   `json:"prefer_local_metadata"`
-	TMDBWorkerCount     int    `json:"tmdb_worker_count"`
-	EnableFFProbe       bool   `json:"enable_ffprobe"`
+	TMDBAPIKey       string `json:"tmdb_api_key"`
+	EnableTMDBLookup bool   `json:"enable_tmdb_lookup"`
+	TMDBLanguage     string `json:"tmdb_language"`
+	TMDBWorkerCount  int    `json:"tmdb_worker_count"`
+	OMDBAPIKey       string `json:"omdb_api_key"`
+	EnableOMDBLookup bool   `json:"enable_omdb_lookup"`
+	EnableFFProbe    bool   `json:"enable_ffprobe"`
 
 	// Template resolver for dynamic variable resolution
 	resolver *TemplateResolver
@@ -60,18 +62,19 @@ type FormatConfig struct {
 // DefaultConfig returns the default format configuration
 func DefaultConfig() *FormatConfig {
 	return &FormatConfig{
-		ShowFolder:          "{title} ({year})",
-		SeasonFolder:        "Season {season}",
-		Episode:             "S{season}E{episode}",
-		Movie:               "{title} ({year})",
-		LogRetentionDays:    30,
-		EnableLogging:       true,
-		TMDBAPIKey:          "",
-		EnableTMDBLookup:    false,
-		TMDBLanguage:        "en-US",
-		PreferLocalMetadata: true,
-		TMDBWorkerCount:     10,
-		resolver:            NewTemplateResolver(),
+		ShowFolder:       "{title} ({year})",
+		SeasonFolder:     "Season {season}",
+		Episode:          "S{season}E{episode}",
+		Movie:            "{title} ({year})",
+		LogRetentionDays: 30,
+		EnableLogging:    true,
+		TMDBAPIKey:       "",
+		EnableTMDBLookup: false,
+		TMDBLanguage:     "en-US",
+		TMDBWorkerCount:  10,
+		OMDBAPIKey:       "",
+		EnableOMDBLookup: false,
+		resolver:         NewTemplateResolver(),
 	}
 }
 
@@ -198,6 +201,7 @@ func gatherMetadataProviders() []provider.Provider {
 	return []provider.Provider{
 		local.New(),
 		tmdbProv.New(),
+		omdbProv.New(),
 		ffprobeProv.New(),
 	}
 }
