@@ -12,6 +12,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
@@ -36,6 +37,25 @@ type tmdbValidationMsg struct {
 type tmdbValidateCmd struct {
 	apiKey string
 }
+
+// omdbValidationMsg carries the result of OMDb API validation
+type omdbValidationMsg struct {
+	apiKey string
+	valid  bool
+}
+
+// omdbValidateCmd triggers OMDb API validation after debounce delay
+type omdbValidateCmd struct {
+	apiKey string
+}
+
+const (
+	providerColumnShared = iota
+	providerColumnFFProbe
+	providerColumnOMDB
+	providerColumnTMDB
+	providerColumnCount
+)
 
 // Section represents a configuration section
 type Section int
@@ -62,13 +82,17 @@ type Model struct {
 	tmdbAPIKey          string // TMDB API key (masked)
 	tmdbEnabled         bool   // TMDB lookup enabled
 	tmdbLanguage        string // TMDB language code
-	tmdbPreferLocal     bool   // Prefer local metadata
-	tmdbWorkerCount     string // TMDB worker count as string for input
-	tmdbSubfocus        int    // 0=enabled, 1=api key, 2=language, 3=prefer local, 4=worker count
+	workerCount         string // Provider worker count as string for input
+	tmdbSubfocus        int    // 0=enabled, 1=api key, 2=language
 	ffprobeEnabled      bool   // ffprobe provider enabled
-	providerColumnFocus int    // 0=TMDB column, 1=ffprobe column
+	providerColumnFocus int    // 0=shared, 1=ffprobe, 2=OMDb, 3=TMDB
 	tmdbValidation      string // API key validation status: "", "validating", "valid", "invalid"
 	tmdbValidatedKey    string // Last API key that was validated
+	omdbAPIKey          string
+	omdbEnabled         bool
+	omdbSubfocus        int
+	omdbValidation      string
+	omdbValidatedKey    string
 	width               int
 	height              int
 	saveStatus          string
@@ -87,18 +111,19 @@ func New() (*Model, error) {
 
 	// Create a copy for reset functionality
 	originalCfg := &config.FormatConfig{
-		ShowFolder:          cfg.ShowFolder,
-		SeasonFolder:        cfg.SeasonFolder,
-		Episode:             cfg.Episode,
-		Movie:               cfg.Movie,
-		LogRetentionDays:    cfg.LogRetentionDays,
-		EnableLogging:       cfg.EnableLogging,
-		TMDBAPIKey:          cfg.TMDBAPIKey,
-		EnableTMDBLookup:    cfg.EnableTMDBLookup,
-		TMDBLanguage:        cfg.TMDBLanguage,
-		PreferLocalMetadata: cfg.PreferLocalMetadata,
-		TMDBWorkerCount:     cfg.TMDBWorkerCount,
-		EnableFFProbe:       cfg.EnableFFProbe,
+		ShowFolder:       cfg.ShowFolder,
+		SeasonFolder:     cfg.SeasonFolder,
+		Episode:          cfg.Episode,
+		Movie:            cfg.Movie,
+		LogRetentionDays: cfg.LogRetentionDays,
+		EnableLogging:    cfg.EnableLogging,
+		TMDBAPIKey:       cfg.TMDBAPIKey,
+		EnableTMDBLookup: cfg.EnableTMDBLookup,
+		TMDBLanguage:     cfg.TMDBLanguage,
+		TMDBWorkerCount:  cfg.TMDBWorkerCount,
+		OMDBAPIKey:       cfg.OMDBAPIKey,
+		EnableOMDBLookup: cfg.EnableOMDBLookup,
+		EnableFFProbe:    cfg.EnableFFProbe,
 	}
 
 	m := &Model{
@@ -123,11 +148,13 @@ func New() (*Model, error) {
 		tmdbAPIKey:          cfg.TMDBAPIKey,
 		tmdbEnabled:         cfg.EnableTMDBLookup,
 		tmdbLanguage:        cfg.TMDBLanguage,
-		tmdbPreferLocal:     cfg.PreferLocalMetadata,
-		tmdbWorkerCount:     fmt.Sprintf("%d", cfg.TMDBWorkerCount),
+		workerCount:         fmt.Sprintf("%d", cfg.TMDBWorkerCount),
 		tmdbSubfocus:        0,
+		omdbAPIKey:          cfg.OMDBAPIKey,
+		omdbEnabled:         cfg.EnableOMDBLookup,
+		omdbSubfocus:        0,
 		ffprobeEnabled:      cfg.EnableFFProbe,
-		providerColumnFocus: 0,
+		providerColumnFocus: providerColumnShared,
 		variablesView:       viewport.New(0, 0),
 		autoScroll:          true,
 	}
@@ -197,14 +224,45 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case omdbValidationMsg:
+		if msg.apiKey == m.omdbAPIKey {
+			if msg.valid {
+				m.omdbValidation = "valid"
+			} else {
+				m.omdbValidation = "invalid"
+			}
+			m.omdbValidatedKey = msg.apiKey
+		}
+		return m, nil
+
+	case omdbValidateCmd:
+		if msg.apiKey == m.omdbAPIKey && msg.apiKey != "" && msg.apiKey != m.omdbValidatedKey {
+			m.omdbValidation = "validating"
+			return m, validateOMDBAPIKey(msg.apiKey)
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		// Update viewport dimensions
 		panelHeight := m.height - 10
+		if panelHeight < 0 {
+			panelHeight = 0
+		}
 		leftWidth := m.width / 3
-		m.variablesView.Width = leftWidth - 4    // Account for borders and padding
-		m.variablesView.Height = panelHeight - 4 // Account for borders and title
+		if m.activeSection != SectionProviders {
+			viewportWidth := leftWidth - 4    // Account for borders and padding
+			viewportHeight := panelHeight - 4 // Account for borders and title
+			if viewportWidth < 0 {
+				viewportWidth = 0
+			}
+			if viewportHeight < 0 {
+				viewportHeight = 0
+			}
+			m.variablesView.Width = viewportWidth
+			m.variablesView.Height = viewportHeight
+		}
 		// Update content after resize
 		m.updateVariablesContent()
 		return m, nil
@@ -218,10 +276,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activeSection == SectionProviders {
-				if m.providerColumnFocus == 0 {
-					// Within TMDB column, up arrow switches between fields
+				switch m.providerColumnFocus {
+				case providerColumnShared:
+					// Single field, nothing to move between
+				case providerColumnTMDB:
 					if m.tmdbEnabled && m.tmdbSubfocus > 0 {
 						m.tmdbSubfocus--
+					}
+				case providerColumnOMDB:
+					if m.omdbEnabled && m.omdbSubfocus > 0 {
+						m.omdbSubfocus--
 					}
 				}
 				return m, nil
@@ -240,10 +304,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activeSection == SectionProviders {
-				if m.providerColumnFocus == 0 {
-					// Within TMDB column, down arrow switches between fields
-					if m.tmdbEnabled && m.tmdbSubfocus < 4 {
+				switch m.providerColumnFocus {
+				case providerColumnShared:
+					// Single field, nothing to move between
+				case providerColumnTMDB:
+					if m.tmdbEnabled && m.tmdbSubfocus < 2 {
 						m.tmdbSubfocus++
+					}
+				case providerColumnOMDB:
+					if m.omdbEnabled && m.omdbSubfocus < 1 {
+						m.omdbSubfocus++
 					}
 				}
 				return m, nil
@@ -285,17 +355,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeSection == SectionLogging && m.loggingSubfocus == 1 && m.loggingEnabled {
 				// Backspace in logging retention field when logging is enabled
 				m.deleteLoggingChar()
-			} else if m.activeSection == SectionProviders && m.providerColumnFocus == 0 && m.tmdbSubfocus == 1 {
+			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnTMDB && m.tmdbSubfocus == 1 {
 				// Backspace in TMDB API key field
 				m.deleteTMDBChar()
 				// Trigger debounced validation after deletion
 				return m, debouncedTMDBValidate(m.tmdbAPIKey)
-			} else if m.activeSection == SectionProviders && m.providerColumnFocus == 0 && m.tmdbSubfocus == 2 {
+			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnTMDB && m.tmdbSubfocus == 2 {
 				// Backspace in TMDB language field
 				m.deleteTMDBChar()
-			} else if m.activeSection == SectionProviders && m.providerColumnFocus == 0 && m.tmdbSubfocus == 4 {
-				// Backspace in TMDB worker count field
-				m.deleteTMDBChar()
+			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnOMDB && m.omdbSubfocus == 1 {
+				m.deleteOMDBChar()
+				return m, debouncedOMDBValidate(m.omdbAPIKey)
+			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnShared {
+				m.deleteWorkerCountChar()
 			} else if m.activeSection != SectionLogging && m.activeSection != SectionProviders {
 				m.deleteChar()
 			}
@@ -303,8 +375,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyLeft:
 			if m.activeSection == SectionProviders {
-				if m.providerColumnFocus > 0 {
+				if m.providerColumnFocus > providerColumnShared {
 					m.providerColumnFocus--
+				} else {
+					m.providerColumnFocus = providerColumnTMDB
 				}
 				return m, nil
 			}
@@ -315,10 +389,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyRight:
 			if m.activeSection == SectionProviders {
-				if m.providerColumnFocus < 1 {
+				if m.providerColumnFocus < providerColumnTMDB {
 					m.providerColumnFocus++
 				} else {
-					m.providerColumnFocus = 0
+					m.providerColumnFocus = providerColumnShared
 				}
 				return m, nil
 			}
@@ -360,22 +434,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loggingEnabled = !m.loggingEnabled
 			}
 			if m.activeSection == SectionProviders {
-				if m.providerColumnFocus == 0 {
+				var cmd tea.Cmd
+				switch m.providerColumnFocus {
+				case providerColumnTMDB:
 					if m.tmdbSubfocus == 0 {
-						// Enter toggles TMDB enabled
 						m.tmdbEnabled = !m.tmdbEnabled
 						if !m.tmdbEnabled {
 							m.tmdbSubfocus = 0
+							m.tmdbValidation = ""
+							m.tmdbValidatedKey = ""
 						}
 						m.updateVariablesContent()
-					} else if m.tmdbSubfocus == 3 && m.tmdbEnabled {
-						// Enter toggles prefer local metadata (only when TMDB is enabled)
-						m.tmdbPreferLocal = !m.tmdbPreferLocal
 					}
-				} else {
+				case providerColumnOMDB:
+					if m.omdbSubfocus == 0 {
+						m.omdbEnabled = !m.omdbEnabled
+						if !m.omdbEnabled {
+							m.omdbSubfocus = 0
+							m.omdbValidation = ""
+							m.omdbValidatedKey = ""
+						} else {
+							m.omdbValidatedKey = ""
+							if len(m.omdbAPIKey) > 0 {
+								m.omdbValidation = "validating"
+								cmd = debouncedOMDBValidate(m.omdbAPIKey)
+							} else {
+								m.omdbValidation = ""
+							}
+						}
+						m.updateVariablesContent()
+					}
+				case providerColumnFFProbe:
 					m.ffprobeEnabled = !m.ffprobeEnabled
 					m.updateVariablesContent()
 				}
+				return m, cmd
 			}
 			return m, nil
 
@@ -391,21 +484,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.activeSection == SectionProviders {
-				if m.providerColumnFocus == 0 {
+				var cmd tea.Cmd
+				switch m.providerColumnFocus {
+				case providerColumnTMDB:
 					if m.tmdbSubfocus == 0 {
-						// Space toggles TMDB enabled
 						m.tmdbEnabled = !m.tmdbEnabled
 						if !m.tmdbEnabled {
 							m.tmdbSubfocus = 0
+							m.tmdbValidation = ""
+							m.tmdbValidatedKey = ""
 						}
 						m.updateVariablesContent()
 						return m, nil
-					} else if m.tmdbSubfocus == 3 && m.tmdbEnabled {
-						// Space toggles prefer local metadata (only when TMDB is enabled)
-						m.tmdbPreferLocal = !m.tmdbPreferLocal
-						return m, nil
 					}
-				} else {
+				case providerColumnOMDB:
+					if m.omdbSubfocus == 0 {
+						m.omdbEnabled = !m.omdbEnabled
+						if !m.omdbEnabled {
+							m.omdbSubfocus = 0
+							m.omdbValidation = ""
+							m.omdbValidatedKey = ""
+						} else {
+							m.omdbValidatedKey = ""
+							if len(m.omdbAPIKey) > 0 {
+								m.omdbValidation = "validating"
+								cmd = debouncedOMDBValidate(m.omdbAPIKey)
+							} else {
+								m.omdbValidation = ""
+							}
+						}
+						m.updateVariablesContent()
+						return m, cmd
+					}
+				case providerColumnFFProbe:
 					m.ffprobeEnabled = !m.ffprobeEnabled
 					m.updateVariablesContent()
 					return m, nil
@@ -416,9 +527,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// No spaces in retention field
 				return m, nil
 			}
-			if m.activeSection == SectionProviders && m.providerColumnFocus == 0 && m.tmdbSubfocus == 1 {
-				// No spaces in API key field
-				return m, nil
+			if m.activeSection == SectionProviders {
+				if (m.providerColumnFocus == providerColumnTMDB && m.tmdbSubfocus == 1) ||
+					(m.providerColumnFocus == providerColumnOMDB && m.omdbSubfocus == 1) ||
+					m.providerColumnFocus == providerColumnShared {
+					// No spaces in API key or numeric fields
+					return m, nil
+				}
 			}
 			m.insertText(" ")
 			return m, nil
@@ -433,28 +548,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.activeSection == SectionProviders {
-				if m.providerColumnFocus == 0 {
-					// Handle TMDB input based on subfocus
-					runes := string(msg.Runes)
+				runes := string(msg.Runes)
+				switch m.providerColumnFocus {
+				case providerColumnTMDB:
 					switch m.tmdbSubfocus {
 					case 1:
-						// API key field - accept any characters the user enters
 						m.insertTMDBAPIKey(runes)
-						// Trigger debounced validation
 						return m, debouncedTMDBValidate(m.tmdbAPIKey)
 					case 2:
-						// Language field - allow letters, hyphen for codes like "en-US"
 						for _, r := range runes {
 							if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '-' {
 								m.insertTMDBLanguage(string(r))
 							}
 						}
-					case 4:
-						// Worker count field - only allow digits
-						for _, r := range runes {
-							if r >= '0' && r <= '9' {
-								m.insertTMDBWorkerCount(string(r))
-							}
+					}
+				case providerColumnOMDB:
+					if m.omdbSubfocus == 1 {
+						m.insertOMDBAPIKey(runes)
+						return m, debouncedOMDBValidate(m.omdbAPIKey)
+					}
+				case providerColumnShared:
+					for _, r := range runes {
+						if r >= '0' && r <= '9' {
+							m.insertWorkerCount(string(r))
 						}
 					}
 				}
@@ -530,11 +646,29 @@ func (m *Model) View() string {
 		rightWidth = 1
 	}
 
-	// Left panel: Available components with viewport
-	leftContent := m.renderVariablesViewport()
+	var leftContent string
+	if m.activeSection == SectionProviders {
+		sidebarWidth := leftWidth - 4
+		if sidebarWidth < 0 {
+			sidebarWidth = 0
+		}
+		leftContent = m.renderProvidersSidebar(sidebarWidth)
+	} else {
+		viewportWidth := leftWidth - 4
+		if viewportWidth < 0 {
+			viewportWidth = 0
+		}
+		viewportHeight := panelHeight - 4
+		if viewportHeight < 0 {
+			viewportHeight = 0
+		}
+		m.variablesView.Width = viewportWidth
+		m.variablesView.Height = viewportHeight
+		leftContent = m.renderVariablesViewport()
+	}
 	leftPanel := borderStyle.Width(leftWidth).Height(panelHeight).Render(leftContent)
 
-	// Right panel: Input and preview
+	// Right panel: Input and preview or available components
 	rightContent := m.buildRightPanel(rightWidth-2, panelHeight-2) // -2 for borders
 	rightPanel := borderStyle.Width(rightWidth).Height(panelHeight).Render(rightContent)
 
@@ -605,6 +739,34 @@ func (m *Model) renderVariablesViewport() string {
 	)
 }
 
+func (m *Model) renderProvidersSidebar(width int) string {
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Underline(true).
+		MarginBottom(1)
+
+	bodyStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9ca3af"))
+
+	if width > 0 {
+		bodyStyle = bodyStyle.Width(width)
+	}
+
+	lines := []string{
+		"Shared settings apply to every metadata provider.",
+		"Use Left/Right to switch columns, Up/Down to move within a column.",
+		"Press Space to toggle options; type numbers to edit worker count.",
+	}
+
+	description := bodyStyle.Render(strings.Join(lines, "\n"))
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		titleStyle.Render("Provider Controls"),
+		description,
+	)
+}
+
 func (m *Model) buildRightPanel(width, height int) string {
 	inputHeight := 3
 	previewHeight := height - inputHeight - 1
@@ -617,15 +779,19 @@ func (m *Model) buildRightPanel(width, height int) string {
 	// Input section
 	input := m.buildInputField(width)
 
-	// Preview section
-	preview := m.buildPreview(width, previewHeight)
+	parts := []string{input}
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		input,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#4a5568")).Render(strings.Repeat("─", width)),
-		preview,
-	)
+	if m.activeSection != SectionProviders {
+		preview := m.buildPreview(width, previewHeight)
+		separatorWidth := width
+		if separatorWidth < 0 {
+			separatorWidth = 0
+		}
+		separator := lipgloss.NewStyle().Foreground(lipgloss.Color("#4a5568")).Render(strings.Repeat("─", separatorWidth))
+		parts = append(parts, separator, preview)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
 func (m *Model) buildInputField(width int) string {
@@ -745,30 +911,51 @@ func (m *Model) buildLoggingInputField(width int) string {
 }
 
 func (m *Model) buildProvidersInputField(width int) string {
-	// Determine if we have enough space for side-by-side columns
-	twoColumns := width >= 48
+	if width < 0 {
+		width = 0
+	}
 	columnGap := 2
+	minColumnWidth := 20
+	columnCount := 4
+	totalGap := columnGap * (columnCount - 1)
+	available := width - totalGap
+	inlineLayout := available >= minColumnWidth*columnCount
 	columnWidth := width
-	if twoColumns {
-		columnWidth = (width - columnGap) / 2
-		if columnWidth < 20 {
-			// Fall back to stacked layout if columns would be too narrow
-			twoColumns = false
-			columnWidth = width
-		}
+	if inlineLayout {
+		columnWidth = available / columnCount
 	}
 
 	columnStyle := lipgloss.NewStyle().Width(columnWidth)
 
-	tmdbColumn := columnStyle.Render(m.buildTMDBColumn(columnWidth))
+	sharedColumn := columnStyle.Render(m.buildSharedProviderColumn(columnWidth))
 	ffprobeColumn := columnStyle.Render(m.buildFFProbeColumn(columnWidth))
+	omdbColumn := columnStyle.Render(m.buildOMDBColumn(columnWidth))
+	tmdbColumn := columnStyle.Render(m.buildTMDBColumn(columnWidth))
 
-	if twoColumns {
+	if inlineLayout {
 		gap := lipgloss.NewStyle().Width(columnGap).Render(" ")
-		return lipgloss.JoinHorizontal(lipgloss.Top, tmdbColumn, gap, ffprobeColumn)
+		return lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			sharedColumn,
+			gap,
+			ffprobeColumn,
+			gap,
+			omdbColumn,
+			gap,
+			tmdbColumn,
+		)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, tmdbColumn, "", ffprobeColumn)
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		sharedColumn,
+		"",
+		ffprobeColumn,
+		"",
+		omdbColumn,
+		"",
+		tmdbColumn,
+	)
 }
 
 func (m *Model) buildPreview(width, maxHeight int) string {
@@ -806,24 +993,22 @@ func (m *Model) buildPreview(width, maxHeight int) string {
 		lines = append(lines, line)
 	}
 
-	// Add hint about TMDB if it's not enabled and we're in a template section
-	if !m.tmdbEnabled && (m.activeSection == SectionShowFolder ||
+	// Add hint about metadata providers if both are disabled for template sections
+	showProviderHint := !m.tmdbEnabled && !m.omdbEnabled && (m.activeSection == SectionShowFolder ||
 		m.activeSection == SectionSeasonFolder ||
 		m.activeSection == SectionEpisode ||
-		m.activeSection == SectionMovie) {
+		m.activeSection == SectionMovie)
+	if showProviderHint {
 		// Add spacing before hint
 		lines = append(lines, "")
-		lines = append(lines, hintStyle.Render("💡 Enable TMDB for more template options"))
-		lines = append(lines, hintStyle.Render("   (rating, genres, tagline, etc.)"))
+		lines = append(lines, hintStyle.Render("💡 Enable TMDB or OMDb for more template options"))
+		lines = append(lines, hintStyle.Render("   (ratings, genres, taglines, IMDb data, etc.)"))
 	}
 
 	// Truncate if too tall (but keep the hint if present)
 	if maxHeight > 0 && len(lines) > maxHeight {
 		// Check if we have a hint (last 3 lines)
-		hasHint := !m.tmdbEnabled && (m.activeSection == SectionShowFolder ||
-			m.activeSection == SectionSeasonFolder ||
-			m.activeSection == SectionEpisode ||
-			m.activeSection == SectionMovie)
+		hasHint := showProviderHint
 
 		if hasHint && len(lines) >= 3 && maxHeight > 3 {
 			// Keep the hint at the bottom
@@ -903,11 +1088,11 @@ func (m *Model) getVariablesForSection() []variable {
 	case SectionProviders:
 		return []variable{
 			{"←/→ arrows", "Switch between provider columns", ""},
-			{"↑/↓ arrows", "Navigate TMDB fields", ""},
+			{"↑/↓ arrows", "Navigate settings in the active column", ""},
 			{"Space/Enter", "Toggle highlighted setting", ""},
+			{"OMDb API Key", "OMDb API key (8+ characters)", "Get from omdbapi.com/apikey.aspx"},
 			{"TMDB API Key", "TMDB API key (32 hex chars)", "Get from themoviedb.org (NOT Read Token)"},
 			{"TMDB Language", "Preferred metadata language", "en-US, fr-FR, etc."},
-			{"Prefer Local", "Use local metadata before TMDB", "Falls back to TMDB when needed"},
 			{"ffprobe", "Enable technical metadata extraction", "Adds video and audio codec options"},
 		}
 	}
@@ -934,12 +1119,31 @@ func (m *Model) getVariablesForSection() []variable {
 
 		// Convert provider variables to UI variables, filtering by enabled providers
 		for _, v := range vars {
-			// Skip provider variables if the provider is not enabled
-			if v.Provider == "tmdb" && !m.tmdbEnabled {
-				continue
-			}
-			if v.Provider == "ffprobe" && !m.ffprobeEnabled {
-				continue
+			owners := m.templateRegistry.VariableProviders(v.Name)
+			if len(owners) > 0 {
+				include := false
+				for _, owner := range owners {
+					switch owner {
+					case "tmdb":
+						if m.tmdbEnabled {
+							include = true
+						}
+					case "omdb":
+						if m.omdbEnabled {
+							include = true
+						}
+					case "ffprobe":
+						if m.ffprobeEnabled {
+							include = true
+						}
+					default:
+						// Providers like "local" are always available
+						include = true
+					}
+				}
+				if !include {
+					continue
+				}
 			}
 
 			// Format the variable name with braces
@@ -1020,29 +1224,43 @@ func (m *Model) generatePreviews() []preview {
 	}
 
 	if m.activeSection == SectionProviders {
-		// Show TMDB configuration status
-		enabledStatus := "Disabled"
+		// Show provider configuration status
+		tmdbStatus := "Disabled"
 		if m.tmdbEnabled {
-			enabledStatus = "Enabled"
+			tmdbStatus = "Enabled"
 		}
 
-		apiStatus := "Not configured"
+		tmdbAPIStatus := "Not configured"
 		if len(m.tmdbAPIKey) > 0 {
 			switch m.tmdbValidation {
 			case "validating":
-				apiStatus = "Validating..."
+				tmdbAPIStatus = "Validating..."
 			case "valid":
-				apiStatus = "Valid"
+				tmdbAPIStatus = "Valid"
 			case "invalid":
-				apiStatus = "Invalid"
+				tmdbAPIStatus = "Invalid"
 			default:
-				apiStatus = "Configured"
+				tmdbAPIStatus = "Configured"
 			}
 		}
 
-		preferStatus := "TMDB first"
-		if m.tmdbPreferLocal {
-			preferStatus = "Local first"
+		omdbStatus := "Disabled"
+		if m.omdbEnabled {
+			omdbStatus = "Enabled"
+		}
+
+		omdbAPIStatus := "Not configured"
+		if len(m.omdbAPIKey) > 0 {
+			switch m.omdbValidation {
+			case "validating":
+				omdbAPIStatus = "Validating..."
+			case "valid":
+				omdbAPIStatus = "Valid"
+			case "invalid":
+				omdbAPIStatus = "Invalid"
+			default:
+				omdbAPIStatus = "Configured"
+			}
 		}
 
 		ffprobeStatus := "Disabled"
@@ -1052,11 +1270,12 @@ func (m *Model) generatePreviews() []preview {
 
 		icons := selectConfigIcons()
 		return []preview{
-			{icons["film"], "TMDB Lookup", enabledStatus},
-			{icons["key"], "API Key", apiStatus},
-			{icons["globe"], "Language", m.tmdbLanguage},
-			{icons["chart"], "Priority", preferStatus},
 			{icons["chip"], "ffprobe", ffprobeStatus},
+			{icons["film"], "OMDb Lookup", omdbStatus},
+			{icons["key"], "OMDb API", omdbAPIStatus},
+			{icons["film"], "TMDB Lookup", tmdbStatus},
+			{icons["key"], "TMDB API", tmdbAPIStatus},
+			{icons["globe"], "Language", m.tmdbLanguage},
 		}
 	}
 
@@ -1171,11 +1390,14 @@ func (m *Model) nextSection() tea.Cmd {
 	m.activeSection = (m.activeSection + 1) % 6
 	m.loggingSubfocus = 0 // Reset subfocus when changing sections
 	m.tmdbSubfocus = 0    // Reset TMDB subfocus when changing sections
-	m.providerColumnFocus = 0
+	m.omdbSubfocus = 0
+	m.providerColumnFocus = providerColumnShared
 
-	// Validate API key when switching to TMDB section
 	if m.activeSection == SectionProviders && oldSection != SectionProviders {
-		return m.validateTMDBOnSectionSwitch()
+		return tea.Batch(
+			m.validateTMDBOnSectionSwitch(),
+			m.validateOMDBOnSectionSwitch(),
+		)
 	}
 	return nil
 }
@@ -1184,12 +1406,15 @@ func (m *Model) prevSection() tea.Cmd {
 	oldSection := m.activeSection
 	m.activeSection = (m.activeSection + 5) % 6 // +5 is same as -1 mod 6
 	m.loggingSubfocus = 0                       // Reset subfocus when changing sections
-	m.tmdbSubfocus = 0                          // Reset TMDB subfocus when changing sections
-	m.providerColumnFocus = 0
+	m.tmdbSubfocus = 0
+	m.omdbSubfocus = 0
+	m.providerColumnFocus = providerColumnShared
 
-	// Validate API key when switching to TMDB section
 	if m.activeSection == SectionProviders && oldSection != SectionProviders {
-		return m.validateTMDBOnSectionSwitch()
+		return tea.Batch(
+			m.validateTMDBOnSectionSwitch(),
+			m.validateOMDBOnSectionSwitch(),
+		)
 	}
 	return nil
 }
@@ -1230,6 +1455,28 @@ func (m *Model) deleteLoggingChar() {
 	m.loggingRetention = m.loggingRetention[:len(m.loggingRetention)-1]
 }
 
+func maskAPIKeyVisible(key string, prefix, suffix int) string {
+	key = strings.TrimSpace(key)
+	if len(key) == 0 {
+		return ""
+	}
+	if prefix < 0 {
+		prefix = 0
+	}
+	if suffix < 0 {
+		suffix = 0
+	}
+	if prefix+suffix >= len(key) {
+		return strings.Repeat("*", len(key))
+	}
+	maskedLen := len(key) - prefix - suffix
+	return key[:prefix] + strings.Repeat("*", maskedLen) + key[len(key)-suffix:]
+}
+
+func maskAPIKey(key string) string {
+	return maskAPIKeyVisible(key, 4, 4)
+}
+
 func (m *Model) buildTMDBColumn(width int) string {
 	labelStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -1258,7 +1505,7 @@ func (m *Model) buildTMDBColumn(width int) string {
 	}
 
 	icons := selectConfigIcons()
-	isActive := m.providerColumnFocus == 0
+	isActive := m.providerColumnFocus == providerColumnTMDB
 
 	if isActive && m.tmdbSubfocus == 0 {
 		if m.tmdbEnabled {
@@ -1277,19 +1524,11 @@ func (m *Model) buildTMDBColumn(width int) string {
 	// Build API key field (masked)
 	var apiKeyField string
 	apiKeyLabel := "API Key: "
-	maskedKey := ""
-	if len(m.tmdbAPIKey) > 0 {
-		// Show first 4 and last 4 characters, mask the middle
-		if len(m.tmdbAPIKey) <= 8 {
-			maskedKey = strings.Repeat("*", len(m.tmdbAPIKey))
-		} else {
-			maskedKey = m.tmdbAPIKey[:4] + strings.Repeat("*", len(m.tmdbAPIKey)-8) + m.tmdbAPIKey[len(m.tmdbAPIKey)-4:]
-		}
-	}
+	maskedKey := maskAPIKey(m.tmdbAPIKey)
 
 	if !m.tmdbEnabled {
-		// When TMDB is disabled, always show as disabled regardless of focus
-		apiKeyField = disabledStyle.Render(apiKeyLabel + maskedKey + " (disabled)")
+		// When TMDB is disabled, render with disabled style but no suffix
+		apiKeyField = disabledStyle.Render(apiKeyLabel + maskedKey)
 	} else if isActive && m.tmdbSubfocus == 1 {
 		// Only show focus when TMDB is enabled - show cursor after the text
 		apiKeyField = apiKeyLabel + normalStyle.Render(maskedKey) + focusedStyle.Render(" ")
@@ -1302,8 +1541,8 @@ func (m *Model) buildTMDBColumn(width int) string {
 	languageLabel := "Language: "
 
 	if !m.tmdbEnabled {
-		// When TMDB is disabled, always show as disabled regardless of focus
-		languageField = disabledStyle.Render(languageLabel + m.tmdbLanguage + " (disabled)")
+		// When TMDB is disabled, render with disabled style but no suffix
+		languageField = disabledStyle.Render(languageLabel + m.tmdbLanguage)
 	} else if isActive && m.tmdbSubfocus == 2 {
 		// Only show focus when TMDB is enabled - show cursor after the text
 		languageField = languageLabel + normalStyle.Render(m.tmdbLanguage) + focusedStyle.Render(" ")
@@ -1311,50 +1550,192 @@ func (m *Model) buildTMDBColumn(width int) string {
 		languageField = languageLabel + normalStyle.Render(m.tmdbLanguage)
 	}
 
-	// Build prefer local metadata toggle
-	var preferLocalToggle string
-	preferLocalText := "Prefer Local Metadata"
+	// Build validation status field
+	statusLabel := "Status: "
+	statusValue := "Not configured"
 
-	if !m.tmdbEnabled {
-		// When TMDB is disabled, always show as disabled regardless of focus
-		preferLocalToggle = disabledStyle.Render("[ ] " + preferLocalText + " (disabled)")
-	} else if isActive && m.tmdbSubfocus == 3 {
-		// Only show focus when TMDB is enabled
-		if m.tmdbPreferLocal {
-			preferLocalToggle = focusedStyle.Render("[" + icons["check"] + "] " + preferLocalText)
-		} else {
-			preferLocalToggle = focusedStyle.Render("[ ] " + preferLocalText)
-		}
-	} else {
-		if m.tmdbPreferLocal {
-			preferLocalToggle = enabledStyle.Render("[" + icons["check"] + "] " + preferLocalText)
-		} else {
-			preferLocalToggle = disabledStyle.Render("[ ] " + preferLocalText)
-		}
+	switch {
+	case !m.tmdbEnabled:
+		statusValue = "Disabled"
+	case m.tmdbValidation == "validating":
+		statusValue = "Validating..."
+	case m.tmdbValidation == "valid":
+		statusValue = "Valid"
+	case m.tmdbValidation == "invalid":
+		statusValue = "Invalid"
+	case len(m.tmdbAPIKey) > 0 && m.tmdbValidatedKey != "" && m.tmdbValidatedKey == m.tmdbAPIKey:
+		statusValue = "Valid"
+	case len(m.tmdbAPIKey) > 0:
+		statusValue = "Configured"
 	}
 
-	// Build worker count field
-	var workerCountField string
-	workerCountLabel := "Worker Count: "
-	workerCountValue := m.tmdbWorkerCount
-
-	if !m.tmdbEnabled {
-		// When TMDB is disabled, always show as disabled regardless of focus
-		workerCountField = disabledStyle.Render(workerCountLabel + workerCountValue + " (disabled)")
-	} else if isActive && m.tmdbSubfocus == 4 {
-		// Only show focus when TMDB is enabled - show cursor after the text
-		workerCountField = workerCountLabel + normalStyle.Render(workerCountValue) + focusedStyle.Render(" ")
-	} else {
-		workerCountField = workerCountLabel + normalStyle.Render(workerCountValue)
+	statusStyle := normalStyle
+	if statusValue == "Valid" {
+		statusStyle = enabledStyle
+	} else if statusValue == "Invalid" {
+		statusStyle = disabledStyle
+	} else if statusValue == "Disabled" {
+		statusStyle = disabledStyle
 	}
+
+	statusField := statusStyle.Render(statusLabel + statusValue)
+
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9ca3af")).
+		MarginTop(1)
+
+	description := tmdb.New().Description()
+	info := descStyle.Render(description)
 
 	lines := []string{
 		label,
 		enabledToggle,
 		apiKeyField,
 		languageField,
-		preferLocalToggle,
-		workerCountField,
+		"",
+		statusField,
+		info,
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildOMDBColumn(width int) string {
+	labelStyle := lipgloss.NewStyle().
+		Bold(true).
+		MarginBottom(1)
+
+	enabledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#10b981"))
+
+	disabledStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ef4444"))
+
+	focusedStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#7c3aed")).
+		Foreground(lipgloss.Color("#ffffff"))
+
+	normalStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff"))
+
+	label := labelStyle.Render("OMDB Configuration:")
+	isActive := m.providerColumnFocus == providerColumnOMDB
+	icons := selectConfigIcons()
+
+	enabledText := "Enabled"
+	if !m.omdbEnabled {
+		enabledText = "Disabled"
+	}
+
+	var enabledToggle string
+	if isActive && m.omdbSubfocus == 0 {
+		if m.omdbEnabled {
+			enabledToggle = focusedStyle.Render("[" + icons["check"] + "] " + enabledText)
+		} else {
+			enabledToggle = focusedStyle.Render("[ ] " + enabledText)
+		}
+	} else {
+		if m.omdbEnabled {
+			enabledToggle = enabledStyle.Render("[" + icons["check"] + "] " + enabledText)
+		} else {
+			enabledToggle = disabledStyle.Render("[ ] " + enabledText)
+		}
+	}
+
+	// Build API key field (masked)
+	var apiKeyField string
+	apiKeyLabel := "API Key: "
+	maskedKey := maskAPIKeyVisible(m.omdbAPIKey, 2, 2)
+
+	if !m.omdbEnabled {
+		apiKeyField = disabledStyle.Render(apiKeyLabel + maskedKey)
+	} else if isActive && m.omdbSubfocus == 1 {
+		apiKeyField = apiKeyLabel + normalStyle.Render(maskedKey) + focusedStyle.Render(" ")
+	} else {
+		apiKeyField = apiKeyLabel + normalStyle.Render(maskedKey)
+	}
+
+	// Validation status line
+	statusLabel := "Status: "
+	statusValue := "Not validated"
+	if !m.omdbEnabled {
+		statusValue = "Disabled"
+	} else {
+		switch m.omdbValidation {
+		case "validating":
+			statusValue = "Validating..."
+		case "valid":
+			statusValue = "Valid"
+		case "invalid":
+			statusValue = "Invalid"
+		default:
+			if m.omdbValidatedKey != "" && m.omdbValidatedKey == m.omdbAPIKey {
+				statusValue = "Valid"
+			}
+		}
+	}
+
+	var statusStyle lipgloss.Style
+	statusStyle = normalStyle
+	if statusValue == "Valid" {
+		statusStyle = enabledStyle
+	} else if statusValue == "Invalid" || statusValue == "Disabled" {
+		statusStyle = disabledStyle
+	}
+	statusField := statusStyle.Render(statusLabel + statusValue)
+
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9ca3af")).
+		MarginTop(1)
+
+	description := omdb.New().Description()
+	info := descStyle.Render(description)
+
+	lines := []string{
+		label,
+		enabledToggle,
+		apiKeyField,
+		"",
+		statusField,
+		info,
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildSharedProviderColumn(width int) string {
+	labelStyle := lipgloss.NewStyle().
+		Bold(true).
+		MarginBottom(1)
+
+	normalStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff"))
+
+	focusedStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#7c3aed")).
+		Foreground(lipgloss.Color("#ffffff"))
+
+	descStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9ca3af")).
+		MarginTop(1)
+
+	label := labelStyle.Render("Provider Settings:")
+	workerLabel := "Worker Count: "
+	workerValue := m.workerCount
+
+	var workerField string
+	if m.providerColumnFocus == providerColumnShared {
+		workerField = workerLabel + focusedStyle.Render(workerValue+" ")
+	} else {
+		workerField = workerLabel + normalStyle.Render(workerValue)
+	}
+
+	info := descStyle.Render("Controls how many provider requests run concurrently.")
+
+	lines := []string{
+		label,
+		workerField,
+		info,
 	}
 
 	return strings.Join(lines, "\n")
@@ -1384,7 +1765,7 @@ func (m *Model) buildFFProbeColumn(width int) string {
 	}
 
 	var enabledToggle string
-	if m.providerColumnFocus == 1 {
+	if m.providerColumnFocus == providerColumnFFProbe {
 		if m.ffprobeEnabled {
 			enabledToggle = focusedStyle.Render("[" + icons["check"] + "] " + enabledText)
 		} else {
@@ -1430,9 +1811,9 @@ func (m *Model) insertTMDBLanguage(text string) {
 	}
 }
 
-func (m *Model) insertTMDBWorkerCount(text string) {
-	if len(m.tmdbWorkerCount) < 3 { // Max 3 digits for worker count (up to 999)
-		m.tmdbWorkerCount += text
+func (m *Model) insertWorkerCount(text string) {
+	if len(m.workerCount) < 3 { // Max 3 digits for worker count (up to 999)
+		m.workerCount += text
 	}
 }
 
@@ -1444,8 +1825,26 @@ func (m *Model) deleteTMDBChar() {
 		m.tmdbValidatedKey = ""
 	} else if m.tmdbSubfocus == 2 && len(m.tmdbLanguage) > 0 {
 		m.tmdbLanguage = m.tmdbLanguage[:len(m.tmdbLanguage)-1]
-	} else if m.tmdbSubfocus == 4 && len(m.tmdbWorkerCount) > 0 {
-		m.tmdbWorkerCount = m.tmdbWorkerCount[:len(m.tmdbWorkerCount)-1]
+	}
+}
+
+func (m *Model) deleteWorkerCountChar() {
+	if len(m.workerCount) > 0 {
+		m.workerCount = m.workerCount[:len(m.workerCount)-1]
+	}
+}
+
+func (m *Model) insertOMDBAPIKey(text string) {
+	m.omdbAPIKey += text
+	m.omdbValidation = ""
+	m.omdbValidatedKey = ""
+}
+
+func (m *Model) deleteOMDBChar() {
+	if m.omdbSubfocus == 1 && len(m.omdbAPIKey) > 0 {
+		m.omdbAPIKey = m.omdbAPIKey[:len(m.omdbAPIKey)-1]
+		m.omdbValidation = ""
+		m.omdbValidatedKey = ""
 	}
 }
 
@@ -1471,15 +1870,16 @@ func (m *Model) save() {
 		}
 	}
 
-	// Update TMDB config, stripping null characters from string fields
+	// Update TMDB/OMDb config, stripping null characters from string fields
 	m.config.TMDBAPIKey = stripNullChars(m.tmdbAPIKey)
 	m.config.EnableTMDBLookup = m.tmdbEnabled
 	m.config.TMDBLanguage = stripNullChars(m.tmdbLanguage)
-	m.config.PreferLocalMetadata = m.tmdbPreferLocal
+	m.config.OMDBAPIKey = stripNullChars(m.omdbAPIKey)
+	m.config.EnableOMDBLookup = m.omdbEnabled
 	m.config.EnableFFProbe = m.ffprobeEnabled
 
 	// Update worker count
-	sanitizedWorkerCount := stripNullChars(m.tmdbWorkerCount)
+	sanitizedWorkerCount := stripNullChars(m.workerCount)
 	if sanitizedWorkerCount == "" {
 		m.config.TMDBWorkerCount = 10 // Use default if empty
 	} else if workerCount, err := strconv.Atoi(sanitizedWorkerCount); err == nil {
@@ -1511,8 +1911,9 @@ func (m *Model) save() {
 		m.originalConfig.TMDBAPIKey = m.config.TMDBAPIKey
 		m.originalConfig.EnableTMDBLookup = m.config.EnableTMDBLookup
 		m.originalConfig.TMDBLanguage = m.config.TMDBLanguage
-		m.originalConfig.PreferLocalMetadata = m.config.PreferLocalMetadata
 		m.originalConfig.TMDBWorkerCount = m.config.TMDBWorkerCount
+		m.originalConfig.OMDBAPIKey = m.config.OMDBAPIKey
+		m.originalConfig.EnableOMDBLookup = m.config.EnableOMDBLookup
 		m.originalConfig.EnableFFProbe = m.config.EnableFFProbe
 	}
 }
@@ -1539,11 +1940,19 @@ func (m *Model) reset() {
 	m.tmdbAPIKey = m.originalConfig.TMDBAPIKey
 	m.tmdbEnabled = m.originalConfig.EnableTMDBLookup
 	m.tmdbLanguage = m.originalConfig.TMDBLanguage
-	m.tmdbPreferLocal = m.originalConfig.PreferLocalMetadata
-	m.tmdbWorkerCount = fmt.Sprintf("%d", m.originalConfig.TMDBWorkerCount)
+	m.workerCount = fmt.Sprintf("%d", m.originalConfig.TMDBWorkerCount)
 	m.tmdbSubfocus = 0
+	m.tmdbValidation = ""
+	m.tmdbValidatedKey = ""
+
+	// Reset OMDb fields
+	m.omdbAPIKey = m.originalConfig.OMDBAPIKey
+	m.omdbEnabled = m.originalConfig.EnableOMDBLookup
+	m.omdbSubfocus = 0
+	m.omdbValidation = ""
+	m.omdbValidatedKey = ""
 	m.ffprobeEnabled = m.originalConfig.EnableFFProbe
-	m.providerColumnFocus = 0
+	m.providerColumnFocus = providerColumnShared
 
 	m.saveStatus = "Reset to saved values"
 	m.err = nil
@@ -1606,6 +2015,48 @@ func (m *Model) validateTMDBOnSectionSwitch() tea.Cmd {
 	if len(m.tmdbAPIKey) > 0 && m.tmdbAPIKey != m.tmdbValidatedKey {
 		m.tmdbValidation = "validating"
 		return validateTMDBAPIKey(m.tmdbAPIKey)
+	}
+	return nil
+}
+
+// validateOMDBAPIKey validates an API key against the OMDb API
+func validateOMDBAPIKey(apiKey string) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if apiKey == "" {
+			return omdbValidationMsg{apiKey: "", valid: false}
+		}
+
+		prov := omdb.New()
+		if err := prov.Configure(map[string]interface{}{"api_key": apiKey}); err != nil {
+			return omdbValidationMsg{apiKey: apiKey, valid: false}
+		}
+
+		request := provider.FetchRequest{
+			MediaType: provider.MediaTypeMovie,
+			Name:      "The Matrix",
+			Year:      "1999",
+		}
+		meta, err := prov.Fetch(context.Background(), request)
+		if err != nil || meta == nil {
+			return omdbValidationMsg{apiKey: apiKey, valid: false}
+		}
+
+		return omdbValidationMsg{apiKey: apiKey, valid: true}
+	})
+}
+
+// debouncedOMDBValidate creates a command that validates after a short delay
+func debouncedOMDBValidate(apiKey string) tea.Cmd {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		return omdbValidateCmd{apiKey: apiKey}
+	})
+}
+
+// validateOMDBOnSectionSwitch validates the OMDb API key when entering provider settings
+func (m *Model) validateOMDBOnSectionSwitch() tea.Cmd {
+	if len(m.omdbAPIKey) > 0 && m.omdbAPIKey != m.omdbValidatedKey {
+		m.omdbValidation = "validating"
+		return validateOMDBAPIKey(m.omdbAPIKey)
 	}
 	return nil
 }

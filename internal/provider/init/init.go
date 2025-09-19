@@ -7,6 +7,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 )
 
@@ -26,6 +27,12 @@ func LoadBuiltinProviders() error {
 	tmdbProvider := tmdb.New()
 	if err := provider.GlobalRegistry.Register("tmdb", tmdbProvider, 100); err != nil {
 		return fmt.Errorf("failed to register TMDB provider: %w", err)
+	}
+
+	// Register OMDb provider
+	omdbProvider := omdb.New()
+	if err := provider.GlobalRegistry.Register("omdb", omdbProvider, 90); err != nil {
+		return fmt.Errorf("failed to register OMDb provider: %w", err)
 	}
 
 	// Register ffprobe provider

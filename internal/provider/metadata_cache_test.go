@@ -120,7 +120,7 @@ func TestFetchMetadataWithDependenciesEpisode(t *testing.T) {
 
 	cache := newTestMetadataCache()
 	showRequest := FetchRequest{MediaType: MediaTypeShow, Name: "Test Show"}
-	episodeRequest := FetchRequest{MediaType: MediaTypeEpisode, ID: "show-123", Season: 1, Episode: 5}
+	episodeRequest := FetchRequest{MediaType: MediaTypeEpisode, ID: "show-123", Name: "Test Show", Year: "2020", Season: 1, Episode: 5}
 
 	calls := make([]FetchRequest, 0, 2)
 	stub := &stubProvider{

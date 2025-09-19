@@ -83,22 +83,26 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 		}
 
 		if showMeta != nil {
-			// Extract show ID from metadata
-			showID := ""
-			if tmdbID, ok := showMeta.IDs["tmdb_id"]; ok {
-				showID = tmdbID
+			// Extract show identifiers and metadata to enrich episode request
+			showID := extractShowID(showMeta)
+			showName := name
+			if showMeta.Core.Title != "" {
+				showName = showMeta.Core.Title
+			}
+			showYear := year
+			if showMeta.Core.Year != "" {
+				showYear = showMeta.Core.Year
 			}
 
-			if showID != "" {
-				// Fetch episode metadata
-				request := FetchRequest{
-					MediaType: MediaTypeEpisode,
-					ID:        showID,
-					Season:    season,
-					Episode:   episode,
-				}
-				meta, err = tmdbProvider.Fetch(ctx, request)
+			request := FetchRequest{
+				MediaType: MediaTypeEpisode,
+				ID:        showID,
+				Name:      showName,
+				Year:      showYear,
+				Season:    season,
+				Episode:   episode,
 			}
+			meta, err = tmdbProvider.Fetch(ctx, request)
 		}
 	} else if season > 0 {
 		// For seasons, first get show metadata
@@ -121,21 +125,24 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 		}
 
 		if showMeta != nil {
-			// Extract show ID from metadata
-			showID := ""
-			if tmdbID, ok := showMeta.IDs["tmdb_id"]; ok {
-				showID = tmdbID
+			showID := extractShowID(showMeta)
+			showName := name
+			if showMeta.Core.Title != "" {
+				showName = showMeta.Core.Title
+			}
+			showYear := year
+			if showMeta.Core.Year != "" {
+				showYear = showMeta.Core.Year
 			}
 
-			if showID != "" {
-				// Fetch season metadata
-				request := FetchRequest{
-					MediaType: MediaTypeSeason,
-					ID:        showID,
-					Season:    season,
-				}
-				meta, err = tmdbProvider.Fetch(ctx, request)
+			request := FetchRequest{
+				MediaType: MediaTypeSeason,
+				ID:        showID,
+				Name:      showName,
+				Year:      showYear,
+				Season:    season,
 			}
+			meta, err = tmdbProvider.Fetch(ctx, request)
 		}
 	} else {
 		// TV Show
@@ -147,4 +154,23 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 	}
 
 	return meta, err
+}
+
+func extractShowID(meta *Metadata) string {
+	if meta == nil {
+		return ""
+	}
+	if id, ok := meta.IDs["tmdb_id"]; ok && id != "" {
+		return id
+	}
+	if id, ok := meta.IDs["imdb_id"]; ok && id != "" {
+		return id
+	}
+	if id, ok := meta.IDs["omdb_id"]; ok && id != "" {
+		return id
+	}
+	if id, ok := meta.IDs["series_id"]; ok && id != "" {
+		return id
+	}
+	return ""
 }
