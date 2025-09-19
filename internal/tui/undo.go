@@ -92,7 +92,7 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "esc":
+		case "esc", "ctrl+c":
 			return m, tea.Quit
 
 		case "tab":
@@ -219,7 +219,7 @@ func (m *UndoModel) View() string {
 		b.WriteString(result)
 		b.WriteByte('\n')
 
-		statusText := "Press 'q' or 'esc' to exit"
+		statusText := "Press 'Ctrl+C' or 'esc' to exit"
 		status := lipgloss.NewStyle().
 			Width(m.width).
 			Render(statusText)
@@ -278,7 +278,7 @@ func (m *UndoModel) renderMainView() string {
 		focusInfo = "Tab: Details Focus | "
 	}
 
-	instruction := focusInfo + "↑↓ Navigate | PgUp/PgDn: Page | Enter: Select | q: Quit"
+	instruction := focusInfo + "↑↓ Navigate | PgUp/PgDn: Page | Enter: Select | Esc/Ctrl+C: Quit"
 	instructionStyle := lipgloss.NewStyle().
 		Italic(true).
 		Width(m.width).

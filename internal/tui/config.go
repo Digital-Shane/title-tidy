@@ -343,7 +343,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.reset()
 			return m, nil
 
-		case tea.KeyCtrlQ, tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 
 		case tea.KeyDelete:
@@ -854,12 +854,16 @@ func (m *Model) buildStatusBar() string {
 		Foreground(lipgloss.Color("#ef4444")).
 		Bold(true)
 
+	quitHelp := fmt.Sprintf("%s/%s: Quit",
+		keyStyle.Render("Esc"),
+		keyStyle.Render("Ctrl+C"),
+	)
 	help := []string{
 		keyStyle.Render("Tab") + ": Switch",
 		keyStyle.Render("Type directly"),
 		keyStyle.Render("Ctrl+S") + ": Save",
 		keyStyle.Render("Ctrl+R") + ": Reset",
-		keyStyle.Render("Ctrl+Q") + ": Quit",
+		quitHelp,
 	}
 
 	// Add scroll help if content is scrollable

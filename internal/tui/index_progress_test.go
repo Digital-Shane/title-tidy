@@ -35,11 +35,6 @@ func TestIndexProgressModel_Update(t *testing.T) {
 			wantQuit: true,
 		},
 		{
-			name:     "quit on q",
-			msg:      tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}},
-			wantQuit: true,
-		},
-		{
 			name:     "quit on esc",
 			msg:      tea.KeyMsg{Type: tea.KeyEsc},
 			wantQuit: true,

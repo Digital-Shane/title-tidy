@@ -241,6 +241,8 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// Handle custom keys before passing to tree model
 		switch msg.String() {
+		case "esc", "ctrl+c":
+			return m, tea.Quit
 		case "tab":
 			// Toggle between tree and stats panel focus
 			m.statsFocused = !m.statsFocused
@@ -501,7 +503,7 @@ func (m *RenameModel) renderStatusBar() string {
 		focusInfo = "Tab: Stats Focus  │  "
 	}
 
-	statusText := fmt.Sprintf("%s%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  esc: Quit",
+	statusText := fmt.Sprintf("%s%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  Esc/Ctrl+C: Quit",
 		focusInfo,
 		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
 		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
