@@ -35,7 +35,7 @@ Type "{title} - "
 Sleep 1s
 Ctrl+S
 Sleep 1s
-Ctrl+Q
+Ctrl+C
 Sleep 250ms
 
 Type "title-tidy shows --no-nfo --no-img"

@@ -160,6 +160,37 @@ func TestKeyRenameFlow(t *testing.T) {
 	}
 }
 
+func TestRenameModelQuitKeys(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name string
+		msg  tea.KeyMsg
+	}{
+		{
+			name: "Esc",
+			msg:  tea.KeyMsg{Type: tea.KeyEsc},
+		},
+		{
+			name: "CtrlC",
+			msg:  tea.KeyMsg{Type: tea.KeyCtrlC},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewRenameModel(buildTVTestTree())
+			_, cmd := m.Update(tc.msg)
+			if cmd == nil {
+				t.Fatalf("Update(%s) cmd = nil, want tea.Quit", tc.name)
+			}
+			msg := cmd()
+			if _, ok := msg.(tea.QuitMsg); !ok {
+				t.Fatalf("Update(%s) msg = %T, want tea.QuitMsg", tc.name, msg)
+			}
+		})
+	}
+}
+
 func TestViewComponents(t *testing.T) {
 	t.Parallel()
 	m := NewRenameModel(buildTVTestTree())

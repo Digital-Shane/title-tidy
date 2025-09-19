@@ -75,6 +75,9 @@ func TestConfigScrolling(t *testing.T) {
 	if view == "" {
 		t.Error("View should not be empty")
 	}
+	if !strings.Contains(view, "Esc") || !strings.Contains(view, "Ctrl+C") {
+		t.Error("View should include quit hints for Esc and Ctrl+C")
+	}
 
 	// Check that help includes scroll instructions when content is scrollable
 	if m.variablesView.TotalLineCount() > m.variablesView.Height {

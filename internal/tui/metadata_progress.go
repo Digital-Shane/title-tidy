@@ -951,7 +951,7 @@ func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress.Width = msg.Width - 4
 		return m, nil
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" || msg.String() == "q" || msg.String() == "esc" {
+		if msg.String() == "ctrl+c" || msg.String() == "esc" {
 			// Cancel the context to stop all workers
 			if m.cancel != nil {
 				m.cancel()
