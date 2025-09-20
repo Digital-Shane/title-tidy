@@ -56,6 +56,10 @@ type IndexConfig struct {
 	Filter      func(treeview.FileInfo) bool
 }
 
+type treeBuilderFunc func(context.Context, string, bool, ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error)
+
+var indexProgressTreeBuilder treeBuilderFunc = treeview.NewTreeFromFileSystem
+
 // NewIndexProgressModel creates a model and pre computes root entry count.
 func NewIndexProgressModel(path string, cfg IndexConfig) *IndexProgressModel {
 	entries, _ := os.ReadDir(path)
@@ -86,7 +90,7 @@ func (m *IndexProgressModel) waitForMsg() tea.Cmd { return func() tea.Msg { retu
 
 func (m *IndexProgressModel) buildTreeAsync() {
 	// Build with progress callback; count roots only for progress accuracy
-	t, err := treeview.NewTreeFromFileSystem(context.Background(), m.path, false,
+	t, err := indexProgressTreeBuilder(context.Background(), m.path, false,
 		treeview.WithMaxDepth[treeview.FileInfo](m.cfg.MaxDepth),
 		treeview.WithTraversalCap[treeview.FileInfo](2000000),
 		treeview.WithFilterFunc(func(fi treeview.FileInfo) bool {

@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var undoSessionFn = log.UndoSession
+
 // UndoModel represents the TUI for selecting and undoing operations
 type UndoModel struct {
 	*treeview.TuiTreeModel[log.SessionSummary]
@@ -572,7 +574,7 @@ func (m *UndoModel) renderConfirmation(summary log.SessionSummary) string {
 
 func (m *UndoModel) performUndo(summary log.SessionSummary) tea.Cmd {
 	return func() tea.Msg {
-		successful, failed, _ := log.UndoSession(summary.Session)
+		successful, failed, _ := undoSessionFn(summary.Session)
 		return UndoCompleteMsg{successCount: successful, errorCount: failed}
 	}
 }
