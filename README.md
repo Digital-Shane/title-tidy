@@ -85,12 +85,13 @@ Customize how your media files and folders are named:
 #### Available Template Variables
 
 **Core Variables (always available):**
-* `{title}` - Show or movie title (cleaned from filename or TMDB)
+* `{title}` - Show or movie title
 * `{year}` - Release year
 * `{season}` - Season number with zero padding (e.g., "01")
 * `{episode}` - Episode number with zero padding (e.g., "01")
 
 **TMDB Metadata Variables (when TMDB is enabled):**
+* `{title}` - Show or movie title
 * `{episode_title}` - Episode title from TMDB (episodes only)
 * `{air_date}` - Episode air date (episodes only)
 * `{rating}` - TMDB rating score (e.g., "8.5")
@@ -99,6 +100,14 @@ Customize how your media files and folders are named:
 * `{tagline}` - Movie tagline
 * `{imdb_id}` - IMDB ID
 * `{networks}` - TV Network that created the show (e.g., "HBO")
+
+**OMDB Metadata Variables (when OMDB is enabled):**
+* `{title}` - Show or movie title
+* `{episode_title}` - Episode title straight from OMDB
+* `{rating}` - IMDB user rating (episodes, shows, and movies)
+* `{genres}` - Comma-separated genre list sourced from OMDB
+* `{imdb_id}` - Canonical IMDB identifier for the title
+* `{networks}` - TV network or distributor information for shows
 
 **ffprobe Metadata Variables (when ffprobe is enabled):**
 * `{video_codec}` - Video codec used in the media container file (episodes and movies only)
@@ -128,9 +137,17 @@ Enhance your media naming with rich metadata from The Movie Database:
   - Note: Use the API Key (v3 auth), not the Read Access Token
 * **Language**: Content language for metadata (default: "en-US")
   - Examples: "fr-FR" for French, "es-ES" for Spanish, "ja-JP" for Japanese
-* **Prefer local metadata**: Use filename-extracted data first, falling back to TMDB when needed
 
 When TMDB is enabled, Title Tidy will automatically fetch metadata for your media files, including proper titles, episode names, ratings, genres, and more. This data can be used in your naming templates to create information-rich filenames.
+
+#### OMDB Integration
+
+Unlock IMDB-powered metadata by connecting to the Open Movie Database:
+
+* **Enable OMDB lookup**: Toggle metadata fetching from OMDB across movies, shows, seasons, and episodes
+* **API Key**: Your OMDB API key (request one free at [omdbapi.com](https://www.omdbapi.com/apikey.aspx))
+
+With OMDB enabled, Title Tidy enriches your media with IMDB ratings, genre lists, network information for TV shows, episode titles, and canonical IMDB identifiers. OMDB provides less metadata then TMDB, but is more privacy conscious. 
 
 #### ffprobe Integration
 
