@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,13 @@ type omdbValidationMsg struct {
 type omdbValidateCmd struct {
 	apiKey string
 }
+
+var (
+	tmdbValidateCommand = validateTMDBAPIKey
+	tmdbDebounceCommand = debouncedTMDBValidate
+	omdbValidateCommand = validateOMDBAPIKey
+	omdbDebounceCommand = debouncedOMDBValidate
+)
 
 const (
 	providerColumnShared = iota
@@ -220,7 +228,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Only validate if the API key hasn't changed since the command was issued
 		if msg.apiKey == m.tmdbAPIKey && msg.apiKey != "" && msg.apiKey != m.tmdbValidatedKey {
 			m.tmdbValidation = "validating"
-			return m, validateTMDBAPIKey(msg.apiKey)
+			return m, tmdbValidateCommand(msg.apiKey)
 		}
 		return m, nil
 
@@ -238,7 +246,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case omdbValidateCmd:
 		if msg.apiKey == m.omdbAPIKey && msg.apiKey != "" && msg.apiKey != m.omdbValidatedKey {
 			m.omdbValidation = "validating"
-			return m, validateOMDBAPIKey(msg.apiKey)
+			return m, omdbValidateCommand(msg.apiKey)
 		}
 		return m, nil
 
@@ -359,13 +367,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Backspace in TMDB API key field
 				m.deleteTMDBChar()
 				// Trigger debounced validation after deletion
-				return m, debouncedTMDBValidate(m.tmdbAPIKey)
+				return m, tmdbDebounceCommand(m.tmdbAPIKey)
 			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnTMDB && m.tmdbSubfocus == 2 {
 				// Backspace in TMDB language field
 				m.deleteTMDBChar()
 			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnOMDB && m.omdbSubfocus == 1 {
 				m.deleteOMDBChar()
-				return m, debouncedOMDBValidate(m.omdbAPIKey)
+				return m, omdbDebounceCommand(m.omdbAPIKey)
 			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnShared {
 				m.deleteWorkerCountChar()
 			} else if m.activeSection != SectionLogging && m.activeSection != SectionProviders {
@@ -457,7 +465,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.omdbValidatedKey = ""
 							if len(m.omdbAPIKey) > 0 {
 								m.omdbValidation = "validating"
-								cmd = debouncedOMDBValidate(m.omdbAPIKey)
+								cmd = omdbDebounceCommand(m.omdbAPIKey)
 							} else {
 								m.omdbValidation = ""
 							}
@@ -508,7 +516,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.omdbValidatedKey = ""
 							if len(m.omdbAPIKey) > 0 {
 								m.omdbValidation = "validating"
-								cmd = debouncedOMDBValidate(m.omdbAPIKey)
+								cmd = omdbDebounceCommand(m.omdbAPIKey)
 							} else {
 								m.omdbValidation = ""
 							}
@@ -554,7 +562,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch m.tmdbSubfocus {
 					case 1:
 						m.insertTMDBAPIKey(runes)
-						return m, debouncedTMDBValidate(m.tmdbAPIKey)
+						return m, tmdbDebounceCommand(m.tmdbAPIKey)
 					case 2:
 						for _, r := range runes {
 							if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '-' {
@@ -565,7 +573,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case providerColumnOMDB:
 					if m.omdbSubfocus == 1 {
 						m.insertOMDBAPIKey(runes)
-						return m, debouncedOMDBValidate(m.omdbAPIKey)
+						return m, omdbDebounceCommand(m.omdbAPIKey)
 					}
 				case providerColumnShared:
 					for _, r := range runes {
@@ -1155,8 +1163,16 @@ func (m *Model) getVariablesForSection() []variable {
 			})
 		}
 
-		// If we got variables from registry, return them
+		// If we got variables from registry, ensure a stable order and return them
 		if len(result) > 0 {
+			sort.SliceStable(result, func(i, j int) bool {
+				pi := variableProviderPriority(m.templateRegistry, result[i].name)
+				pj := variableProviderPriority(m.templateRegistry, result[j].name)
+				if pi != pj {
+					return pi < pj
+				}
+				return result[i].name < result[j].name
+			})
 			return result
 		}
 	}
@@ -1198,6 +1214,38 @@ func (m *Model) getVariablesForSection() []variable {
 		}
 	}
 	return nil
+}
+
+func variableProviderPriority(reg *config.TemplateRegistry, name string) int {
+	if reg == nil {
+		return 0
+	}
+	trimmed := strings.TrimPrefix(strings.TrimSuffix(name, "}"), "{")
+	owners := reg.VariableProviders(trimmed)
+	priority := 4
+	for _, owner := range owners {
+		switch owner {
+		case "local":
+			return 0
+		case "tmdb":
+			if priority > 1 {
+				priority = 1
+			}
+		case "omdb":
+			if priority > 2 {
+				priority = 2
+			}
+		case "ffprobe":
+			if priority > 3 {
+				priority = 3
+			}
+		default:
+			if priority > 4 {
+				priority = 4
+			}
+		}
+	}
+	return priority
 }
 
 type preview struct {
@@ -2014,7 +2062,7 @@ func (m *Model) validateTMDBOnSectionSwitch() tea.Cmd {
 	// Only validate if there's an API key and it hasn't been validated recently
 	if len(m.tmdbAPIKey) > 0 && m.tmdbAPIKey != m.tmdbValidatedKey {
 		m.tmdbValidation = "validating"
-		return validateTMDBAPIKey(m.tmdbAPIKey)
+		return tmdbValidateCommand(m.tmdbAPIKey)
 	}
 	return nil
 }
@@ -2056,7 +2104,7 @@ func debouncedOMDBValidate(apiKey string) tea.Cmd {
 func (m *Model) validateOMDBOnSectionSwitch() tea.Cmd {
 	if len(m.omdbAPIKey) > 0 && m.omdbAPIKey != m.omdbValidatedKey {
 		m.omdbValidation = "validating"
-		return validateOMDBAPIKey(m.omdbAPIKey)
+		return omdbValidateCommand(m.omdbAPIKey)
 	}
 	return nil
 }
