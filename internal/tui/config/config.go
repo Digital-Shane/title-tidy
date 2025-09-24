@@ -1,4 +1,4 @@
-package tui
+package config
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,7 +23,7 @@ import (
 
 // selectConfigIcons chooses the best icon set for the config UI
 func selectConfigIcons() map[string]string {
-	return SelectIcons()
+	return components.SelectIcons()
 }
 
 // scrollTickMsg is sent periodically to enable auto-scrolling

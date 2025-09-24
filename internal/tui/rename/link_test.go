@@ -1,4 +1,4 @@
-package tui
+package rename
 
 import (
 	"os"
@@ -33,17 +33,17 @@ func TestLinkRegular(t *testing.T) {
 	mm.DestinationPath = destPath
 
 	// Test linking
-	linked, err := LinkRegular(node, mm)
+	linked, err := core.LinkRegular(node, mm)
 	if err != nil {
-		t.Fatalf("LinkRegular(%q, %q) = %v, want nil", srcPath, destPath, err)
+		t.Fatalf("core.LinkRegular(%q, %q) = %v, want nil", srcPath, destPath, err)
 	}
 	if !linked {
-		t.Errorf("LinkRegular(%q, %q) = false, want true", srcPath, destPath)
+		t.Errorf("core.LinkRegular(%q, %q) = false, want true", srcPath, destPath)
 	}
 
 	// Verify hard link was created
 	if _, err := os.Stat(destPath); err != nil {
-		t.Errorf("LinkRegular destination file not created: %v", err)
+		t.Errorf("core.LinkRegular destination file not created: %v", err)
 	}
 
 	// Verify content
@@ -53,7 +53,7 @@ func TestLinkRegular(t *testing.T) {
 	}
 	want := "test content"
 	if got := string(content); got != want {
-		t.Errorf("LinkRegular destination content = %q, want %q", got, want)
+		t.Errorf("core.LinkRegular destination content = %q, want %q", got, want)
 	}
 
 	// Verify same inode (hard link)
@@ -70,12 +70,12 @@ func TestLinkRegular(t *testing.T) {
 	srcSys := srcStat.Sys()
 	destSys := destStat.Sys()
 	if diff := cmp.Diff(srcSys, destSys); diff != "" {
-		t.Errorf("LinkRegular inode mismatch (-src +dest):\n%s", diff)
+		t.Errorf("core.LinkRegular inode mismatch (-src +dest):\n%s", diff)
 	}
 
 	// Verify metadata status
 	if mm.RenameStatus != core.RenameStatusSuccess {
-		t.Errorf("LinkRegular metadata status = %v, want %v", mm.RenameStatus, core.RenameStatusSuccess)
+		t.Errorf("core.LinkRegular metadata status = %v, want %v", mm.RenameStatus, core.RenameStatusSuccess)
 	}
 }
 
@@ -94,17 +94,17 @@ func TestLinkRegularNoDestinationPath(t *testing.T) {
 	// Don't set DestinationPath
 
 	// Test linking
-	linked, err := LinkRegular(node, mm)
+	linked, err := core.LinkRegular(node, mm)
 	if err == nil {
-		t.Errorf("LinkRegular(no destination) = nil, want error")
+		t.Errorf("core.LinkRegular(no destination) = nil, want error")
 	}
 	if linked {
-		t.Errorf("LinkRegular(no destination) = true, want false")
+		t.Errorf("core.LinkRegular(no destination) = true, want false")
 	}
 
 	// Verify metadata error status
 	if mm.RenameStatus != core.RenameStatusError {
-		t.Errorf("LinkRegular metadata status = %v, want %v", mm.RenameStatus, core.RenameStatusError)
+		t.Errorf("core.LinkRegular metadata status = %v, want %v", mm.RenameStatus, core.RenameStatusError)
 	}
 }
 
@@ -127,17 +127,17 @@ func TestLinkRegularDestinationExists(t *testing.T) {
 	mm.DestinationPath = destPath
 
 	// Test linking - should succeed when destination exists (incremental linking)
-	linked, err := LinkRegular(node, mm)
+	linked, err := core.LinkRegular(node, mm)
 	if err != nil {
-		t.Errorf("LinkRegular(existing destination) = %v, want nil", err)
+		t.Errorf("core.LinkRegular(existing destination) = %v, want nil", err)
 	}
 	if linked {
-		t.Errorf("LinkRegular(existing destination) = true, want false (no new link created)")
+		t.Errorf("core.LinkRegular(existing destination) = true, want false (no new link created)")
 	}
 
 	// Verify metadata success status (existing files treated as success)
 	if mm.RenameStatus != core.RenameStatusSuccess {
-		t.Errorf("LinkRegular metadata status = %v, want %v", mm.RenameStatus, core.RenameStatusSuccess)
+		t.Errorf("core.LinkRegular metadata status = %v, want %v", mm.RenameStatus, core.RenameStatusSuccess)
 	}
 }
 
@@ -185,7 +185,7 @@ func TestLinkVirtualDirWithExistingFiles(t *testing.T) {
 	cm2.NewName = "Test Movie (2024).srt" // This one is new
 
 	// Test virtual directory linking with existing directory and one existing file
-	successes, errs := LinkVirtualDir(virtualDir, mm, linkPath)
+	successes, errs := core.LinkVirtualDir(virtualDir, mm, linkPath)
 
 	if len(errs) > 0 {
 		t.Fatalf("LinkVirtualDirWithExistingFiles errors = %v, want none", errs)
@@ -243,19 +243,19 @@ func TestLinkVirtualDir(t *testing.T) {
 	cm2.NewName = "Test Movie (2024).srt"
 
 	// Test virtual directory creation with linking
-	successes, errs := LinkVirtualDir(virtualDir, mm, linkPath)
+	successes, errs := core.LinkVirtualDir(virtualDir, mm, linkPath)
 
 	if len(errs) > 0 {
-		t.Fatalf("LinkVirtualDir errors = %v, want none", errs)
+		t.Fatalf("core.LinkVirtualDir errors = %v, want none", errs)
 	}
 	if successes != 3 { // 1 directory + 2 files
-		t.Errorf("LinkVirtualDir successes = %d, want 3", successes)
+		t.Errorf("core.LinkVirtualDir successes = %d, want 3", successes)
 	}
 
 	// Verify directory was created
 	dirPath := filepath.Join(linkPath, "Test Movie (2024)")
 	if _, err := os.Stat(dirPath); err != nil {
-		t.Errorf("LinkVirtualDir directory not created: %v", err)
+		t.Errorf("core.LinkVirtualDir directory not created: %v", err)
 	}
 
 	// Verify files were linked
@@ -263,10 +263,10 @@ func TestLinkVirtualDir(t *testing.T) {
 	linkedFile2 := filepath.Join(dirPath, "Test Movie (2024).srt")
 
 	if _, err := os.Stat(linkedFile1); err != nil {
-		t.Errorf("LinkVirtualDir child 1 not linked: %v", err)
+		t.Errorf("core.LinkVirtualDir child 1 not linked: %v", err)
 	}
 	if _, err := os.Stat(linkedFile2); err != nil {
-		t.Errorf("LinkVirtualDir child 2 not linked: %v", err)
+		t.Errorf("core.LinkVirtualDir child 2 not linked: %v", err)
 	}
 
 	// Verify content
@@ -275,18 +275,18 @@ func TestLinkVirtualDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := string(content1); got != "video content" {
-		t.Errorf("LinkVirtualDir child 1 content = %q, want %q", got, "video content")
+		t.Errorf("core.LinkVirtualDir child 1 content = %q, want %q", got, "video content")
 	}
 
 	// Verify metadata success status
 	if mm.RenameStatus != core.RenameStatusSuccess {
-		t.Errorf("LinkVirtualDir directory status = %v, want %v", mm.RenameStatus, core.RenameStatusSuccess)
+		t.Errorf("core.LinkVirtualDir directory status = %v, want %v", mm.RenameStatus, core.RenameStatusSuccess)
 	}
 	if cm1.RenameStatus != core.RenameStatusSuccess {
-		t.Errorf("LinkVirtualDir child 1 status = %v, want %v", cm1.RenameStatus, core.RenameStatusSuccess)
+		t.Errorf("core.LinkVirtualDir child 1 status = %v, want %v", cm1.RenameStatus, core.RenameStatusSuccess)
 	}
 	if cm2.RenameStatus != core.RenameStatusSuccess {
-		t.Errorf("LinkVirtualDir child 2 status = %v, want %v", cm2.RenameStatus, core.RenameStatusSuccess)
+		t.Errorf("core.LinkVirtualDir child 2 status = %v, want %v", cm2.RenameStatus, core.RenameStatusSuccess)
 	}
 }
 

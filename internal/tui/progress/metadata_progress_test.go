@@ -1,10 +1,11 @@
-package tui
+package progress
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/google/go-cmp/cmp"
 )
@@ -294,9 +295,9 @@ func TestHasMetadataValues(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := hasMetadataValues(tc.meta)
+			got := core.HasMetadataValues(tc.meta)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("hasMetadataValues(%s) mismatch (-want +got):\n%s", tc.name, diff)
+				t.Errorf("core.HasMetadataValues(%s) mismatch (-want +got):\n%s", tc.name, diff)
 			}
 		})
 	}

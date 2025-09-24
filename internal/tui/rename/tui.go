@@ -1,4 +1,4 @@
-package tui
+package rename
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
@@ -141,7 +142,7 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo]) *RenameModel {
 
 // detectTerminalCapabilities determines what icons to use based on terminal and environment
 func (m *RenameModel) detectTerminalCapabilities() {
-	m.iconSet = SelectIcons()
+	m.iconSet = components.SelectIcons()
 }
 
 // getIcon returns the appropriate icon for the current terminal
@@ -150,7 +151,7 @@ func (m *RenameModel) getIcon(iconType string) string {
 		return icon
 	}
 	// Fallback to ASCII if icon not found
-	return ASCIIIcons[iconType]
+	return components.ASCIIIcons[iconType]
 }
 
 // CalculateLayout recomputes panel dimensions from current window size.

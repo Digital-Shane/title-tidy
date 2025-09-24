@@ -1,4 +1,4 @@
-package tui
+package components
 
 import (
 	"github.com/Digital-Shane/title-tidy/internal/core"

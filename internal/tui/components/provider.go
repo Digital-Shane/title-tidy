@@ -1,4 +1,4 @@
-package tui
+package components
 
 import (
 	"fmt"
@@ -13,15 +13,15 @@ import (
 // Color scheme used throughout the rename visualization TUI.
 var (
 	// Core colors (5 colors)
-	colorPrimary    = lipgloss.Color("#3a6b4a") // Dark green - main text, headers
-	colorSecondary  = lipgloss.Color("#5a8c6a") // Medium green - shows, status bars
-	colorAccent     = lipgloss.Color("#8fc279") // Light green - borders, highlights
-	colorBackground = lipgloss.Color("#f8f8f8") // Light background
-	colorMuted      = lipgloss.Color("#9ba8c0") // Gray - episodes, secondary text
+	ColorPrimary    = lipgloss.Color("#3a6b4a") // Dark green - main text, headers
+	ColorSecondary  = lipgloss.Color("#5a8c6a") // Medium green - shows, status bars
+	ColorAccent     = lipgloss.Color("#8fc279") // Light green - borders, highlights
+	ColorBackground = lipgloss.Color("#f8f8f8") // Light background
+	ColorMuted      = lipgloss.Color("#9ba8c0") // Gray - episodes, secondary text
 
 	// State colors (2 colors)
-	colorSuccess = lipgloss.Color("#5dc796") // Success operations
-	colorError   = lipgloss.Color("#f04c56") // Error states
+	ColorSuccess = lipgloss.Color("#5dc796") // Success operations
+	ColorError   = lipgloss.Color("#f04c56") // Error states
 )
 
 // ---- predicate helpers ----
@@ -117,54 +117,54 @@ func CreateRenameProvider() *treeview.DefaultNodeProvider[treeview.FileInfo] {
 	// Style rules (most specific first)
 	showStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaShow),
-		lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
-		lipgloss.NewStyle().Foreground(colorBackground).Bold(true).Background(colorSecondary).PaddingRight(1),
+		lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true),
+		lipgloss.NewStyle().Foreground(ColorBackground).Bold(true).Background(ColorSecondary).PaddingRight(1),
 	)
 	seasonStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaSeason),
-		lipgloss.NewStyle().Foreground(colorSecondary).Bold(true),
-		lipgloss.NewStyle().Foreground(colorBackground).Bold(true).Background(colorPrimary),
+		lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true),
+		lipgloss.NewStyle().Foreground(ColorBackground).Bold(true).Background(ColorPrimary),
 	)
 	episodeStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaEpisode),
-		lipgloss.NewStyle().Foreground(colorMuted),
-		lipgloss.NewStyle().Foreground(colorBackground).Background(colorPrimary),
+		lipgloss.NewStyle().Foreground(ColorMuted),
+		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorPrimary),
 	)
 	movieStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaMovie),
-		lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
-		lipgloss.NewStyle().Foreground(colorBackground).Bold(true).Background(colorSecondary).PaddingRight(1),
+		lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true),
+		lipgloss.NewStyle().Foreground(ColorBackground).Bold(true).Background(ColorSecondary).PaddingRight(1),
 	)
 	movieFileStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaMovieFile),
-		lipgloss.NewStyle().Foreground(colorMuted),
-		lipgloss.NewStyle().Foreground(colorBackground).Background(colorPrimary),
+		lipgloss.NewStyle().Foreground(ColorMuted),
+		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorPrimary),
 	)
 	successStyleRule := treeview.WithStyleRule(
 		statusIs(core.RenameStatusSuccess),
-		lipgloss.NewStyle().Foreground(colorSuccess),
-		lipgloss.NewStyle().Foreground(colorSuccess).Background(colorBackground),
+		lipgloss.NewStyle().Foreground(ColorSuccess),
+		lipgloss.NewStyle().Foreground(ColorSuccess).Background(ColorBackground),
 	)
 	errorStyleRule := treeview.WithStyleRule(
 		statusIs(core.RenameStatusError),
-		lipgloss.NewStyle().Foreground(colorError),
-		lipgloss.NewStyle().Foreground(colorError).Background(colorBackground),
+		lipgloss.NewStyle().Foreground(ColorError),
+		lipgloss.NewStyle().Foreground(ColorError).Background(ColorBackground),
 	)
 	// Deletion style rules
 	markedForDeletionStyleRule := treeview.WithStyleRule(
 		markedForDeletion(),
-		lipgloss.NewStyle().Foreground(colorError).Strikethrough(true),
-		lipgloss.NewStyle().Foreground(colorError).Background(colorBackground).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(ColorError).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(ColorError).Background(ColorBackground).Strikethrough(true),
 	)
 	deletionSuccessStyleRule := treeview.WithStyleRule(
 		deletionSuccess(),
-		lipgloss.NewStyle().Foreground(colorMuted).Strikethrough(true),
-		lipgloss.NewStyle().Foreground(colorBackground).Background(colorMuted).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(ColorMuted).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorMuted).Strikethrough(true),
 	)
 	defaultStyleRule := treeview.WithStyleRule(
 		func(*treeview.Node[treeview.FileInfo]) bool { return true },
-		lipgloss.NewStyle().Foreground(colorPrimary),
-		lipgloss.NewStyle().Foreground(colorBackground).Background(colorPrimary),
+		lipgloss.NewStyle().Foreground(ColorPrimary),
+		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorPrimary),
 	)
 
 	formatterRule := treeview.WithFormatter(RenameFormatter)

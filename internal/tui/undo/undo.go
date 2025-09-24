@@ -1,10 +1,11 @@
-package tui
+package undo
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/log"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,6 +13,13 @@ import (
 )
 
 var undoSessionFn = log.UndoSession
+
+// UndoCompleteMsg is emitted when undo operation completes.
+type UndoCompleteMsg struct{ successCount, errorCount int }
+
+func (u UndoCompleteMsg) SuccessCount() int { return u.successCount }
+
+func (u UndoCompleteMsg) ErrorCount() int { return u.errorCount }
 
 // UndoModel represents the TUI for selecting and undoing operations
 type UndoModel struct {
@@ -40,7 +48,7 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *UndoModel {
 	}
 
 	// Detect terminal capabilities for icons
-	m.iconSet = SelectIcons()
+	m.iconSet = components.SelectIcons()
 
 	// Create underlying TUI model with same pattern as RenameModel
 	keyMap := treeview.DefaultKeyMap()
@@ -477,7 +485,7 @@ func (m *UndoModel) getIcon(iconType string) string {
 	if icon, exists := m.iconSet[iconType]; exists {
 		return icon
 	}
-	return ASCIIIcons[iconType]
+	return components.ASCIIIcons[iconType]
 }
 
 // formatOperation formats a single operation for display
