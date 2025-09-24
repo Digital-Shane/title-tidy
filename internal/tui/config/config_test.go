@@ -7,7 +7,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -28,27 +28,6 @@ func (f fakeProvider) Fetch(context.Context, provider.FetchRequest) (*provider.M
 	return nil, nil
 }
 
-func newBareModel() *Model {
-	m := &Model{
-		inputs: map[Section]string{
-			SectionShowFolder:   "{title}",
-			SectionSeasonFolder: "Season {season}",
-			SectionEpisode:      "S{season}E{episode}",
-			SectionMovie:        "{title} ({year})",
-		},
-		cursorPos:        map[Section]int{},
-		loggingRetention: "30",
-		tmdbLanguage:     "en-US",
-	}
-	m.theme = theme.Default()
-	m.icons = m.theme.IconSet()
-	m.tmdbValidate = validateTMDBAPIKey
-	m.tmdbDebounce = debouncedTMDBValidate
-	m.omdbValidate = validateOMDBAPIKey
-	m.omdbDebounce = debouncedOMDBValidate
-	return m
-}
-
 func TestNewWithRegistrySetsTemplateRegistry(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	reg := config.NewTemplateRegistry()
@@ -57,18 +36,13 @@ func TestNewWithRegistrySetsTemplateRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWithRegistry() error = %v", err)
 	}
-
-	if m.templateRegistry == nil {
-		t.Fatal("templateRegistry is nil, want provided registry")
-	}
-	if want, got := reg, m.templateRegistry; want != got {
-		t.Errorf("templateRegistry mismatch (-want +got):\n%s", cmp.Diff(want, got))
+	if m.templateRegistry != reg {
+		t.Fatalf("templateRegistry = %p, want %p", m.templateRegistry, reg)
 	}
 }
 
-func TestGetVariablesForSectionFiltersByProviders(t *testing.T) {
+func TestBuildVariablesFiltersByEnabledProviders(t *testing.T) {
 	reg := config.NewTemplateRegistry()
-
 	if err := reg.RegisterProvider(fakeProvider{
 		name: "local",
 		vars: []provider.TemplateVariable{{
@@ -91,42 +65,63 @@ func TestGetVariablesForSectionFiltersByProviders(t *testing.T) {
 		t.Fatalf("RegisterProvider(tmdb) error = %v", err)
 	}
 
-	m := newBareModel()
-	m.templateRegistry = reg
-	m.activeSection = SectionShowFolder
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
 
-	vars := m.getVariablesForSection()
-	if diff := cmp.Diff([]variable{{name: "{title}", description: "local title", example: ""}}, vars, cmp.AllowUnexported(variable{})); diff != "" {
+	vars := buildVariables(SectionShowFolder, &state, reg)
+	want := []variable{{name: "{title}", description: "local title"}}
+	if diff := cmp.Diff(want, vars, cmp.AllowUnexported(variable{})); diff != "" {
 		t.Fatalf("variables diff (-want +got):\n%s", diff)
 	}
 
-	m.tmdbEnabled = true
-	vars = m.getVariablesForSection()
-	want := []variable{
+	state.Providers.TMDB.Enabled = true
+	vars = buildVariables(SectionShowFolder, &state, reg)
+	want = []variable{
 		{name: "{title}", description: "local title"},
 		{name: "{rating}", description: "tmdb rating"},
 	}
 	if diff := cmp.Diff(want, vars, cmp.AllowUnexported(variable{})); diff != "" {
-		t.Errorf("variables with TMDB diff (-want +got):\n%s", diff)
+		t.Fatalf("variables diff (-want +got):\n%s", diff)
 	}
 }
 
-func previewsToMap(previews []preview) map[string]string {
-	result := make(map[string]string, len(previews))
+func TestBuildPreviewsProviders(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
+	state.Providers.FFProbeEnabled = true
+	state.Providers.TMDB.Enabled = true
+	state.Providers.TMDB.APIKey.SetValue("abc")
+	state.Providers.TMDB.Validation.Status = ProviderValidationValid
+	state.Providers.TMDB.Language.SetValue("es-ES")
+	state.Providers.OMDB.Enabled = true
+	state.Providers.OMDB.APIKey.SetValue("xyz")
+	state.Providers.OMDB.Validation.Status = ProviderValidationValidating
+
+	previews := buildPreviews(SectionProviders, &state, theme.Default().IconSet(), nil)
+	got := map[string]string{}
 	for _, p := range previews {
-		result[p.label] = p.preview
+		got[p.label] = p.preview
 	}
-	return result
+
+	if got["ffprobe"] != "Enabled" {
+		t.Errorf("ffprobe preview = %q, want Enabled", got["ffprobe"])
+	}
+	if got["TMDB API"] != "Valid" {
+		t.Errorf("TMDB API preview = %q, want Valid", got["TMDB API"])
+	}
+	if got["OMDb API"] != "Validating..." {
+		t.Errorf("OMDb API preview = %q, want Validating...", got["OMDb API"])
+	}
+	if got["Language"] != "es-ES" {
+		t.Errorf("Language preview = %q, want es-ES", got["Language"])
+	}
 }
 
-func TestGeneratePreviewsLoggingSection(t *testing.T) {
-	m := newBareModel()
-	m.activeSection = SectionLogging
-	m.loggingEnabled = true
-	m.loggingRetention = "15"
-
-	got := previewsToMap(m.generatePreviews())
-
+func TestBuildPreviewsLogging(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{EnableLogging: true, LogRetentionDays: 15}, theme.Default())
+	previews := buildPreviews(SectionLogging, &state, theme.Default().IconSet(), nil)
+	got := map[string]string{}
+	for _, p := range previews {
+		got[p.label] = p.preview
+	}
 	if got["Logging"] != "Enabled" {
 		t.Errorf("Logging preview = %q, want Enabled", got["Logging"])
 	}
@@ -135,204 +130,41 @@ func TestGeneratePreviewsLoggingSection(t *testing.T) {
 	}
 }
 
-func TestGeneratePreviewsProvidersSection(t *testing.T) {
-	cases := []struct {
-		name           string
-		tmdbEnabled    bool
-		tmdbValidation string
-		tmdbAPIKey     string
-		omdbEnabled    bool
-		omdbValidation string
-		omdbAPIKey     string
-		expectTMDB     string
-		expectOMDB     string
-	}{
-		{
-			name:           "configured",
-			tmdbEnabled:    true,
-			tmdbValidation: "",
-			tmdbAPIKey:     "abc",
-			omdbEnabled:    true,
-			omdbValidation: "",
-			omdbAPIKey:     "xyz",
-			expectTMDB:     "Configured",
-			expectOMDB:     "Configured",
-		},
-		{
-			name:           "validating",
-			tmdbEnabled:    true,
-			tmdbValidation: "validating",
-			tmdbAPIKey:     "abc",
-			omdbEnabled:    true,
-			omdbValidation: "validating",
-			omdbAPIKey:     "xyz",
-			expectTMDB:     "Validating...",
-			expectOMDB:     "Validating...",
-		},
-		{
-			name:           "invalid",
-			tmdbEnabled:    true,
-			tmdbValidation: "invalid",
-			tmdbAPIKey:     "abc",
-			omdbEnabled:    true,
-			omdbValidation: "valid",
-			omdbAPIKey:     "xyz",
-			expectTMDB:     "Invalid",
-			expectOMDB:     "Valid",
-		},
+func TestBuildPreviewsTemplateRegistry(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
+	state.Templates.Show.Input.SetValue("{title}::{genres}")
+	state.Templates.Season.Input.SetValue("Season {season}")
+	state.Templates.Episode.Input.SetValue("{episode_title} - {audio_codec}")
+	state.Templates.Movie.Input.SetValue("{title}-movie")
+
+	reg := config.NewTemplateRegistry()
+
+	previews := buildPreviews(SectionEpisode, &state, theme.Default().IconSet(), reg)
+	got := map[string]string{}
+	for _, p := range previews {
+		got[p.label] = p.preview
+	}
+	if got["Episode"] != "Gray Matter - aac.mkv" {
+		t.Errorf("Episode preview = %q, want Gray Matter - aac.mkv", got["Episode"])
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m := newBareModel()
-			m.activeSection = SectionProviders
-			m.ffprobeEnabled = true
-			m.tmdbEnabled = tc.tmdbEnabled
-			m.tmdbAPIKey = tc.tmdbAPIKey
-			m.tmdbValidation = tc.tmdbValidation
-			m.tmdbLanguage = "es-ES"
-			m.omdbEnabled = tc.omdbEnabled
-			m.omdbAPIKey = tc.omdbAPIKey
-			m.omdbValidation = tc.omdbValidation
-
-			previewMap := previewsToMap(m.generatePreviews())
-
-			if got := previewMap["TMDB API"]; got != tc.expectTMDB {
-				t.Errorf("TMDB API preview = %q, want %q", got, tc.expectTMDB)
-			}
-			if got := previewMap["OMDb API"]; got != tc.expectOMDB {
-				t.Errorf("OMDb API preview = %q, want %q", got, tc.expectOMDB)
-			}
-			if previewMap["ffprobe"] != "Enabled" {
-				t.Errorf("ffprobe preview = %q, want Enabled", previewMap["ffprobe"])
-			}
-			if previewMap["Language"] != "es-ES" {
-				t.Errorf("Language preview = %q, want es-ES", previewMap["Language"])
-			}
-		})
+	previews = buildPreviews(SectionShowFolder, &state, theme.Default().IconSet(), reg)
+	got = map[string]string{}
+	for _, p := range previews {
+		got[p.label] = p.preview
 	}
-}
-
-func TestGeneratePreviewsTemplateRegistry(t *testing.T) {
-	m := newBareModel()
-	m.activeSection = SectionEpisode
-	m.templateRegistry = config.NewTemplateRegistry()
-	m.inputs[SectionShowFolder] = "{title}::{genres}"
-	m.inputs[SectionSeasonFolder] = "Season {season}"
-	m.inputs[SectionEpisode] = "{episode_title} - {audio_codec}"
-	m.inputs[SectionMovie] = "{title}-movie"
-
-	previews := previewsToMap(m.generatePreviews())
-
-	if got := previews["Episode"]; got != "Gray Matter - aac.mkv" {
-		t.Errorf("episode preview = %q, want Gray Matter - aac.mkv", got)
-	}
-	if got := previews["Show"]; got != "Breaking Bad::Drama, Crime" {
-		t.Errorf("show preview = %q, want Breaking Bad::Drama, Crime", got)
-	}
-	if got := previews["Movie"]; got != "The Matrix-movie" {
-		t.Errorf("movie preview = %q, want The Matrix-movie", got)
-	}
-}
-
-func TestValidateTMDBOnSectionSwitch(t *testing.T) {
-	m := newBareModel()
-	m.tmdbAPIKey = "valid-key"
-
-	orig := m.tmdbValidate
-	var called int
-	m.tmdbValidate = func(apiKey string) tea.Cmd {
-		called++
-		if apiKey != "valid-key" {
-			t.Fatalf("validate called with %q, want valid-key", apiKey)
-		}
-		return func() tea.Msg { return tmdbValidationMsg{apiKey: apiKey, valid: true} }
-	}
-	defer func() { m.tmdbValidate = orig }()
-
-	cmd := m.validateTMDBOnSectionSwitch()
-	if called != 1 {
-		t.Fatalf("validate called %d times, want 1", called)
-	}
-	if cmd == nil {
-		t.Fatal("validateTMDBOnSectionSwitch returned nil command")
-	}
-	if msg := cmd(); msg.(tmdbValidationMsg).apiKey != "valid-key" {
-		t.Errorf("returned message %+v, want apiKey valid-key", msg)
+	if got["Show"] != "Breaking Bad::Drama, Crime" {
+		t.Errorf("Show preview = %q, want Breaking Bad::Drama, Crime", got["Show"])
 	}
 
-	m.tmdbValidatedKey = "valid-key"
-	called = 0
-	if cmd := m.validateTMDBOnSectionSwitch(); cmd != nil {
-		t.Error("expected nil cmd when key already validated")
+	previews = buildPreviews(SectionMovie, &state, theme.Default().IconSet(), reg)
+	got = map[string]string{}
+	for _, p := range previews {
+		got[p.label] = p.preview
 	}
-	if called != 0 {
-		t.Errorf("validation called %d times, want 0", called)
+	if got["Movie"] != "The Matrix-movie" {
+		t.Errorf("Movie preview = %q, want The Matrix-movie", got["Movie"])
 	}
-
-	m.tmdbAPIKey = ""
-	if cmd := m.validateTMDBOnSectionSwitch(); cmd != nil {
-		t.Error("expected nil cmd when key empty")
-	}
-}
-
-func TestValidateOMDBOnSectionSwitch(t *testing.T) {
-	m := newBareModel()
-	m.omdbAPIKey = "abcd"
-
-	orig := m.omdbValidate
-	var called int
-	m.omdbValidate = func(apiKey string) tea.Cmd {
-		called++
-		if apiKey != "abcd" {
-			t.Fatalf("validate called with %q, want abcd", apiKey)
-		}
-		return func() tea.Msg { return omdbValidationMsg{apiKey: apiKey, valid: false} }
-	}
-	defer func() { m.omdbValidate = orig }()
-
-	cmd := m.validateOMDBOnSectionSwitch()
-	if called != 1 {
-		t.Fatalf("validate called %d times, want 1", called)
-	}
-	if cmd == nil {
-		t.Fatal("validateOMDBOnSectionSwitch returned nil command")
-	}
-	if msg := cmd(); msg.(omdbValidationMsg).apiKey != "abcd" {
-		t.Errorf("returned message %+v, want apiKey abcd", msg)
-	}
-
-	m.omdbValidatedKey = "abcd"
-	called = 0
-	if cmd := m.validateOMDBOnSectionSwitch(); cmd != nil {
-		t.Error("expected nil cmd when key already validated")
-	}
-	if called != 0 {
-		t.Errorf("validation called %d times, want 0", called)
-	}
-
-	m.omdbAPIKey = ""
-	if cmd := m.validateOMDBOnSectionSwitch(); cmd != nil {
-		t.Error("expected nil cmd when key empty")
-	}
-}
-
-func TestDeleteLoggingChar(t *testing.T) {
-	m := newBareModel()
-	m.loggingRetention = "15"
-	m.deleteLoggingChar()
-
-	if m.loggingRetention != "1" {
-		t.Errorf("loggingRetention = %q, want 1", m.loggingRetention)
-	}
-
-	m.deleteLoggingChar()
-	if m.loggingRetention != "" {
-		t.Errorf("loggingRetention = %q, want empty", m.loggingRetention)
-	}
-
-	// No panic on empty string
-	m.deleteLoggingChar()
 }
 
 func TestMaskAPIKeyVisible(t *testing.T) {
@@ -351,8 +183,34 @@ func TestMaskAPIKeyVisible(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := maskAPIKeyVisible(tc.key, tc.prefix, tc.suffix); got != tc.want {
-				t.Errorf("maskAPIKeyVisible(%q, %d, %d) = %q, want %q", tc.key, tc.prefix, tc.suffix, got, tc.want)
+				t.Fatalf("maskAPIKeyVisible(%q, %d, %d) = %q, want %q", tc.key, tc.prefix, tc.suffix, got, tc.want)
 			}
 		})
+	}
+}
+
+// Ensure the provider section exposes validation hooks for tests.
+func TestProviderSectionActivateTriggersValidation(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
+	state.Providers.TMDB.Enabled = true
+	state.Providers.TMDB.APIKey.SetValue("secret")
+
+	ps := newProviderSection(&state.Providers, theme.Default())
+
+	var called int
+	ps.tmdbValidate = func(key string) tea.Cmd {
+		called++
+		if key != "secret" {
+			t.Fatalf("tmdbValidate called with %q, want secret", key)
+		}
+		return nil
+	}
+	ps.tmdbDebounce = func(string) tea.Cmd { return nil }
+
+	if cmd := ps.Activate(); cmd != nil {
+		cmd()
+	}
+	if called != 1 {
+		t.Fatalf("activate validation calls = %d, want 1", called)
 	}
 }

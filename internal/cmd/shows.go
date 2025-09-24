@@ -76,7 +76,13 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			}
 
 			if linkPath != "" {
-				parentPaths[ni.Node] = linkPath
+				dirName := m.NewName
+				if dirName == "" {
+					dirName = ni.Node.Name()
+				}
+				dest := filepath.Join(linkPath, dirName)
+				m.DestinationPath = dest
+				parentPaths[ni.Node] = dest
 			}
 
 		case 1: // Seasons
@@ -111,7 +117,13 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 
 			if linkPath != "" {
 				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
-					parentPaths[ni.Node] = filepath.Join(parentPath, m.NewName)
+					dirName := m.NewName
+					if dirName == "" {
+						dirName = ni.Node.Name()
+					}
+					dest := filepath.Join(parentPath, dirName)
+					m.DestinationPath = dest
+					parentPaths[ni.Node] = dest
 				}
 			}
 
@@ -168,9 +180,15 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
 
 			if linkPath != "" {
-				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
-					m.DestinationPath = parentPath
+				fileName := m.NewName
+				if fileName == "" {
+					fileName = ni.Node.Name()
 				}
+				destBase := linkPath
+				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists && parentPath != "" {
+					destBase = parentPath
+				}
+				m.DestinationPath = filepath.Join(destBase, fileName)
 			}
 		}
 	}

@@ -45,16 +45,6 @@ type Spacing struct {
 	StatusHPadding int
 }
 
-// BadgeKind enumerates supported badge style variants.
-type BadgeKind int
-
-const (
-	BadgeInfo BadgeKind = iota
-	BadgeSuccess
-	BadgeError
-	BadgeMuted
-)
-
 // Theme centralizes palette, border, spacing, and icon configuration.
 type Theme struct {
 	colors   Colors
@@ -191,22 +181,6 @@ func (t Theme) PanelTitleStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Bold(true).
 		Underline(true)
-}
-
-// BadgeStyle returns the shared badge style for the requested variant.
-func (t Theme) BadgeStyle(kind BadgeKind) lipgloss.Style {
-	base := lipgloss.NewStyle().Padding(0, 1).Bold(true)
-
-	switch kind {
-	case BadgeSuccess:
-		return base.Background(t.colors.Success).Foreground(t.colors.Background)
-	case BadgeError:
-		return base.Background(t.colors.Error).Foreground(t.colors.Background)
-	case BadgeMuted:
-		return base.Background(t.colors.Muted).Foreground(t.colors.Background)
-	default:
-		return base.Background(t.colors.Accent).Foreground(t.colors.Background)
-	}
 }
 
 // ProgressGradient returns the gradient colors for progress bars.

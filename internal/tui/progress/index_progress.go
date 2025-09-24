@@ -3,16 +3,15 @@ package progress
 import (
 	"context"
 	"fmt"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -172,26 +171,41 @@ func (m *IndexProgressModel) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n", m.err)
 	}
-	percent := 100 * m.processedRoots / m.totalRoots
-	bar := m.progress.View()
-	info := fmt.Sprintf("Roots processed: %d/%d  Files indexed: %d", m.processedRoots, m.totalRoots, m.filesIndexed)
-	header := m.theme.HeaderStyle().Width(m.width).Render("Indexing Media Library")
-	panelStyle := m.theme.PanelStyle()
-	panelWidth := m.width - panelStyle.GetHorizontalFrameSize()
-	if panelWidth < 0 {
-		panelWidth = 0
+	percent := 0
+	if m.totalRoots > 0 {
+		percent = 100 * m.processedRoots / m.totalRoots
 	}
-	statsStyle := panelStyle.Width(panelWidth)
-	stats := fmt.Sprintf("Root Directories: %d\nProcessed Roots: %d\nFiles Indexed: %d\nProgress: %d%%", m.totalRoots, m.processedRoots, m.filesIndexed, percent)
+
+	infoLines := []string{fmt.Sprintf("Roots processed: %d/%d  Files indexed: %d", m.processedRoots, m.totalRoots, m.filesIndexed)}
+	statsLines := []string{
+		fmt.Sprintf("Root Directories: %d", m.totalRoots),
+		fmt.Sprintf("Processed Roots: %d", m.processedRoots),
+		fmt.Sprintf("Files Indexed: %d", m.filesIndexed),
+		fmt.Sprintf("Progress: %d%%", percent),
+	}
+
+	sections := []string{
+		m.theme.HeaderStyle().Width(m.width).Render("Indexing Media Library"),
+		m.progress.View(),
+	}
+
+	if len(infoLines) > 0 {
+		sections = append(sections, strings.Join(infoLines, "\n"))
+	}
+
+	if len(statsLines) > 0 {
+		panel := m.theme.PanelStyle()
+		panelWidth := m.width - panel.GetHorizontalFrameSize()
+		if panelWidth < 0 {
+			panelWidth = 0
+		}
+		sections = append(sections, panel.Width(panelWidth).Render(strings.Join(statsLines, "\n")))
+	}
+
 	status := m.theme.StatusBarStyle().Width(m.width).Render("Indexing... please wait")
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		bar,
-		info,
-		statsStyle.Render(stats),
-		status,
-	)
-	return body
+	sections = append(sections, status)
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 // Tree returns the constructed tree.

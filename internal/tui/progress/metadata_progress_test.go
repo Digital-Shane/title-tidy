@@ -17,32 +17,32 @@ func TestMetadataProgressShouldRunFFProbe(t *testing.T) {
 
 	tests := []struct {
 		name string
-		item MetadataItem
+		item core.MetadataItem
 		want bool
 	}{
 		{
 			name: "NoNode",
-			item: MetadataItem{MediaType: provider.MediaTypeMovie},
+			item: core.MetadataItem{MediaType: provider.MediaTypeMovie},
 			want: false,
 		},
 		{
 			name: "DirNode",
-			item: MetadataItem{MediaType: provider.MediaTypeMovie, Node: dirNode},
+			item: core.MetadataItem{MediaType: provider.MediaTypeMovie, Node: dirNode},
 			want: false,
 		},
 		{
 			name: "NonVideoFile",
-			item: MetadataItem{MediaType: provider.MediaTypeMovie, Node: subtitleNode},
+			item: core.MetadataItem{MediaType: provider.MediaTypeMovie, Node: subtitleNode},
 			want: false,
 		},
 		{
 			name: "MovieVideo",
-			item: MetadataItem{MediaType: provider.MediaTypeMovie, Node: movieNode},
+			item: core.MetadataItem{MediaType: provider.MediaTypeMovie, Node: movieNode},
 			want: true,
 		},
 		{
 			name: "EpisodeVideo",
-			item: MetadataItem{MediaType: provider.MediaTypeEpisode, Node: movieNode},
+			item: core.MetadataItem{MediaType: provider.MediaTypeEpisode, Node: movieNode},
 			want: true,
 		},
 	}
@@ -67,7 +67,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 		providerPresent  bool
 		providerResponse *provider.Metadata
 		providerError    error
-		item             MetadataItem
+		item             core.MetadataItem
 		wantMeta         *provider.Metadata
 		wantProviderCall bool
 		wantErrCheck     func(*testing.T, error)
@@ -76,7 +76,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 		{
 			name:            "NoProvider",
 			providerPresent: false,
-			item: MetadataItem{
+			item: core.MetadataItem{
 				MediaType: provider.MediaTypeMovie,
 				Node:      videoNode,
 			},
@@ -86,7 +86,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 		{
 			name:            "ShouldNotRun",
 			providerPresent: true,
-			item: MetadataItem{
+			item: core.MetadataItem{
 				MediaType: provider.MediaTypeShow,
 				Node:      videoNode,
 			},
@@ -96,7 +96,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 		{
 			name:            "MissingPath",
 			providerPresent: true,
-			item: MetadataItem{
+			item: core.MetadataItem{
 				MediaType: provider.MediaTypeMovie,
 				Node:      missingPathNode,
 			},
@@ -117,7 +117,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 			name:             "MovieRequestIncludesPath",
 			providerPresent:  true,
 			providerResponse: &provider.Metadata{Core: provider.CoreMetadata{Title: "Movie", MediaType: provider.MediaTypeMovie}},
-			item: MetadataItem{
+			item: core.MetadataItem{
 				Name:      "Movie",
 				Year:      "2021",
 				IsMovie:   true,
@@ -146,7 +146,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 			name:             "EpisodeRequestIncludesExtras",
 			providerPresent:  true,
 			providerResponse: &provider.Metadata{Core: provider.CoreMetadata{Title: "Episode", MediaType: provider.MediaTypeEpisode}},
-			item: MetadataItem{
+			item: core.MetadataItem{
 				Name:      "Episode",
 				Season:    1,
 				Episode:   2,
@@ -175,18 +175,18 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			model := &MetadataProgressModel{ctx: context.Background()}
 			var capturedReq provider.FetchRequest
 			called := false
+			var prov provider.Provider
 			if tc.providerPresent {
-				model.ffprobeProvider = newMetadataFakeProvider("ffprobe", func(req provider.FetchRequest) (*provider.Metadata, error) {
+				prov = newMetadataFakeProvider("ffprobe", func(req provider.FetchRequest) (*provider.Metadata, error) {
 					called = true
 					capturedReq = req
 					return tc.providerResponse, tc.providerError
 				})
 			}
 
-			gotMeta, err := model.fetchFFProbeMetadata(tc.item)
+			gotMeta, err := core.FetchFFProbeMetadata(context.Background(), prov, tc.item)
 
 			if tc.wantErrCheck != nil {
 				tc.wantErrCheck(t, err)

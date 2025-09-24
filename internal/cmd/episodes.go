@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -88,7 +89,11 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 		m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
 
 		if linkPath != "" {
-			m.DestinationPath = linkPath
+			fileName := m.NewName
+			if fileName == "" {
+				fileName = ni.Node.Name()
+			}
+			m.DestinationPath = filepath.Join(linkPath, fileName)
 		}
 	}
 }

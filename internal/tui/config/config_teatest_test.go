@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/google/go-cmp/cmp"
 )
@@ -21,7 +21,7 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	model.tmdbValidate = func(apiKey string) tea.Cmd {
+	model.providerSection.tmdbValidate = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			if apiKey == "" {
 				return tmdbValidationMsg{apiKey: apiKey, valid: false}
@@ -29,12 +29,12 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 			return tmdbValidationMsg{apiKey: apiKey, valid: !strings.Contains(apiKey, "invalid")}
 		}
 	}
-	model.tmdbDebounce = func(apiKey string) tea.Cmd {
+	model.providerSection.tmdbDebounce = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			return tmdbValidateCmd{apiKey: apiKey}
 		}
 	}
-	model.omdbValidate = func(apiKey string) tea.Cmd {
+	model.providerSection.omdbValidate = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			if len(apiKey) < 4 {
 				return omdbValidationMsg{apiKey: apiKey, valid: false}
@@ -42,7 +42,7 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 			return omdbValidationMsg{apiKey: apiKey, valid: !strings.Contains(apiKey, "invalid")}
 		}
 	}
-	model.omdbDebounce = func(apiKey string) tea.Cmd {
+	model.providerSection.omdbDebounce = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			return omdbValidateCmd{apiKey: apiKey}
 		}
@@ -137,13 +137,10 @@ func TestConfigTUITemplateEditingKeys(t *testing.T) {
 	model := finalConfigModel(t, tm)
 
 	want := "BTest Z"
-	if diff := cmp.Diff(want, model.inputs[SectionShowFolder]); diff != "" {
+	if diff := cmp.Diff(want, model.state.Templates.Show.Input.Value()); diff != "" {
 		t.Errorf("inputs[ShowFolder] diff (-want +got):\n%s", diff)
 	}
 
-	if got := model.cursorPos[SectionShowFolder]; got != len(want) {
-		t.Errorf("cursorPos = %d, want %d", got, len(want))
-	}
 }
 
 func TestConfigTUILoggingKeys(t *testing.T) {
@@ -172,15 +169,15 @@ func TestConfigTUILoggingKeys(t *testing.T) {
 
 	model := finalConfigModel(t, tm)
 
-	if !model.loggingEnabled {
+	if !model.state.Logging.Enabled {
 		t.Error("loggingEnabled = false, want true")
 	}
 
-	if diff := cmp.Diff("357", model.loggingRetention); diff != "" {
+	if diff := cmp.Diff("357", model.state.Logging.Retention.Value()); diff != "" {
 		t.Errorf("loggingRetention diff (-want +got):\n%s", diff)
 	}
 
-	if got := model.loggingSubfocus; got != 1 {
+	if got := model.state.Logging.Focus; got != LoggingFieldRetention {
 		t.Errorf("loggingSubfocus = %d, want 1", got)
 	}
 }
@@ -205,11 +202,11 @@ func TestConfigTUIScrollingKeys(t *testing.T) {
 
 	model := finalConfigModel(t, tm)
 
-	if !model.autoScroll {
+	if !model.variablesAuto {
 		t.Error("autoScroll = false, want true after Alt+Space")
 	}
 
-	if model.variablesView.YOffset == 0 {
+	if model.variables == nil || model.variables.YOffset == 0 {
 		t.Error("YOffset = 0, want non-zero after manual scroll")
 	}
 }
@@ -234,7 +231,7 @@ func TestConfigTUISaveAndReset(t *testing.T) {
 
 	model := finalConfigModel(t, tm)
 
-	if diff := cmp.Diff("Alpha", model.inputs[SectionShowFolder]); diff != "" {
+	if diff := cmp.Diff("Alpha", model.state.Templates.Show.Input.Value()); diff != "" {
 		t.Errorf("inputs[ShowFolder] diff (-want +got):\n%s", diff)
 	}
 
@@ -275,23 +272,23 @@ func TestConfigTUIProvidersTMDB(t *testing.T) {
 
 	model := finalConfigModel(t, tm)
 
-	if model.tmdbEnabled {
+	if model.state.Providers.TMDB.Enabled {
 		t.Error("tmdbEnabled = true, want false after toggle off")
 	}
 
-	if diff := cmp.Diff("valid12X", model.tmdbAPIKey); diff != "" {
+	if diff := cmp.Diff("valid12X", model.state.Providers.TMDB.APIKey.Value()); diff != "" {
 		t.Errorf("tmdbAPIKey diff (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff("es-ES", model.tmdbLanguage); diff != "" {
+	if diff := cmp.Diff("es-ES", model.state.Providers.TMDB.Language.Value()); diff != "" {
 		t.Errorf("tmdbLanguage diff (-want +got):\n%s", diff)
 	}
 
-	if got := model.tmdbSubfocus; got != 0 {
-		t.Errorf("tmdbSubfocus = %d, want 0", got)
+	if got := model.state.Providers.Active; got != ProviderFieldTMDBToggle {
+		t.Errorf("providerActive = %d, want ProviderFieldTMDBToggle", got)
 	}
 
-	if diff := cmp.Diff("", model.tmdbValidation); diff != "" {
+	if diff := cmp.Diff("", model.state.Providers.TMDB.Validation.Status.String()); diff != "" {
 		t.Errorf("tmdbValidation diff (-want +got):\n%s", diff)
 	}
 }
@@ -321,16 +318,16 @@ func TestConfigTUIProvidersOMDB(t *testing.T) {
 
 	model := finalConfigModel(t, tm)
 
-	if model.omdbEnabled {
+	if model.state.Providers.OMDB.Enabled {
 		t.Error("omdbEnabled = true, want false after toggle off")
 	}
 
-	if diff := cmp.Diff("abcZ9", model.omdbAPIKey); diff != "" {
+	if diff := cmp.Diff("abcZ9", model.state.Providers.OMDB.APIKey.Value()); diff != "" {
 		t.Errorf("omdbAPIKey diff (-want +got):\n%s", diff)
 	}
 
-	if got := model.omdbSubfocus; got != 0 {
-		t.Errorf("omdbSubfocus = %d, want 0", got)
+	if got := model.state.Providers.Active; got != ProviderFieldOMDBToggle {
+		t.Errorf("providerActive = %d, want ProviderFieldOMDBToggle", got)
 	}
 
 }
@@ -358,15 +355,15 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 
 	model := tm.FinalModel(t).(*Model)
 
-	if diff := cmp.Diff("123", model.workerCount); diff != "" {
+	if diff := cmp.Diff("123", model.state.Providers.WorkerCount.Value()); diff != "" {
 		t.Errorf("workerCount diff (-want +got):\n%s", diff)
 	}
 
-	if !model.ffprobeEnabled {
+	if !model.state.Providers.FFProbeEnabled {
 		t.Error("ffprobeEnabled = false, want true")
 	}
 
-	if diff := cmp.Diff(providerColumnFFProbe, model.providerColumnFocus); diff != "" {
-		t.Errorf("providerColumnFocus diff (-want +got):\n%s", diff)
+	if diff := cmp.Diff(ProviderFieldFFProbe, model.state.Providers.Active); diff != "" {
+		t.Errorf("providerActive diff (-want +got):\n%s", diff)
 	}
 }

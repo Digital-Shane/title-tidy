@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -71,7 +72,13 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
 
 			if linkPath != "" {
-				parentPaths[ni.Node] = linkPath
+				dirName := m.NewName
+				if dirName == "" {
+					dirName = ni.Node.Name()
+				}
+				dest := filepath.Join(linkPath, dirName)
+				m.DestinationPath = dest
+				parentPaths[ni.Node] = dest
 			}
 
 		} else if ni.Depth == 1 {
@@ -116,9 +123,15 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
 
 			if linkPath != "" {
-				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
-					m.DestinationPath = parentPath
+				fileName := m.NewName
+				if fileName == "" {
+					fileName = ni.Node.Name()
 				}
+				destBase := linkPath
+				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists && parentPath != "" {
+					destBase = parentPath
+				}
+				m.DestinationPath = filepath.Join(destBase, fileName)
 			}
 		}
 	}

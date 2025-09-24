@@ -14,7 +14,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/google/go-cmp/cmp"
 )

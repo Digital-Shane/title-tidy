@@ -9,7 +9,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -32,7 +32,6 @@ type UndoModel struct {
 	undoFailed     int
 	width          int
 	height         int
-	splitRatio     float64 // ratio for left/right split
 	theme          theme.Theme
 
 	// Session details scrolling
@@ -66,6 +65,14 @@ func (m *UndoModel) colors() theme.Colors {
 	return m.theme.Colors()
 }
 
+func (m *UndoModel) treeContentWidth() int {
+	width := m.width/2 - 2
+	if width < 0 {
+		return 0
+	}
+	return width
+}
+
 func (m *UndoModel) sizedPanel(width, height int, borderColor lipgloss.Color) lipgloss.Style {
 	style := m.panelStyle()
 	if borderColor != "" {
@@ -91,9 +98,8 @@ func (m *UndoModel) sizedPanel(width, height int, borderColor lipgloss.Color) li
 // NewUndoModel creates a new undo selection model
 func NewUndoModel(tree *treeview.Tree[log.SessionSummary], opts ...Option) *UndoModel {
 	m := &UndoModel{
-		width:      80,
-		height:     24,
-		splitRatio: 0.5, // 50/50 split by default
+		width:  80,
+		height: 24,
 	}
 
 	initOpts := append([]Option{WithTheme(theme.Default())}, opts...)
@@ -107,7 +113,7 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary], opts ...Option) *Undo
 	keyMap.Reset = []string{}       // Disable reset
 
 	// Use half width for the tree view initially
-	treeWidth := int(float64(m.width)*m.splitRatio) - 2
+	treeWidth := m.treeContentWidth()
 	m.TuiTreeModel = treeview.NewTuiTreeModel(tree,
 		treeview.WithTuiWidth[log.SessionSummary](treeWidth),
 		treeview.WithTuiHeight[log.SessionSummary](m.height-4),
@@ -134,7 +140,7 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		// Update the tree width to account for split
-		treeWidth := int(float64(m.width)*m.splitRatio) - 2
+		treeWidth := m.treeContentWidth()
 		resizeMsg := tea.WindowSizeMsg{
 			Width:  treeWidth,
 			Height: m.height - 4,
@@ -304,7 +310,7 @@ func (m *UndoModel) View() string {
 // renderMainView renders the split view with session list and preview
 func (m *UndoModel) renderMainView() string {
 	// Calculate widths
-	leftWidth := int(float64(m.width) * m.splitRatio)
+	leftWidth := m.width / 2
 	rightWidth := m.width - leftWidth
 
 	// Left panel - session list

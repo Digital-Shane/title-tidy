@@ -1,9 +1,9 @@
 github.com/Digital-Shane/omdb v1.1.0 h1:MNDBJAHrV0lYObo5RBgtY6EwINvBah47SSMnFJBw8UM=
 github.com/Digital-Shane/omdb v1.1.0/go.mod h1:NJC3ghCSVJrIYv/tKABPn7EWPjxplIdIC3tBWoOD6bU=
-github.com/Digital-Shane/treeview v1.8.1 h1:/Z6Sfs7nnQw2rJHTt/xoVo5ICSMAa1Ij2XnHq1+UOqc=
-github.com/Digital-Shane/treeview v1.8.1/go.mod h1:ayLS+EA0aOK9GToyltxW3NTnL8Hag5HQOst6/qV934c=
 github.com/Digital-Shane/treeview v1.8.2 h1:Ey4yrt98PNNr6/EFCauq/Q/K0z5X5VJcjf43dDYUD8A=
 github.com/Digital-Shane/treeview v1.8.2/go.mod h1:ayLS+EA0aOK9GToyltxW3NTnL8Hag5HQOst6/qV934c=
+github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
+github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
 github.com/aymanbagabas/go-udiff v0.3.1 h1:LV+qyBQ2pqe0u42ZsUEtPiCaUoqgA9gYRDs3vj1nolY=

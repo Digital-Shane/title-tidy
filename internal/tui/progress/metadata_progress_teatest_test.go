@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/google/go-cmp/cmp"
 )
@@ -67,6 +68,27 @@ type metadataFakeProvider struct {
 
 func newMetadataFakeProvider(name string, fetch func(provider.FetchRequest) (*provider.Metadata, error)) *metadataFakeProvider {
 	return &metadataFakeProvider{name: name, fetchFunc: fetch}
+}
+
+func configureTestEngine(model *MetadataProgressModel, tree *treeview.Tree[treeview.FileInfo], prov provider.Provider, workerCount int) {
+	cache := true
+	cfg := core.MetadataEngineConfig{
+		Tree:        tree,
+		WorkerCount: workerCount,
+		Providers: core.MetadataProvidersConfig{
+			TMDB: core.TMDBProviderConfig{
+				Enabled:      true,
+				APIKey:       "test-key",
+				Language:     "en-US",
+				CacheEnabled: &cache,
+				Provider:     prov,
+			},
+		},
+	}
+	engine := core.NewMetadataEngine(cfg)
+	model.engine = engine
+	model.summary = engine.SummarySnapshot()
+	model.shouldRun = true
 }
 
 func (p *metadataFakeProvider) Name() string { return p.name }
@@ -136,7 +158,7 @@ func TestMetadataProgressCompletesAndStoresResults(t *testing.T) {
 	}
 
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
-	model.tmdbProvider = newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
+	configureTestEngine(model, tree, newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		meta := &provider.Metadata{
 			Core: provider.CoreMetadata{
 				Title:      req.Name,
@@ -150,16 +172,14 @@ func TestMetadataProgressCompletesAndStoresResults(t *testing.T) {
 			IDs:      map[string]string{"kind": string(req.MediaType)},
 		}
 		return meta, nil
-	})
-	model.workerCount = 2
-	model.activeProviders = []string{"fakeTMDB"}
+	}), 2)
 	tm := newMetadataProgressTestModel(t, model, teatest.WithInitialTermSize(100, 24))
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 
 	finalModel := finalMetadataProgressModel(t, tm)
 	output := finalOutput(t, tm)
 
-	if diff := cmp.Diff(finalModel.totalItems, finalModel.processedItems); diff != "" {
+	if diff := cmp.Diff(finalModel.summary.TotalItems, finalModel.summary.ProcessedItems); diff != "" {
 		t.Errorf("processedItems mismatch (-want +got):\n%s", diff)
 	}
 
@@ -231,13 +251,11 @@ func TestMetadataProgressQuitKeys(t *testing.T) {
 			var readyOnce sync.Once
 			var releaseOnce sync.Once
 
-			model.tmdbProvider = newMetadataFakeProvider("fakeTMDB", func(provider.FetchRequest) (*provider.Metadata, error) {
+			configureTestEngine(model, tree, newMetadataFakeProvider("fakeTMDB", func(provider.FetchRequest) (*provider.Metadata, error) {
 				readyOnce.Do(func() { close(ready) })
 				<-release
 				return nil, context.Canceled
-			})
-			model.workerCount = 1
-			model.activeProviders = []string{"fakeTMDB"}
+			}), 1)
 			releaseClose := func() { releaseOnce.Do(func() { close(release) }) }
 			t.Cleanup(releaseClose)
 
@@ -257,8 +275,8 @@ func TestMetadataProgressQuitKeys(t *testing.T) {
 				t.Errorf("Err() = %v, want nil on quit", finalModel.Err())
 			}
 
-			if finalModel.processedItems > finalModel.totalItems {
-				t.Errorf("processedItems = %d exceeds totalItems = %d", finalModel.processedItems, finalModel.totalItems)
+			if finalModel.summary.ProcessedItems > finalModel.summary.TotalItems {
+				t.Errorf("processedItems = %d exceeds totalItems = %d", finalModel.summary.ProcessedItems, finalModel.summary.TotalItems)
 			}
 		})
 	}
@@ -275,7 +293,7 @@ func TestMetadataProgressWindowResize(t *testing.T) {
 	var readyOnce sync.Once
 	var releaseOnce sync.Once
 
-	model.tmdbProvider = newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
+	configureTestEngine(model, tree, newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		readyOnce.Do(func() { close(ready) })
 		<-release
 		meta := &provider.Metadata{
@@ -288,9 +306,7 @@ func TestMetadataProgressWindowResize(t *testing.T) {
 			},
 		}
 		return meta, nil
-	})
-	model.workerCount = 1
-	model.activeProviders = []string{"fakeTMDB"}
+	}), 1)
 	releaseClose := func() { releaseOnce.Do(func() { close(release) }) }
 	t.Cleanup(releaseClose)
 
@@ -319,18 +335,16 @@ func TestMetadataProgressDisplaysErrorsAndExposesErr(t *testing.T) {
 
 	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
-	model.tmdbProvider = newMetadataFakeProvider("fakeTMDB", func(provider.FetchRequest) (*provider.Metadata, error) {
+	configureTestEngine(model, tree, newMetadataFakeProvider("fakeTMDB", func(provider.FetchRequest) (*provider.Metadata, error) {
 		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "AUTH_FAILED", Message: "bad key", Retry: false}
-	})
-	model.workerCount = 1
-	model.activeProviders = []string{"fakeTMDB"}
+	}), 1)
 	tm := newMetadataProgressTestModel(t, model, teatest.WithInitialTermSize(90, 20))
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 
 	finalModel := finalMetadataProgressModel(t, tm)
 	output := finalOutput(t, tm)
 
-	wantErrors := finalModel.totalItems
+	wantErrors := finalModel.summary.TotalItems
 	if diff := cmp.Diff(wantErrors, len(finalModel.errors)); diff != "" {
 		t.Errorf("errors length mismatch (-want +got):\n%s", diff)
 	}

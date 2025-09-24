@@ -7,7 +7,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	providerInit "github.com/Digital-Shane/title-tidy/internal/provider/init"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 	"github.com/Digital-Shane/treeview"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
