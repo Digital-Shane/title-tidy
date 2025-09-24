@@ -5,23 +5,10 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/lipgloss"
-)
-
-// Color scheme used throughout the rename visualization TUI.
-var (
-	// Core colors (5 colors)
-	ColorPrimary    = lipgloss.Color("#3a6b4a") // Dark green - main text, headers
-	ColorSecondary  = lipgloss.Color("#5a8c6a") // Medium green - shows, status bars
-	ColorAccent     = lipgloss.Color("#8fc279") // Light green - borders, highlights
-	ColorBackground = lipgloss.Color("#f8f8f8") // Light background
-	ColorMuted      = lipgloss.Color("#9ba8c0") // Gray - episodes, secondary text
-
-	// State colors (2 colors)
-	ColorSuccess = lipgloss.Color("#5dc796") // Success operations
-	ColorError   = lipgloss.Color("#f04c56") // Error states
 )
 
 // ---- predicate helpers ----
@@ -79,19 +66,15 @@ func deletionError() func(*treeview.Node[treeview.FileInfo]) bool {
 	})
 }
 
-// selectTreeIconSet chooses the best icon set for tree items based on terminal capabilities
-func selectTreeIconSet() map[string]string {
-	return SelectIcons()
-}
-
 // CreateRenameProvider constructs the [treeview.DefaultNodeProvider] used by
 // the TUI and instant execution paths. It wires together:
 //   - icon rules (status precedes type so success/error override type icons)
 //   - style rules (normal & focused variants) with precedence similar to icons
-//   - the custom [renameFormatter] for inline original→new labeling.
+//   - the custom [RenameFormatter] for inline original→new labeling.
 func CreateRenameProvider() *treeview.DefaultNodeProvider[treeview.FileInfo] {
-	// Detect terminal capabilities and select appropriate icon set
-	iconSet := selectTreeIconSet()
+	th := theme.Default()
+	colors := th.Colors()
+	iconSet := th.IconSet()
 
 	// Icon rules (order matters: status first)
 	// Deletion status icons (highest priority)
@@ -117,54 +100,54 @@ func CreateRenameProvider() *treeview.DefaultNodeProvider[treeview.FileInfo] {
 	// Style rules (most specific first)
 	showStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaShow),
-		lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true),
-		lipgloss.NewStyle().Foreground(ColorBackground).Bold(true).Background(ColorSecondary).PaddingRight(1),
+		lipgloss.NewStyle().Foreground(colors.Primary).Bold(true),
+		lipgloss.NewStyle().Foreground(colors.Background).Bold(true).Background(colors.Secondary).PaddingRight(1),
 	)
 	seasonStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaSeason),
-		lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true),
-		lipgloss.NewStyle().Foreground(ColorBackground).Bold(true).Background(ColorPrimary),
+		lipgloss.NewStyle().Foreground(colors.Secondary).Bold(true),
+		lipgloss.NewStyle().Foreground(colors.Background).Bold(true).Background(colors.Primary),
 	)
 	episodeStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaEpisode),
-		lipgloss.NewStyle().Foreground(ColorMuted),
-		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorPrimary),
+		lipgloss.NewStyle().Foreground(colors.Muted),
+		lipgloss.NewStyle().Foreground(colors.Background).Background(colors.Primary),
 	)
 	movieStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaMovie),
-		lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true),
-		lipgloss.NewStyle().Foreground(ColorBackground).Bold(true).Background(ColorSecondary).PaddingRight(1),
+		lipgloss.NewStyle().Foreground(colors.Primary).Bold(true),
+		lipgloss.NewStyle().Foreground(colors.Background).Bold(true).Background(colors.Secondary).PaddingRight(1),
 	)
 	movieFileStyleRule := treeview.WithStyleRule(
 		typeIs(core.MediaMovieFile),
-		lipgloss.NewStyle().Foreground(ColorMuted),
-		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorPrimary),
+		lipgloss.NewStyle().Foreground(colors.Muted),
+		lipgloss.NewStyle().Foreground(colors.Background).Background(colors.Primary),
 	)
 	successStyleRule := treeview.WithStyleRule(
 		statusIs(core.RenameStatusSuccess),
-		lipgloss.NewStyle().Foreground(ColorSuccess),
-		lipgloss.NewStyle().Foreground(ColorSuccess).Background(ColorBackground),
+		lipgloss.NewStyle().Foreground(colors.Success),
+		lipgloss.NewStyle().Foreground(colors.Success).Background(colors.Background),
 	)
 	errorStyleRule := treeview.WithStyleRule(
 		statusIs(core.RenameStatusError),
-		lipgloss.NewStyle().Foreground(ColorError),
-		lipgloss.NewStyle().Foreground(ColorError).Background(ColorBackground),
+		lipgloss.NewStyle().Foreground(colors.Error),
+		lipgloss.NewStyle().Foreground(colors.Error).Background(colors.Background),
 	)
 	// Deletion style rules
 	markedForDeletionStyleRule := treeview.WithStyleRule(
 		markedForDeletion(),
-		lipgloss.NewStyle().Foreground(ColorError).Strikethrough(true),
-		lipgloss.NewStyle().Foreground(ColorError).Background(ColorBackground).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(colors.Error).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(colors.Error).Background(colors.Background).Strikethrough(true),
 	)
 	deletionSuccessStyleRule := treeview.WithStyleRule(
 		deletionSuccess(),
-		lipgloss.NewStyle().Foreground(ColorMuted).Strikethrough(true),
-		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorMuted).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(colors.Muted).Strikethrough(true),
+		lipgloss.NewStyle().Foreground(colors.Background).Background(colors.Muted).Strikethrough(true),
 	)
 	defaultStyleRule := treeview.WithStyleRule(
 		func(*treeview.Node[treeview.FileInfo]) bool { return true },
-		lipgloss.NewStyle().Foreground(ColorPrimary),
-		lipgloss.NewStyle().Foreground(ColorBackground).Background(ColorPrimary),
+		lipgloss.NewStyle().Foreground(colors.Primary),
+		lipgloss.NewStyle().Foreground(colors.Background).Background(colors.Primary),
 	)
 
 	formatterRule := treeview.WithFormatter(RenameFormatter)
@@ -183,7 +166,7 @@ func CreateRenameProvider() *treeview.DefaultNodeProvider[treeview.FileInfo] {
 // RenameFormatter produces the display label for a node during visualization.
 //
 //   - If no metadata or no proposed NewName exists, the original name is returned unchanged.
-//   - On success, only the new name is shown (keeps the tree clean post‑apply).
+//   - On success, only the new name is shown (keeps the tree clean post-apply).
 //   - On error, the original name plus the error message are shown.
 //   - For virtual directory creation, a [NEW] prefix is prepended to the proposed name.
 //   - If the new name equals the original, the original is shown.

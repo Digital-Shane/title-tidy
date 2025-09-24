@@ -11,90 +11,47 @@ import (
 )
 
 func TestMetadataProgressShouldRunFFProbe(t *testing.T) {
-	ffprobeModel := func() *MetadataProgressModel {
-		return &MetadataProgressModel{ffprobeProvider: newMetadataFakeProvider("ffprobe", nil)}
-	}
-
 	movieNode := newMetadataFileNode("movie", "movie.mkv", "/library/movie.mkv", false)
 	dirNode := newMetadataFileNode("dir", "movie", "/library/movie", true)
 	subtitleNode := newMetadataFileNode("subtitle", "movie.srt", "/library/movie.srt", false)
 
 	tests := []struct {
-		name  string
-		model func() *MetadataProgressModel
-		item  MetadataItem
-		want  bool
+		name string
+		item MetadataItem
+		want bool
 	}{
 		{
-			name:  "NoProvider",
-			model: func() *MetadataProgressModel { return &MetadataProgressModel{} },
-			item: MetadataItem{
-				MediaType: provider.MediaTypeMovie,
-				Node:      movieNode,
-			},
+			name: "NoNode",
+			item: MetadataItem{MediaType: provider.MediaTypeMovie},
 			want: false,
 		},
 		{
-			name:  "NoNode",
-			model: ffprobeModel,
-			item: MetadataItem{
-				MediaType: provider.MediaTypeMovie,
-			},
+			name: "DirNode",
+			item: MetadataItem{MediaType: provider.MediaTypeMovie, Node: dirNode},
 			want: false,
 		},
 		{
-			name:  "UnsupportedMediaType",
-			model: ffprobeModel,
-			item: MetadataItem{
-				MediaType: provider.MediaTypeShow,
-				Node:      movieNode,
-			},
+			name: "NonVideoFile",
+			item: MetadataItem{MediaType: provider.MediaTypeMovie, Node: subtitleNode},
 			want: false,
 		},
 		{
-			name:  "DirectoryNode",
-			model: ffprobeModel,
-			item: MetadataItem{
-				MediaType: provider.MediaTypeMovie,
-				Node:      dirNode,
-			},
-			want: false,
-		},
-		{
-			name:  "NonVideoFile",
-			model: ffprobeModel,
-			item: MetadataItem{
-				MediaType: provider.MediaTypeMovie,
-				Node:      subtitleNode,
-			},
-			want: false,
-		},
-		{
-			name:  "MovieVideo",
-			model: ffprobeModel,
-			item: MetadataItem{
-				MediaType: provider.MediaTypeMovie,
-				Node:      movieNode,
-			},
+			name: "MovieVideo",
+			item: MetadataItem{MediaType: provider.MediaTypeMovie, Node: movieNode},
 			want: true,
 		},
 		{
-			name:  "EpisodeVideo",
-			model: ffprobeModel,
-			item: MetadataItem{
-				MediaType: provider.MediaTypeEpisode,
-				Node:      movieNode,
-			},
+			name: "EpisodeVideo",
+			item: MetadataItem{MediaType: provider.MediaTypeEpisode, Node: movieNode},
 			want: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			model := tc.model()
-			got := model.shouldRunFFProbe(tc.item)
+			got := core.ShouldRunFFProbe(tc.item)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("shouldRunFFProbe(%s) mismatch (-want +got):\n%s", tc.name, diff)
+				t.Errorf("ShouldRunFFProbe(%s) mismatch (-want +got):%s", tc.name, diff)
 			}
 		})
 	}

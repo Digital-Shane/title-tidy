@@ -16,12 +16,12 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 
 	t.Setenv("HOME", t.TempDir())
 
-	origTMDBValidate := tmdbValidateCommand
-	origTMDBDebounce := tmdbDebounceCommand
-	origOMDBValidate := omdbValidateCommand
-	origOMDBDebounce := omdbDebounceCommand
+	model, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
 
-	tmdbValidateCommand = func(apiKey string) tea.Cmd {
+	model.tmdbValidate = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			if apiKey == "" {
 				return tmdbValidationMsg{apiKey: apiKey, valid: false}
@@ -29,14 +29,12 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 			return tmdbValidationMsg{apiKey: apiKey, valid: !strings.Contains(apiKey, "invalid")}
 		}
 	}
-
-	tmdbDebounceCommand = func(apiKey string) tea.Cmd {
+	model.tmdbDebounce = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			return tmdbValidateCmd{apiKey: apiKey}
 		}
 	}
-
-	omdbValidateCommand = func(apiKey string) tea.Cmd {
+	model.omdbValidate = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			if len(apiKey) < 4 {
 				return omdbValidationMsg{apiKey: apiKey, valid: false}
@@ -44,23 +42,10 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 			return omdbValidationMsg{apiKey: apiKey, valid: !strings.Contains(apiKey, "invalid")}
 		}
 	}
-
-	omdbDebounceCommand = func(apiKey string) tea.Cmd {
+	model.omdbDebounce = func(apiKey string) tea.Cmd {
 		return func() tea.Msg {
 			return omdbValidateCmd{apiKey: apiKey}
 		}
-	}
-
-	t.Cleanup(func() {
-		tmdbValidateCommand = origTMDBValidate
-		tmdbDebounceCommand = origTMDBDebounce
-		omdbValidateCommand = origOMDBValidate
-		omdbDebounceCommand = origOMDBDebounce
-	})
-
-	model, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
 	}
 
 	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(100, 36))

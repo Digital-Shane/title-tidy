@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -96,7 +97,7 @@ func TestIndexProgressTUICompletesAndReportsProgress(t *testing.T) {
 		return fakeTree, nil
 	})
 
-	model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 2, IncludeDirs: true})
+	model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 2, IncludeDirs: true}, theme.Default())
 	tm := newIndexProgressTestModel(t, model, teatest.WithInitialTermSize(100, 20))
 
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
@@ -160,7 +161,7 @@ func TestIndexProgressTUIQuitKeys(t *testing.T) {
 				return &treeview.Tree[treeview.FileInfo]{}, nil
 			})
 
-			model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1})
+			model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1}, theme.Default())
 			tm := newIndexProgressTestModel(t, model)
 			<-ready
 			tm.Send(tea.KeyMsg{Type: tc.key})
@@ -198,7 +199,7 @@ func TestIndexProgressTUIWindowResize(t *testing.T) {
 		return &treeview.Tree[treeview.FileInfo]{}, nil
 	})
 
-	model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1})
+	model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1}, theme.Default())
 	tm := newIndexProgressTestModel(t, model)
 	<-ready
 	tm.Send(tea.WindowSizeMsg{Width: 100, Height: 40})
@@ -225,7 +226,7 @@ func TestIndexProgressTUIErrorState(t *testing.T) {
 		return nil, errBoom
 	})
 
-	model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1})
+	model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1}, theme.Default())
 	tm := newIndexProgressTestModel(t, model)
 
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/title-tidy/internal/tui/components"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -22,15 +22,18 @@ func TestUndoCompleteMsgAccessors(t *testing.T) {
 }
 
 func TestRenameModelGetIconFallback(t *testing.T) {
-	model := NewRenameModel(treeWithRoots(t, newTestNode("root", true)))
-	model.iconSet = map[string]string{"stats": "STAT"}
+	customTheme := theme.New(theme.WithIconSet(theme.IconSet{"stats": "STAT"}))
+	model := NewRenameModel(
+		treeWithRoots(t, newTestNode("root", true)),
+		WithTheme(customTheme),
+	)
 
 	if got := model.getIcon("stats"); got != "STAT" {
 		t.Fatalf("getIcon(stats) = %q, want %q", got, "STAT")
 	}
 
 	got := model.getIcon("needrename")
-	if want := components.ASCIIIcons["needrename"]; got != want {
+	if want := customTheme.Icon("needrename"); got != want {
 		t.Fatalf("getIcon(needrename) = %q, want %q", got, want)
 	}
 }

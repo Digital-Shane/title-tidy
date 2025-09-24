@@ -1,10 +1,9 @@
-package provider_test
+package provider
 
 import (
 	"context"
 	"testing"
 
-	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -12,29 +11,29 @@ import (
 type MockProvider struct {
 	name         string
 	version      string
-	capabilities provider.ProviderCapabilities
-	variables    []provider.TemplateVariable
-	fetchFunc    func(context.Context, provider.FetchRequest) (*provider.Metadata, error)
+	capabilities ProviderCapabilities
+	variables    []TemplateVariable
+	fetchFunc    func(context.Context, FetchRequest) (*Metadata, error)
 	configured   bool
 }
 
 func (m *MockProvider) Name() string        { return m.name }
 func (m *MockProvider) Version() string     { return m.version }
 func (m *MockProvider) Description() string { return "Mock provider for testing" }
-func (m *MockProvider) Capabilities() provider.ProviderCapabilities {
+func (m *MockProvider) Capabilities() ProviderCapabilities {
 	return m.capabilities
 }
-func (m *MockProvider) SupportedVariables() []provider.TemplateVariable {
+func (m *MockProvider) SupportedVariables() []TemplateVariable {
 	return m.variables
 }
-func (m *MockProvider) ConfigSchema() provider.ConfigSchema {
-	return provider.ConfigSchema{}
+func (m *MockProvider) ConfigSchema() ConfigSchema {
+	return ConfigSchema{}
 }
 func (m *MockProvider) Configure(config map[string]interface{}) error {
 	m.configured = true
 	return nil
 }
-func (m *MockProvider) Fetch(ctx context.Context, req provider.FetchRequest) (*provider.Metadata, error) {
+func (m *MockProvider) Fetch(ctx context.Context, req FetchRequest) (*Metadata, error) {
 	if m.fetchFunc != nil {
 		return m.fetchFunc(ctx, req)
 	}
@@ -42,13 +41,13 @@ func (m *MockProvider) Fetch(ctx context.Context, req provider.FetchRequest) (*p
 }
 
 func TestRegistry_Register(t *testing.T) {
-	registry := provider.NewRegistry()
+	registry := NewRegistry()
 
 	mock := &MockProvider{
 		name:    "test",
 		version: "1.0.0",
-		capabilities: provider.ProviderCapabilities{
-			MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+		capabilities: ProviderCapabilities{
+			MediaTypes: []MediaType{MediaTypeMovie},
 		},
 	}
 
@@ -66,13 +65,13 @@ func TestRegistry_Register(t *testing.T) {
 }
 
 func TestRegistry_Get(t *testing.T) {
-	registry := provider.NewRegistry()
+	registry := NewRegistry()
 
 	mock := &MockProvider{
 		name:    "test",
 		version: "1.0.0",
-		capabilities: provider.ProviderCapabilities{
-			MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+		capabilities: ProviderCapabilities{
+			MediaTypes: []MediaType{MediaTypeMovie},
 		},
 	}
 
@@ -95,21 +94,21 @@ func TestRegistry_Get(t *testing.T) {
 }
 
 func TestRegistry_List(t *testing.T) {
-	registry := provider.NewRegistry()
+	registry := NewRegistry()
 
 	// Register providers with different priorities
 	mock1 := &MockProvider{
 		name:    "low",
 		version: "1.0.0",
-		capabilities: provider.ProviderCapabilities{
-			MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+		capabilities: ProviderCapabilities{
+			MediaTypes: []MediaType{MediaTypeMovie},
 		},
 	}
 	mock2 := &MockProvider{
 		name:    "high",
 		version: "1.0.0",
-		capabilities: provider.ProviderCapabilities{
-			MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+		capabilities: ProviderCapabilities{
+			MediaTypes: []MediaType{MediaTypeMovie},
 		},
 	}
 
@@ -130,13 +129,13 @@ func TestRegistry_List(t *testing.T) {
 }
 
 func TestRegistry_Enable(t *testing.T) {
-	registry := provider.NewRegistry()
+	registry := NewRegistry()
 
 	mock := &MockProvider{
 		name:    "test",
 		version: "1.0.0",
-		capabilities: provider.ProviderCapabilities{
-			MediaTypes:   []provider.MediaType{provider.MediaTypeMovie},
+		capabilities: ProviderCapabilities{
+			MediaTypes:   []MediaType{MediaTypeMovie},
 			RequiresAuth: false,
 		},
 	}
@@ -149,8 +148,8 @@ func TestRegistry_Enable(t *testing.T) {
 		t.Errorf("Enable() error = %v, want nil", err)
 	}
 
-	if !registry.IsEnabled("test") {
-		t.Error("IsEnabled() = false, want true")
+	if !registry.enabledStatus["test"] {
+		t.Error("enabledStatus[test] = false, want true")
 	}
 
 	// Test enabling non-existent provider
@@ -161,13 +160,13 @@ func TestRegistry_Enable(t *testing.T) {
 }
 
 func TestRegistry_Configure(t *testing.T) {
-	registry := provider.NewRegistry()
+	registry := NewRegistry()
 
 	mock := &MockProvider{
 		name:    "test",
 		version: "1.0.0",
-		capabilities: provider.ProviderCapabilities{
-			MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+		capabilities: ProviderCapabilities{
+			MediaTypes: []MediaType{MediaTypeMovie},
 		},
 	}
 
@@ -195,35 +194,35 @@ func TestRegistry_Configure(t *testing.T) {
 
 func TestValidateCapabilities(t *testing.T) {
 	// Test valid capabilities
-	caps := provider.ProviderCapabilities{
-		MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+	caps := ProviderCapabilities{
+		MediaTypes: []MediaType{MediaTypeMovie},
 	}
-	err := provider.ValidateCapabilities(caps)
+	err := ValidateCapabilities(caps)
 	if err != nil {
 		t.Errorf("ValidateCapabilities() error = %v, want nil", err)
 	}
 
 	// Test missing media types
-	caps = provider.ProviderCapabilities{
-		MediaTypes: []provider.MediaType{},
+	caps = ProviderCapabilities{
+		MediaTypes: []MediaType{},
 	}
-	err = provider.ValidateCapabilities(caps)
+	err = ValidateCapabilities(caps)
 	if err == nil {
 		t.Error("ValidateCapabilities() expected error for no media types, got nil")
 	}
 
 	// Test language-agnostic provider
-	caps = provider.ProviderCapabilities{
-		MediaTypes: []provider.MediaType{provider.MediaTypeMovie},
+	caps = ProviderCapabilities{
+		MediaTypes: []MediaType{MediaTypeMovie},
 	}
-	err = provider.ValidateCapabilities(caps)
+	err = ValidateCapabilities(caps)
 	if err != nil {
 		t.Errorf("ValidateCapabilities() error = %v for language-agnostic, want nil", err)
 	}
 }
 
 func TestProviderError(t *testing.T) {
-	err := &provider.ProviderError{
+	err := &ProviderError{
 		Provider:   "tmdb",
 		Code:       "RATE_LIMIT",
 		Message:    "API rate limit exceeded",

@@ -4,24 +4,24 @@ import (
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/title-tidy/internal/tui/components"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/google/go-cmp/cmp"
 )
 
 func newTestUndoModel() *UndoModel {
-	return &UndoModel{
-		iconSet: map[string]string{
-			"check":  "✓",
-			"error":  "✗",
-			"link":   "→",
-			"delete": "×",
-			"folder": "📁",
-		},
-	}
+	customTheme := theme.New(theme.WithIconSet(theme.IconSet{
+		"check":  "✓",
+		"error":  "✗",
+		"link":   "→",
+		"delete": "×",
+		"folder": "📁",
+	}))
+	return &UndoModel{theme: customTheme}
 }
 
 func TestUndoModelGetOperationIcon(t *testing.T) {
 	m := newTestUndoModel()
+	unknownIcon := m.theme.Icon("unknown")
 
 	tests := []struct {
 		name string
@@ -56,7 +56,7 @@ func TestUndoModelGetOperationIcon(t *testing.T) {
 		{
 			name: "Unknown",
 			op:   log.OperationLog{Type: log.OperationType("other")},
-			want: components.ASCIIIcons["unknown"],
+			want: unknownIcon,
 		},
 	}
 
@@ -78,8 +78,8 @@ func TestUndoModelGetIconFallback(t *testing.T) {
 		t.Errorf("getIcon(check) = %q, want %q", got, "✓")
 	}
 
-	if got := m.getIcon("unknown"); got != components.ASCIIIcons["unknown"] {
-		t.Errorf("getIcon(unknown) = %q, want %q", got, components.ASCIIIcons["unknown"])
+	if got := m.getIcon("unknown"); got != m.theme.Icon("unknown") {
+		t.Errorf("getIcon(unknown) = %q, want %q", got, m.theme.Icon("unknown"))
 	}
 }
 

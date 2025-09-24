@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Updated
 * TUI testing to use teatest for integration testing
 * README to document OMDB provider configuration
+* Split TUI package into subpackages and extracted core filesystem operations
+### Added
+* Centralized theme into a central provider for all TUIs
 
 ## [v1.12.0] - 2025-09-19
 ### Added

@@ -16,15 +16,11 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-// selectConfigIcons chooses the best icon set for the config UI
-func selectConfigIcons() map[string]string {
-	return components.SelectIcons()
-}
 
 // scrollTickMsg is sent periodically to enable auto-scrolling
 type scrollTickMsg struct{}
@@ -51,13 +47,6 @@ type omdbValidateCmd struct {
 	apiKey string
 }
 
-var (
-	tmdbValidateCommand = validateTMDBAPIKey
-	tmdbDebounceCommand = debouncedTMDBValidate
-	omdbValidateCommand = validateOMDBAPIKey
-	omdbDebounceCommand = debouncedOMDBValidate
-)
-
 const (
 	providerColumnShared = iota
 	providerColumnFFProbe
@@ -77,6 +66,31 @@ const (
 	SectionLogging
 	SectionProviders
 )
+
+// Option configures the configuration TUI model.
+type Option func(*Model)
+
+// WithTheme overrides the default theme used by the configuration UI.
+func WithTheme(th theme.Theme) Option {
+	return func(m *Model) {
+		m.theme = th
+	}
+}
+
+func (m *Model) ensureTheme() {
+	if m.icons != nil {
+		return
+	}
+	if m.theme.Colors() == (theme.Colors{}) {
+		m.theme = theme.Default()
+	}
+	m.icons = m.theme.IconSet()
+}
+
+func (m *Model) iconSet() map[string]string {
+	m.ensureTheme()
+	return m.icons
+}
 
 // Model is the Bubble Tea model for the configuration UI
 type Model struct {
@@ -109,10 +123,16 @@ type Model struct {
 	variablesView       viewport.Model           // viewport for scrolling variables list
 	autoScroll          bool                     // whether auto-scrolling is enabled
 	templateRegistry    *config.TemplateRegistry // registry for template variables
+	theme               theme.Theme
+	icons               map[string]string
+	tmdbValidate        func(string) tea.Cmd
+	tmdbDebounce        func(string) tea.Cmd
+	omdbValidate        func(string) tea.Cmd
+	omdbDebounce        func(string) tea.Cmd
 }
 
 // New creates a new configuration UI model
-func New() (*Model, error) {
+func New(opts ...Option) (*Model, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -166,14 +186,26 @@ func New() (*Model, error) {
 		providerColumnFocus: providerColumnShared,
 		variablesView:       viewport.New(0, 0),
 		autoScroll:          true,
+		tmdbValidate:        validateTMDBAPIKey,
+		tmdbDebounce:        debouncedTMDBValidate,
+		omdbValidate:        validateOMDBAPIKey,
+		omdbDebounce:        debouncedOMDBValidate,
 	}
+
+	initOpts := append([]Option{WithTheme(theme.Default())}, opts...)
+	for _, opt := range initOpts {
+		opt(m)
+	}
+
+	m.ensureTheme()
+	m.icons = m.theme.IconSet()
 
 	return m, nil
 }
 
 // NewWithRegistry creates a new configuration UI model with a template registry
-func NewWithRegistry(templateReg *config.TemplateRegistry) (*Model, error) {
-	m, err := New()
+func NewWithRegistry(templateReg *config.TemplateRegistry, opts ...Option) (*Model, error) {
+	m, err := New(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +220,7 @@ func (m *Model) Init() tea.Cmd {
 
 // tickCmd returns a command that sends a tick message for auto-scrolling
 func (m *Model) tickCmd() tea.Cmd {
-	return tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
+	return components.Tick(3*time.Second, func(time.Time) tea.Msg {
 		return scrollTickMsg{}
 	})
 }
@@ -229,7 +261,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Only validate if the API key hasn't changed since the command was issued
 		if msg.apiKey == m.tmdbAPIKey && msg.apiKey != "" && msg.apiKey != m.tmdbValidatedKey {
 			m.tmdbValidation = "validating"
-			return m, tmdbValidateCommand(msg.apiKey)
+			return m, m.tmdbValidate(msg.apiKey)
 		}
 		return m, nil
 
@@ -247,7 +279,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case omdbValidateCmd:
 		if msg.apiKey == m.omdbAPIKey && msg.apiKey != "" && msg.apiKey != m.omdbValidatedKey {
 			m.omdbValidation = "validating"
-			return m, omdbValidateCommand(msg.apiKey)
+			return m, m.omdbValidate(msg.apiKey)
 		}
 		return m, nil
 
@@ -368,13 +400,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Backspace in TMDB API key field
 				m.deleteTMDBChar()
 				// Trigger debounced validation after deletion
-				return m, tmdbDebounceCommand(m.tmdbAPIKey)
+				return m, m.tmdbDebounce(m.tmdbAPIKey)
 			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnTMDB && m.tmdbSubfocus == 2 {
 				// Backspace in TMDB language field
 				m.deleteTMDBChar()
 			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnOMDB && m.omdbSubfocus == 1 {
 				m.deleteOMDBChar()
-				return m, omdbDebounceCommand(m.omdbAPIKey)
+				return m, m.omdbDebounce(m.omdbAPIKey)
 			} else if m.activeSection == SectionProviders && m.providerColumnFocus == providerColumnShared {
 				m.deleteWorkerCountChar()
 			} else if m.activeSection != SectionLogging && m.activeSection != SectionProviders {
@@ -466,7 +498,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.omdbValidatedKey = ""
 							if len(m.omdbAPIKey) > 0 {
 								m.omdbValidation = "validating"
-								cmd = omdbDebounceCommand(m.omdbAPIKey)
+								cmd = m.omdbDebounce(m.omdbAPIKey)
 							} else {
 								m.omdbValidation = ""
 							}
@@ -517,7 +549,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.omdbValidatedKey = ""
 							if len(m.omdbAPIKey) > 0 {
 								m.omdbValidation = "validating"
-								cmd = omdbDebounceCommand(m.omdbAPIKey)
+								cmd = m.omdbDebounce(m.omdbAPIKey)
 							} else {
 								m.omdbValidation = ""
 							}
@@ -563,7 +595,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch m.tmdbSubfocus {
 					case 1:
 						m.insertTMDBAPIKey(runes)
-						return m, tmdbDebounceCommand(m.tmdbAPIKey)
+						return m, m.tmdbDebounce(m.tmdbAPIKey)
 					case 2:
 						for _, r := range runes {
 							if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '-' {
@@ -574,7 +606,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case providerColumnOMDB:
 					if m.omdbSubfocus == 1 {
 						m.insertOMDBAPIKey(runes)
-						return m, omdbDebounceCommand(m.omdbAPIKey)
+						return m, m.omdbDebounce(m.omdbAPIKey)
 					}
 				case providerColumnShared:
 					for _, r := range runes {
@@ -623,7 +655,7 @@ func (m *Model) View() string {
 		BorderForeground(lipgloss.Color("#4a5568"))
 
 	// Title
-	icons := selectConfigIcons()
+	icons := m.iconSet()
 	title := titleStyle.Render(icons["title"] + " Title-Tidy Format Configuration")
 
 	// Tabs
@@ -879,7 +911,7 @@ func (m *Model) buildLoggingInputField(width int) string {
 		enabledText = "Disabled"
 	}
 
-	icons := selectConfigIcons()
+	icons := m.iconSet()
 	if m.loggingSubfocus == 0 {
 		if m.loggingEnabled {
 			enabledToggle = focusedStyle.Render("[" + icons["check"] + "] " + enabledText)
@@ -1263,7 +1295,7 @@ func (m *Model) generatePreviews() []preview {
 			enabledStatus = "Enabled"
 		}
 
-		icons := selectConfigIcons()
+		icons := m.iconSet()
 		return []preview{
 			{icons["check"], "Logging", enabledStatus},
 			{icons["calendar"], "Retention", m.loggingRetention + " days"},
@@ -1317,7 +1349,7 @@ func (m *Model) generatePreviews() []preview {
 			ffprobeStatus = "Enabled"
 		}
 
-		icons := selectConfigIcons()
+		icons := m.iconSet()
 		return []preview{
 			{icons["chip"], "ffprobe", ffprobeStatus},
 			{icons["film"], "OMDb Lookup", omdbStatus},
@@ -1375,7 +1407,7 @@ func (m *Model) generatePreviews() []preview {
 		},
 	}
 
-	icons := selectConfigIcons()
+	icons := m.iconSet()
 
 	// Create contexts for preview
 	showCtx := &config.FormatContext{
@@ -1553,7 +1585,7 @@ func (m *Model) buildTMDBColumn(width int) string {
 		enabledText = "Disabled"
 	}
 
-	icons := selectConfigIcons()
+	icons := m.iconSet()
 	isActive := m.providerColumnFocus == providerColumnTMDB
 
 	if isActive && m.tmdbSubfocus == 0 {
@@ -1669,7 +1701,7 @@ func (m *Model) buildOMDBColumn(width int) string {
 
 	label := labelStyle.Render("OMDB Configuration:")
 	isActive := m.providerColumnFocus == providerColumnOMDB
-	icons := selectConfigIcons()
+	icons := m.iconSet()
 
 	enabledText := "Enabled"
 	if !m.omdbEnabled {
@@ -1807,7 +1839,7 @@ func (m *Model) buildFFProbeColumn(width int) string {
 
 	label := labelStyle.Render("ffprobe Configuration:")
 
-	icons := selectConfigIcons()
+	icons := m.iconSet()
 	enabledText := "Enabled"
 	if !m.ffprobeEnabled {
 		enabledText = "Disabled"
@@ -2053,9 +2085,7 @@ func validateTMDBAPIKey(apiKey string) tea.Cmd {
 
 // debouncedTMDBValidate creates a command that validates after a delay
 func debouncedTMDBValidate(apiKey string) tea.Cmd {
-	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
-		return tmdbValidateCmd{apiKey: apiKey}
-	})
+	return components.DebounceMsg(1*time.Second, tmdbValidateCmd{apiKey: apiKey})
 }
 
 // validateTMDBOnSectionSwitch validates the API key immediately when switching to TMDB section
@@ -2063,7 +2093,7 @@ func (m *Model) validateTMDBOnSectionSwitch() tea.Cmd {
 	// Only validate if there's an API key and it hasn't been validated recently
 	if len(m.tmdbAPIKey) > 0 && m.tmdbAPIKey != m.tmdbValidatedKey {
 		m.tmdbValidation = "validating"
-		return tmdbValidateCommand(m.tmdbAPIKey)
+		return m.tmdbValidate(m.tmdbAPIKey)
 	}
 	return nil
 }
@@ -2096,16 +2126,14 @@ func validateOMDBAPIKey(apiKey string) tea.Cmd {
 
 // debouncedOMDBValidate creates a command that validates after a short delay
 func debouncedOMDBValidate(apiKey string) tea.Cmd {
-	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
-		return omdbValidateCmd{apiKey: apiKey}
-	})
+	return components.DebounceMsg(1*time.Second, omdbValidateCmd{apiKey: apiKey})
 }
 
 // validateOMDBOnSectionSwitch validates the OMDb API key when entering provider settings
 func (m *Model) validateOMDBOnSectionSwitch() tea.Cmd {
 	if len(m.omdbAPIKey) > 0 && m.omdbAPIKey != m.omdbValidatedKey {
 		m.omdbValidation = "validating"
-		return omdbValidateCommand(m.omdbAPIKey)
+		return m.omdbValidate(m.omdbAPIKey)
 	}
 	return nil
 }
