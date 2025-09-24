@@ -1,4 +1,4 @@
-package tui
+package rename
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -29,7 +30,7 @@ func TestRenameModelGetIconFallback(t *testing.T) {
 	}
 
 	got := model.getIcon("needrename")
-	if want := ASCIIIcons["needrename"]; got != want {
+	if want := components.ASCIIIcons["needrename"]; got != want {
 		t.Fatalf("getIcon(needrename) = %q, want %q", got, want)
 	}
 }

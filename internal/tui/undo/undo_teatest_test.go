@@ -1,4 +1,4 @@
-package tui
+package undo
 
 import (
 	"bytes"
@@ -14,6 +14,14 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/google/go-cmp/cmp"
 )
+
+func sendKey(tm *teatest.TestModel, key tea.KeyType) {
+	tm.Send(tea.KeyMsg{Type: key})
+}
+
+func sendRune(tm *teatest.TestModel, r rune) {
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+}
 
 func newUndoOperation(id, basePath string, idx int, success bool) log.OperationLog {
 	return log.OperationLog{

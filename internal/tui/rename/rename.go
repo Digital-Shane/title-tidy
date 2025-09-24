@@ -1,14 +1,10 @@
-package tui
+package rename
 
 import (
 	"context"
-	"fmt"
 	"iter"
-	"os"
-	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -75,75 +71,6 @@ func (m *RenameModel) prepareRenameProgress() {
 }
 
 // RenameRegular renames a node; returns true only when an actual filesystem rename occurred.
-func RenameRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bool, error) {
-	oldPath := node.Data().Path
-	newPath := filepath.Join(filepath.Dir(oldPath), mm.NewName)
-	if oldPath == newPath {
-		return false, nil
-	}
-	if _, err := os.Stat(newPath); err == nil {
-		err := fmt.Errorf("destination already exists")
-		log.LogRename(oldPath, newPath, false, err)
-		return false, mm.Fail(err)
-	}
-	if err := os.Rename(oldPath, newPath); err != nil {
-		log.LogRename(oldPath, newPath, false, err)
-		return false, mm.Fail(err)
-	}
-	log.LogRename(oldPath, newPath, true, nil)
-	mm.Success()
-	node.Data().Path = newPath
-	return true, nil
-}
-
-// CreateVirtualDir materializes a virtual movie directory then renames its children beneath it.
-//
-// Returns a count of successful operations (directory creation + child renames), and contextual errors
-func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (int, []error) {
-	successes := 0
-	errs := []error{}
-
-	dirPath := filepath.Join(".", mm.NewName)
-	if err := os.Mkdir(dirPath, 0755); err != nil {
-		log.LogCreateDir(dirPath, false, err)
-		errs = append(errs, fmt.Errorf("create %s: %w", mm.NewName, mm.Fail(err)))
-		return successes, errs
-	}
-
-	// Directory created successfully
-	log.LogCreateDir(dirPath, true, nil)
-	successes++
-	mm.Success()
-	node.Data().Path = dirPath
-
-	// Rename children into the new directory
-	for _, child := range node.Children() {
-		cm := core.GetMeta(child)
-		if cm == nil {
-			continue
-		}
-
-		// Use NewName if set, otherwise keep original name
-		childName := cm.NewName
-		if childName == "" {
-			childName = child.Name()
-		}
-
-		oldChildPath := child.Data().Path
-		newChildPath := filepath.Join(dirPath, childName)
-		if err := os.Rename(oldChildPath, newChildPath); err != nil {
-			log.LogRename(oldChildPath, newChildPath, false, err)
-			errs = append(errs, fmt.Errorf("%s -> %s: %w", child.Name(), childName, cm.Fail(err)))
-			continue
-		}
-		log.LogRename(oldChildPath, newChildPath, true, nil)
-		successes++
-		cm.Success()
-		child.Data().Path = newChildPath
-	}
-	return successes, errs
-}
-
 // PerformRenames walks the tree executing pending rename or link operations.
 // In rename mode, it uses bottom-up traversal. In link mode, it uses breadth-first
 // to ensure parent directories exist before linking children.
@@ -177,9 +104,9 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						var s int
 						var errs []error
 						if m.IsLinkMode {
-							s, errs = LinkVirtualDir(node, mm, m.LinkPath)
+							s, errs = core.LinkVirtualDir(node, mm, m.LinkPath)
 						} else {
-							s, errs = CreateVirtualDir(node, mm)
+							s, errs = core.CreateVirtualDir(node, mm)
 						}
 						m.successCount += s
 						m.errorCount += len(errs)
@@ -204,14 +131,9 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						// check if it's the one we need to process
 						if currentCount == targetIndex {
 							// Attempt to delete the file
-							filePath := node.Data().Path
-							if err := os.Remove(filePath); err != nil {
-								log.LogDelete(filePath, false, err)
-								mm.Fail(err)
+							if err := core.DeleteMarkedNode(node, mm); err != nil {
 								m.errorCount++
 							} else {
-								log.LogDelete(filePath, true, nil)
-								mm.Success()
 								m.successCount++
 							}
 							m.completedOps++
@@ -262,18 +184,14 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						if currentCount == targetIndex {
 							if node.Data().IsDir() {
 								// Create directory in destination
-								if err := os.MkdirAll(mm.DestinationPath, 0755); err != nil {
-									log.LogCreateDir(mm.DestinationPath, false, err)
-									mm.Fail(err)
+								if err := core.EnsureDestinationDir(mm.DestinationPath, mm); err != nil {
 									m.errorCount++
 								} else {
-									log.LogCreateDir(mm.DestinationPath, true, nil)
-									mm.Success()
 									m.successCount++
 								}
 							} else {
 								// Link file to destination
-								if linked, err := LinkRegular(node, mm); err != nil {
+								if linked, err := core.LinkRegular(node, mm); err != nil {
 									m.errorCount++
 								} else if linked {
 									m.successCount++
@@ -292,7 +210,7 @@ func (m *RenameModel) PerformRenames() tea.Cmd {
 						// check if it's the one we need to process
 						if currentCount == targetIndex {
 							// Perform the filesystem rename operation
-							if renamed, err := RenameRegular(node, mm); err != nil {
+							if renamed, err := core.RenameRegular(node, mm); err != nil {
 								m.errorCount++
 							} else if renamed {
 								m.successCount++

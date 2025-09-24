@@ -1,4 +1,4 @@
-package tui
+package progress
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
@@ -20,6 +20,28 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mhmtszr/concurrent-swiss-map"
 )
+
+type MetadataItem = core.MetadataItem
+type metadataResult = core.MetadataResult
+
+func (m *MetadataProgressModel) fetchTMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
+	return core.FetchTMDBMetadata(m.ctx, m.tmdbProvider, m, item)
+}
+
+func (m *MetadataProgressModel) fetchOMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
+	return core.FetchOMDBMetadata(m.ctx, m.omdbProvider, item, m)
+}
+
+func (m *MetadataProgressModel) fetchFFProbeMetadata(item MetadataItem) (*provider.Metadata, error) {
+	return core.FetchFFProbeMetadata(m.ctx, m.ffprobeProvider, item)
+}
+
+func (m *MetadataProgressModel) shouldRunFFProbe(item MetadataItem) bool {
+	if m.ffprobeProvider == nil {
+		return false
+	}
+	return core.ShouldRunFFProbe(item)
+}
 
 // MetadataProgressModel displays progress while fetching metadata from TMDB
 type MetadataProgressModel struct {
@@ -87,37 +109,12 @@ type metadataProgressMsg struct {
 // metadataCompleteMsg signals completion
 type metadataCompleteMsg struct{}
 
-// MetadataItem represents an item that needs metadata
-type MetadataItem struct {
-	Name      string
-	Year      string
-	Season    int
-	Episode   int
-	IsMovie   bool
-	Key       string // Unique key for caching
-	Phase     int    // 0=show/movie, 1=season, 2=episode
-	MediaType provider.MediaType
-	Node      *treeview.Node[treeview.FileInfo]
-}
-
-// metadataResult represents the result of fetching metadata
-type metadataResult struct {
-	item MetadataItem
-	meta *provider.Metadata
-	errs []error
-}
-
-type localNodeInfo struct {
-	mediaType provider.MediaType
-	metadata  *provider.Metadata
-}
-
 // NewMetadataProgressModel creates a new metadata progress model
 func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) *MetadataProgressModel {
 	localProvider := local.New()
 
 	// Count items that need metadata
-	items := countMetadataItems(tree, localProvider)
+	items := core.CountMetadataItems(tree, localProvider)
 
 	p := progress.New(progress.WithGradient(string(colorPrimary), string(colorAccent)))
 	p.Width = 50
@@ -199,103 +196,6 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		ctx:             ctx,
 		cancel:          cancel,
 	}
-}
-
-func analyzeNodeCached(provider *local.Provider, cache map[*treeview.Node[treeview.FileInfo]]*localNodeInfo, failures map[*treeview.Node[treeview.FileInfo]]struct{}, node *treeview.Node[treeview.FileInfo]) *localNodeInfo {
-	if node == nil {
-		return nil
-	}
-
-	if info, ok := cache[node]; ok {
-		return info
-	}
-
-	if _, failed := failures[node]; failed {
-		return nil
-	}
-
-	mediaType, meta, err := provider.Detect(node)
-	if err != nil || meta == nil {
-		failures[node] = struct{}{}
-		return nil
-	}
-
-	info := &localNodeInfo{
-		mediaType: mediaType,
-		metadata:  meta,
-	}
-	meta.Core.MediaType = mediaType
-	cache[node] = info
-	return info
-}
-
-func addKey(seen map[string]bool, key string) bool {
-	if key == "" || seen[key] {
-		return false
-	}
-	seen[key] = true
-	return true
-}
-
-// countMetadataItems counts unique items that need metadata fetching
-func countMetadataItems(tree *treeview.Tree[treeview.FileInfo], localProv *local.Provider) int {
-	seen := make(map[string]bool)
-	cache := make(map[*treeview.Node[treeview.FileInfo]]*localNodeInfo)
-	failures := make(map[*treeview.Node[treeview.FileInfo]]struct{})
-	count := 0
-
-	for ni := range tree.BreadthFirst(context.Background()) {
-		info := analyzeNodeCached(localProv, cache, failures, ni.Node)
-		if info == nil || info.metadata == nil {
-			continue
-		}
-
-		meta := info.metadata
-		switch info.mediaType {
-		case provider.MediaTypeMovie:
-			if meta.Core.Title == "" {
-				continue
-			}
-			key := provider.GenerateMetadataKey("movie", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, key) {
-				count++
-			}
-		case provider.MediaTypeShow:
-			if meta.Core.Title == "" {
-				continue
-			}
-			key := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, key) {
-				count++
-			}
-		case provider.MediaTypeSeason:
-			if meta.Core.Title == "" {
-				continue
-			}
-			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, showKey) {
-				count++
-			}
-			seasonKey := provider.GenerateMetadataKey("season", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, 0)
-			if addKey(seen, seasonKey) {
-				count++
-			}
-		case provider.MediaTypeEpisode:
-			if meta.Core.Title == "" {
-				continue
-			}
-			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, showKey) {
-				count++
-			}
-			episodeKey := provider.GenerateMetadataKey("episode", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, meta.Core.EpisodeNum)
-			if addKey(seen, episodeKey) {
-				count++
-			}
-		}
-	}
-
-	return count
 }
 
 // Init starts the async metadata fetching
@@ -430,16 +330,7 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 		}
 
 		// Create descriptive progress message
-		var currentDesc string
-		if item.IsMovie {
-			currentDesc = item.Name
-		} else if item.Season > 0 && item.Episode > 0 {
-			currentDesc = fmt.Sprintf("%s - S%02dE%02d", item.Name, item.Season, item.Episode)
-		} else if item.Season > 0 {
-			currentDesc = fmt.Sprintf("%s - Season %d", item.Name, item.Season)
-		} else {
-			currentDesc = item.Name
-		}
+		currentDesc := core.FormatMetadataProgressMessage(item)
 
 		// Send progress update
 		select {
@@ -452,9 +343,9 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 		default:
 		}
 
-		tmdbMeta, tmdbErr := m.fetchTMDBMetadata(item)
-		omdbMeta, omdbErr := m.fetchOMDBMetadata(item)
-		ffprobeMeta, ffprobeErr := m.fetchFFProbeMetadata(item)
+		tmdbMeta, tmdbErr := core.FetchTMDBMetadata(m.ctx, m.tmdbProvider, m, item)
+		omdbMeta, omdbErr := core.FetchOMDBMetadata(m.ctx, m.omdbProvider, item, m)
+		ffprobeMeta, ffprobeErr := core.FetchFFProbeMetadata(m.ctx, m.ffprobeProvider, item)
 
 		base := tmdbMeta
 		extra := make([]*provider.Metadata, 0, 2)
@@ -467,7 +358,7 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 			extra = append(extra, ffprobeMeta)
 		}
 
-		combined := mergeMetadata(item, base, extra...)
+		combined := core.MergeMetadata(item, base, extra...)
 
 		errs := make([]error, 0, 3)
 		if tmdbErr != nil {
@@ -483,9 +374,9 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 		// Send result with cancellation check
 		select {
 		case resultCh <- metadataResult{
-			item: item,
-			meta: combined,
-			errs: errs,
+			Item: item,
+			Meta: combined,
+			Errs: errs,
 		}:
 		case <-m.ctx.Done():
 			return
@@ -493,314 +384,15 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 	}
 }
 
-func (m *MetadataProgressModel) fetchTMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
-	if m.tmdbProvider == nil {
-		return nil, nil
-	}
-
-	retryCount := 0
-
-	for {
-		select {
-		case <-m.ctx.Done():
-			return nil, m.ctx.Err()
-		default:
-		}
-
-		meta, err := provider.FetchMetadataWithDependencies(
-			m.tmdbProvider,
-			item.Name,
-			item.Year,
-			item.Season,
-			item.Episode,
-			item.IsMovie,
-			m,
-		)
-
-		if meta != nil {
-			return meta, nil
-		}
-
-		if err == nil {
-			return nil, nil
-		}
-
-		var provErr *provider.ProviderError
-		if errors.As(err, &provErr) && provErr.Code == "RATE_LIMITED" {
-			waitTime := time.Duration(2<<uint(min(retryCount, 4))) * time.Second
-			timer := time.NewTimer(waitTime)
-			select {
-			case <-timer.C:
-			case <-m.ctx.Done():
-				timer.Stop()
-				return nil, m.ctx.Err()
-			}
-			retryCount++
-			continue
-		}
-
-		return nil, err
-	}
-}
-
-func (m *MetadataProgressModel) fetchOMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
-	if m.omdbProvider == nil {
-		return nil, nil
-	}
-
-	select {
-	case <-m.ctx.Done():
-		return nil, m.ctx.Err()
-	default:
-	}
-
-	meta, err := provider.FetchMetadataWithDependencies(
-		m.omdbProvider,
-		item.Name,
-		item.Year,
-		item.Season,
-		item.Episode,
-		item.IsMovie,
-		m,
-	)
-	return meta, err
-}
-
-func (m *MetadataProgressModel) fetchFFProbeMetadata(item MetadataItem) (*provider.Metadata, error) {
-	if m.ffprobeProvider == nil {
-		return nil, nil
-	}
-
-	if !m.shouldRunFFProbe(item) {
-		return nil, nil
-	}
-
-	path := ""
-	if item.Node != nil {
-		path = item.Node.Data().Path
-	}
-	if path == "" {
-		return nil, &provider.ProviderError{
-			Provider: "ffprobe",
-			Code:     "MISSING_PATH",
-			Message:  "ffprobe requires a valid file path",
-			Retry:    false,
-		}
-	}
-
-	mediaType := item.MediaType
-	if mediaType == "" {
-		if item.IsMovie {
-			mediaType = provider.MediaTypeMovie
-		} else if item.Episode > 0 {
-			mediaType = provider.MediaTypeEpisode
-		}
-	}
-
-	request := provider.FetchRequest{
-		MediaType: mediaType,
-		Name:      item.Name,
-		Year:      item.Year,
-		Season:    item.Season,
-		Episode:   item.Episode,
-		Extra: map[string]interface{}{
-			"path": path,
-		},
-	}
-
-	select {
-	case <-m.ctx.Done():
-		return nil, m.ctx.Err()
-	default:
-	}
-
-	return m.ffprobeProvider.Fetch(m.ctx, request)
-}
-
-func (m *MetadataProgressModel) shouldRunFFProbe(item MetadataItem) bool {
-	if m.ffprobeProvider == nil {
-		return false
-	}
-	if item.Node == nil {
-		return false
-	}
-	if item.MediaType != provider.MediaTypeMovie && item.MediaType != provider.MediaTypeEpisode {
-		return false
-	}
-	data := item.Node.Data()
-	if data.IsDir() {
-		return false
-	}
-	return local.IsVideo(item.Node.Name())
-}
-
-func mergeMetadata(item MetadataItem, base *provider.Metadata, extras ...*provider.Metadata) *provider.Metadata {
-	hasAdditional := false
-	for _, extra := range extras {
-		if hasMetadataValues(extra) {
-			hasAdditional = true
-			break
-		}
-	}
-
-	if base == nil && !hasAdditional {
-		return nil
-	}
-
-	var merged *provider.Metadata
-	if base != nil {
-		merged = cloneMetadata(base)
-	} else {
-		merged = &provider.Metadata{
-			Core: provider.CoreMetadata{
-				MediaType:  item.MediaType,
-				Title:      item.Name,
-				Year:       item.Year,
-				SeasonNum:  item.Season,
-				EpisodeNum: item.Episode,
-			},
-			Extended:   make(map[string]interface{}),
-			Sources:    make(map[string]string),
-			IDs:        make(map[string]string),
-			Confidence: 0,
-		}
-	}
-
-	ensureMetadataMaps(merged)
-
-	if merged.Core.MediaType == "" {
-		merged.Core.MediaType = item.MediaType
-	}
-	if merged.Core.MediaType == "" {
-		if item.IsMovie {
-			merged.Core.MediaType = provider.MediaTypeMovie
-		} else if item.Episode > 0 {
-			merged.Core.MediaType = provider.MediaTypeEpisode
-		}
-	}
-	if merged.Core.Title == "" {
-		merged.Core.Title = item.Name
-	}
-	if merged.Core.Year == "" {
-		merged.Core.Year = item.Year
-	}
-	if merged.Core.SeasonNum == 0 && item.Season > 0 {
-		merged.Core.SeasonNum = item.Season
-	}
-	if merged.Core.EpisodeNum == 0 && item.Episode > 0 {
-		merged.Core.EpisodeNum = item.Episode
-	}
-
-	for _, extra := range extras {
-		if extra == nil {
-			continue
-		}
-		ensureMetadataMaps(extra)
-		for k, v := range extra.Extended {
-			merged.Extended[k] = v
-		}
-		for k, v := range extra.Sources {
-			merged.Sources[k] = v
-		}
-		for k, v := range extra.IDs {
-			merged.IDs[k] = v
-		}
-		if merged.Core.Title == "" && extra.Core.Title != "" {
-			merged.Core.Title = extra.Core.Title
-		}
-		if merged.Core.Year == "" && extra.Core.Year != "" {
-			merged.Core.Year = extra.Core.Year
-		}
-		if merged.Core.SeasonNum == 0 && extra.Core.SeasonNum > 0 {
-			merged.Core.SeasonNum = extra.Core.SeasonNum
-		}
-		if merged.Core.EpisodeNum == 0 && extra.Core.EpisodeNum > 0 {
-			merged.Core.EpisodeNum = extra.Core.EpisodeNum
-		}
-		if extra.Confidence > merged.Confidence {
-			merged.Confidence = extra.Confidence
-		}
-	}
-
-	return merged
-}
-
-func hasMetadataValues(meta *provider.Metadata) bool {
-	if meta == nil {
-		return false
-	}
-	if len(meta.Extended) > 0 || len(meta.Sources) > 0 || len(meta.IDs) > 0 {
-		return true
-	}
-	if meta.Core.Title != "" || meta.Core.Year != "" || meta.Core.SeasonNum > 0 || meta.Core.EpisodeNum > 0 {
-		return true
-	}
-	return false
-}
-
-func cloneMetadata(meta *provider.Metadata) *provider.Metadata {
-	if meta == nil {
-		return nil
-	}
-	clone := &provider.Metadata{
-		Core:       meta.Core,
-		Confidence: meta.Confidence,
-	}
-
-	if len(meta.Extended) > 0 {
-		clone.Extended = make(map[string]interface{}, len(meta.Extended))
-		for k, v := range meta.Extended {
-			clone.Extended[k] = v
-		}
-	} else {
-		clone.Extended = make(map[string]interface{})
-	}
-
-	if len(meta.Sources) > 0 {
-		clone.Sources = make(map[string]string, len(meta.Sources))
-		for k, v := range meta.Sources {
-			clone.Sources[k] = v
-		}
-	} else {
-		clone.Sources = make(map[string]string)
-	}
-
-	if len(meta.IDs) > 0 {
-		clone.IDs = make(map[string]string, len(meta.IDs))
-		for k, v := range meta.IDs {
-			clone.IDs[k] = v
-		}
-	} else {
-		clone.IDs = make(map[string]string)
-	}
-
-	return clone
-}
-
-func ensureMetadataMaps(meta *provider.Metadata) {
-	if meta == nil {
-		return
-	}
-	if meta.Extended == nil {
-		meta.Extended = make(map[string]interface{})
-	}
-	if meta.Sources == nil {
-		meta.Sources = make(map[string]string)
-	}
-	if meta.IDs == nil {
-		meta.IDs = make(map[string]string)
-	}
-}
-
 // processResults handles results from the provided result channel
 func (m *MetadataProgressModel) processResults(resultCh <-chan metadataResult, done chan bool) {
 	for result := range resultCh {
-		if result.meta != nil {
-			m.Set(result.item.Key, result.meta)
+		if result.Meta != nil {
+			m.Set(result.Item.Key, result.Meta)
 		}
 
-		if len(result.errs) > 0 {
-			for _, err := range result.errs {
+		if len(result.Errs) > 0 {
+			for _, err := range result.Errs {
 				if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					continue
 				}
@@ -809,7 +401,7 @@ func (m *MetadataProgressModel) processResults(resultCh <-chan metadataResult, d
 					continue
 				}
 				m.errorsMu.Lock()
-				m.errors = append(m.errors, fmt.Errorf("%s: %w", result.item.Name, err))
+				m.errors = append(m.errors, fmt.Errorf("%s: %w", result.Item.Name, err))
 				m.errorsMu.Unlock()
 			}
 		}
@@ -848,127 +440,10 @@ func (m *MetadataProgressModel) getPhaseName(phase int) string {
 // collectMetadataItems collects all unique items that need metadata
 
 func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
-	items := make([]MetadataItem, 0)
-	itemsByKey := make(map[string]int)
-	cache := make(map[*treeview.Node[treeview.FileInfo]]*localNodeInfo)
-	failures := make(map[*treeview.Node[treeview.FileInfo]]struct{})
-	localProv := m.localProvider
-	if localProv == nil {
-		localProv = local.New()
-		m.localProvider = localProv
+	if m.localProvider == nil {
+		m.localProvider = local.New()
 	}
-
-	upsertItem := func(key string, item MetadataItem) {
-		if idx, exists := itemsByKey[key]; exists {
-			if shouldReplaceItemNode(items[idx], item) {
-				items[idx].Node = item.Node
-			}
-			if item.MediaType != "" {
-				items[idx].MediaType = item.MediaType
-			}
-			if item.IsMovie {
-				items[idx].IsMovie = true
-			}
-			if items[idx].Year == "" && item.Year != "" {
-				items[idx].Year = item.Year
-			}
-			if items[idx].Season == 0 && item.Season > 0 {
-				items[idx].Season = item.Season
-			}
-			if items[idx].Episode == 0 && item.Episode > 0 {
-				items[idx].Episode = item.Episode
-			}
-			if items[idx].Name == "" && item.Name != "" {
-				items[idx].Name = item.Name
-			}
-			return
-		}
-
-		item.Key = key
-		itemsByKey[key] = len(items)
-		items = append(items, item)
-	}
-
-	for ni := range m.tree.BreadthFirst(context.Background()) {
-		info := analyzeNodeCached(localProv, cache, failures, ni.Node)
-		if info == nil || info.metadata == nil {
-			continue
-		}
-
-		meta := info.metadata
-		switch info.mediaType {
-		case provider.MediaTypeMovie:
-			if meta.Core.Title == "" {
-				continue
-			}
-			key := provider.GenerateMetadataKey("movie", meta.Core.Title, meta.Core.Year, 0, 0)
-			upsertItem(key, MetadataItem{
-				Name:      meta.Core.Title,
-				Year:      meta.Core.Year,
-				IsMovie:   true,
-				Phase:     0,
-				MediaType: provider.MediaTypeMovie,
-				Node:      ni.Node,
-			})
-		case provider.MediaTypeShow:
-			if meta.Core.Title == "" {
-				continue
-			}
-			key := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			upsertItem(key, MetadataItem{
-				Name:      meta.Core.Title,
-				Year:      meta.Core.Year,
-				Phase:     0,
-				MediaType: provider.MediaTypeShow,
-				Node:      ni.Node,
-			})
-		case provider.MediaTypeSeason:
-			if meta.Core.Title == "" {
-				continue
-			}
-			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			upsertItem(showKey, MetadataItem{
-				Name:      meta.Core.Title,
-				Year:      meta.Core.Year,
-				Phase:     0,
-				MediaType: provider.MediaTypeShow,
-				Node:      ni.Node,
-			})
-			seasonKey := provider.GenerateMetadataKey("season", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, 0)
-			upsertItem(seasonKey, MetadataItem{
-				Name:      meta.Core.Title,
-				Year:      meta.Core.Year,
-				Season:    meta.Core.SeasonNum,
-				Phase:     1,
-				MediaType: provider.MediaTypeSeason,
-				Node:      ni.Node,
-			})
-		case provider.MediaTypeEpisode:
-			if meta.Core.Title == "" {
-				continue
-			}
-			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			upsertItem(showKey, MetadataItem{
-				Name:      meta.Core.Title,
-				Year:      meta.Core.Year,
-				Phase:     0,
-				MediaType: provider.MediaTypeShow,
-				Node:      ni.Node,
-			})
-			episodeKey := provider.GenerateMetadataKey("episode", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, meta.Core.EpisodeNum)
-			upsertItem(episodeKey, MetadataItem{
-				Name:      meta.Core.Title,
-				Year:      meta.Core.Year,
-				Season:    meta.Core.SeasonNum,
-				Episode:   meta.Core.EpisodeNum,
-				Phase:     2,
-				MediaType: provider.MediaTypeEpisode,
-				Node:      ni.Node,
-			})
-		}
-	}
-
-	return items
+	return core.CollectMetadataItems(m.tree, m.localProvider)
 }
 
 func shouldReplaceItemNode(existing MetadataItem, candidate MetadataItem) bool {

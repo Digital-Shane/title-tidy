@@ -1,7 +1,8 @@
-package tui
+package rename
 
 import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,7 +27,7 @@ func TestRenameRegular_NoChange(t *testing.T) {
 	n := fsTestNode("same.txt", false, "same.txt")
 	mm := core.EnsureMeta(n)
 	mm.NewName = "same.txt" // identical
-	renamed, err := RenameRegular(n, mm)
+	renamed, err := core.RenameRegular(n, mm)
 	if err != nil || renamed {
 		t.Errorf("renameRegular(identical) = (%v,%v), want (false,<nil>)", renamed, err)
 	}
@@ -49,7 +50,7 @@ func TestRenameRegular_DestinationExists(t *testing.T) {
 	n := fsTestNode("src.txt", false, "src.txt")
 	mm := core.EnsureMeta(n)
 	mm.NewName = "dest.txt"
-	renamed, err := RenameRegular(n, mm)
+	renamed, err := core.RenameRegular(n, mm)
 	if err == nil || renamed {
 		t.Errorf("renameRegular(destExists) = (%v,%v), want (false,error)", renamed, err)
 	}
@@ -69,7 +70,7 @@ func TestRenameRegular_SourceMissingCausesError(t *testing.T) {
 	n := fsTestNode("src.txt", false, "src.txt")
 	mm := core.EnsureMeta(n)
 	mm.NewName = "renamed.txt"
-	renamed, err := RenameRegular(n, mm)
+	renamed, err := core.RenameRegular(n, mm)
 	if err == nil || renamed {
 		t.Errorf("renameRegular(missingSource) = (%v,%v), want (false,error)", renamed, err)
 	}
@@ -89,7 +90,7 @@ func TestRenameRegular_Success(t *testing.T) {
 	n := fsTestNode("orig.txt", false, "orig.txt")
 	mm := core.EnsureMeta(n)
 	mm.NewName = "new.txt"
-	renamed, err := RenameRegular(n, mm)
+	renamed, err := core.RenameRegular(n, mm)
 	if err != nil || !renamed {
 		t.Errorf("renameRegular(success) = (%v,%v), want (true,<nil>)", renamed, err)
 	}
@@ -117,7 +118,7 @@ func TestCreateVirtualDir_MkdirFails(t *testing.T) {
 	mm.NewName = "Already"
 	mm.IsVirtual = true
 	mm.NeedsDirectory = true
-	successes, errs := CreateVirtualDir(n, mm)
+	successes, errs := core.CreateVirtualDir(n, mm)
 	if successes != 0 || len(errs) != 1 {
 		t.Errorf("createVirtualDir(mkdirFail) = (%d,%d errs), want (0,1)", successes, len(errs))
 	}
@@ -161,7 +162,7 @@ func TestCreateVirtualDir_SuccessChildrenMixed(t *testing.T) {
 	vdir.AddChild(c1)
 	vdir.AddChild(c2)
 	vdir.AddChild(c3)
-	successes, errs := CreateVirtualDir(vdir, mm)
+	successes, errs := core.CreateVirtualDir(vdir, mm)
 	if successes != 2 || len(errs) != 1 {
 		t.Errorf("createVirtualDir(mixed) counts = (%d successes,%d errs), want (2,1)", successes, len(errs))
 	}
@@ -224,7 +225,7 @@ func TestPerformRenames_DeletionPhase(t *testing.T) {
 
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{
 		deleteFile1, deleteFile2, keepFile,
-	}, treeview.WithProvider(CreateRenameProvider()))
+	}, treeview.WithProvider(components.CreateRenameProvider()))
 
 	model := NewRenameModel(tree)
 	model.prepareRenameProgress()
@@ -269,7 +270,7 @@ func TestPerformRenames_DeletionError(t *testing.T) {
 	deleteFileMeta.MarkedForDeletion = true
 
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{deleteFile},
-		treeview.WithProvider(CreateRenameProvider()))
+		treeview.WithProvider(components.CreateRenameProvider()))
 
 	model := NewRenameModel(tree)
 	model.prepareRenameProgress()

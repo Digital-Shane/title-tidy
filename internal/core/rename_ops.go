@@ -1,18 +1,87 @@
-package tui
+package core
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/treeview"
 )
 
+// RenameRegular renames a node; returns true only when an actual filesystem rename occurred.
+func RenameRegular(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (bool, error) {
+	oldPath := node.Data().Path
+	newPath := filepath.Join(filepath.Dir(oldPath), mm.NewName)
+	if oldPath == newPath {
+		return false, nil
+	}
+	if _, err := os.Stat(newPath); err == nil {
+		err := fmt.Errorf("destination already exists")
+		log.LogRename(oldPath, newPath, false, err)
+		return false, mm.Fail(err)
+	}
+	if err := os.Rename(oldPath, newPath); err != nil {
+		log.LogRename(oldPath, newPath, false, err)
+		return false, mm.Fail(err)
+	}
+	log.LogRename(oldPath, newPath, true, nil)
+	mm.Success()
+	node.Data().Path = newPath
+	return true, nil
+}
+
+// CreateVirtualDir materializes a virtual movie directory then renames its children beneath it.
+//
+// Returns a count of successful operations (directory creation + child renames), and contextual errors
+func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (int, []error) {
+	successes := 0
+	errs := []error{}
+
+	dirPath := filepath.Join(".", mm.NewName)
+	if err := os.Mkdir(dirPath, 0755); err != nil {
+		log.LogCreateDir(dirPath, false, err)
+		errs = append(errs, fmt.Errorf("create %s: %w", mm.NewName, mm.Fail(err)))
+		return successes, errs
+	}
+
+	// Directory created successfully
+	log.LogCreateDir(dirPath, true, nil)
+	successes++
+	mm.Success()
+	node.Data().Path = dirPath
+
+	// Rename children into the new directory
+	for _, child := range node.Children() {
+		cm := GetMeta(child)
+		if cm == nil {
+			continue
+		}
+
+		// Use NewName if set, otherwise keep original name
+		childName := cm.NewName
+		if childName == "" {
+			childName = child.Name()
+		}
+
+		oldChildPath := child.Data().Path
+		newChildPath := filepath.Join(dirPath, childName)
+		if err := os.Rename(oldChildPath, newChildPath); err != nil {
+			log.LogRename(oldChildPath, newChildPath, false, err)
+			errs = append(errs, fmt.Errorf("%s -> %s: %w", child.Name(), childName, cm.Fail(err)))
+			continue
+		}
+		log.LogRename(oldChildPath, newChildPath, true, nil)
+		successes++
+		cm.Success()
+		child.Data().Path = newChildPath
+	}
+	return successes, errs
+}
+
 // LinkRegular creates a hard link from the source node to the destination path.
 // Returns true only when an actual filesystem link was created.
-func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bool, error) {
+func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (bool, error) {
 	srcPath := node.Data().Path
 	destPath := mm.DestinationPath
 
@@ -57,7 +126,7 @@ func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta) (bo
 
 // LinkVirtualDir creates a virtual movie directory in the destination and links its children into it.
 // Returns a count of successful operations (directory creation + child links), and contextual errors
-func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, linkPath string) (int, []error) {
+func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta, linkPath string) (int, []error) {
 	successes := 0
 	errs := []error{}
 
@@ -76,7 +145,7 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 
 	// Link children into the new directory
 	for _, child := range node.Children() {
-		cm := core.GetMeta(child)
+		cm := GetMeta(child)
 		if cm == nil {
 			continue
 		}
@@ -122,4 +191,29 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *core.MediaMeta, 
 	}
 
 	return successes, errs
+}
+
+// DeleteMarkedNode removes the file on disk for a node marked for deletion.
+func DeleteMarkedNode(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) error {
+	filePath := node.Data().Path
+	if err := os.Remove(filePath); err != nil {
+		log.LogDelete(filePath, false, err)
+		mm.Fail(err)
+		return err
+	}
+	log.LogDelete(filePath, true, nil)
+	mm.Success()
+	return nil
+}
+
+// EnsureDestinationDir makes sure the destination directory exists for link mode operations.
+func EnsureDestinationDir(path string, mm *MediaMeta) error {
+	if err := os.MkdirAll(path, 0755); err != nil {
+		log.LogCreateDir(path, false, err)
+		mm.Fail(err)
+		return err
+	}
+	log.LogCreateDir(path, true, nil)
+	mm.Success()
+	return nil
 }

@@ -1,9 +1,10 @@
-package tui
+package undo
 
 import (
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/log"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -55,7 +56,7 @@ func TestUndoModelGetOperationIcon(t *testing.T) {
 		{
 			name: "Unknown",
 			op:   log.OperationLog{Type: log.OperationType("other")},
-			want: ASCIIIcons["unknown"],
+			want: components.ASCIIIcons["unknown"],
 		},
 	}
 
@@ -77,8 +78,8 @@ func TestUndoModelGetIconFallback(t *testing.T) {
 		t.Errorf("getIcon(check) = %q, want %q", got, "✓")
 	}
 
-	if got := m.getIcon("unknown"); got != ASCIIIcons["unknown"] {
-		t.Errorf("getIcon(unknown) = %q, want %q", got, ASCIIIcons["unknown"])
+	if got := m.getIcon("unknown"); got != components.ASCIIIcons["unknown"] {
+		t.Errorf("getIcon(unknown) = %q, want %q", got, components.ASCIIIcons["unknown"])
 	}
 }
 
