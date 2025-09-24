@@ -97,14 +97,6 @@ func (r *Registry) Enable(name string) error {
 	return nil
 }
 
-// IsEnabled checks if a provider is enabled
-func (r *Registry) IsEnabled(name string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.enabledStatus[name]
-}
-
 // Configure sets configuration for a provider
 func (r *Registry) Configure(name string, config map[string]interface{}) error {
 	r.mu.Lock()

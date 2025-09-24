@@ -7,6 +7,7 @@ import (
 	tuiconfig "github.com/Digital-Shane/title-tidy/internal/tui/config"
 	tuiprogress "github.com/Digital-Shane/title-tidy/internal/tui/progress"
 	tuirename "github.com/Digital-Shane/title-tidy/internal/tui/rename"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	tuiundo "github.com/Digital-Shane/title-tidy/internal/tui/undo"
 	"github.com/Digital-Shane/treeview"
 )
@@ -38,13 +39,13 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *tuiundo.UndoModel {
 }
 
 // NewMetadataProgressModel constructs the metadata progress UI model.
-func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) *tuiprogress.MetadataProgressModel {
-	return tuiprogress.NewMetadataProgressModel(tree, cfg)
+func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, th theme.Theme) *tuiprogress.MetadataProgressModel {
+	return tuiprogress.NewMetadataProgressModel(tree, cfg, th)
 }
 
 // NewIndexProgressModel constructs the media indexing progress UI model.
-func NewIndexProgressModel(path string, cfg tuiprogress.IndexConfig) *tuiprogress.IndexProgressModel {
-	return tuiprogress.NewIndexProgressModel(path, cfg)
+func NewIndexProgressModel(path string, cfg tuiprogress.IndexConfig, th theme.Theme) *tuiprogress.IndexProgressModel {
+	return tuiprogress.NewIndexProgressModel(path, cfg, th)
 }
 
 // CreateRenameProvider re-exports the shared rename tree provider.

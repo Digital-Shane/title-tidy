@@ -13,6 +13,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -134,7 +135,7 @@ func TestMetadataProgressCompletesAndStoresResults(t *testing.T) {
 		TMDBWorkerCount:  2,
 	}
 
-	model := NewMetadataProgressModel(tree, cfg)
+	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	model.tmdbProvider = newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		meta := &provider.Metadata{
 			Core: provider.CoreMetadata{
@@ -223,7 +224,7 @@ func TestMetadataProgressQuitKeys(t *testing.T) {
 			tree := newMetadataTestTree()
 
 			cfg := &config.FormatConfig{TMDBWorkerCount: 1}
-			model := NewMetadataProgressModel(tree, cfg)
+			model := NewMetadataProgressModel(tree, cfg, theme.Default())
 
 			ready := make(chan struct{})
 			release := make(chan struct{})
@@ -267,7 +268,7 @@ func TestMetadataProgressWindowResize(t *testing.T) {
 	tree := newMetadataTestTree()
 
 	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
-	model := NewMetadataProgressModel(tree, cfg)
+	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 
 	ready := make(chan struct{})
 	release := make(chan struct{})
@@ -317,7 +318,7 @@ func TestMetadataProgressDisplaysErrorsAndExposesErr(t *testing.T) {
 	tree := newMetadataTestTree()
 
 	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
-	model := NewMetadataProgressModel(tree, cfg)
+	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	model.tmdbProvider = newMetadataFakeProvider("fakeTMDB", func(provider.FetchRequest) (*provider.Metadata, error) {
 		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "AUTH_FAILED", Message: "bad key", Retry: false}
 	})

@@ -14,6 +14,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbletea"
@@ -23,25 +24,6 @@ import (
 
 type MetadataItem = core.MetadataItem
 type metadataResult = core.MetadataResult
-
-func (m *MetadataProgressModel) fetchTMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
-	return core.FetchTMDBMetadata(m.ctx, m.tmdbProvider, m, item)
-}
-
-func (m *MetadataProgressModel) fetchOMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
-	return core.FetchOMDBMetadata(m.ctx, m.omdbProvider, item, m)
-}
-
-func (m *MetadataProgressModel) fetchFFProbeMetadata(item MetadataItem) (*provider.Metadata, error) {
-	return core.FetchFFProbeMetadata(m.ctx, m.ffprobeProvider, item)
-}
-
-func (m *MetadataProgressModel) shouldRunFFProbe(item MetadataItem) bool {
-	if m.ffprobeProvider == nil {
-		return false
-	}
-	return core.ShouldRunFFProbe(item)
-}
 
 // MetadataProgressModel displays progress while fetching metadata from TMDB
 type MetadataProgressModel struct {
@@ -82,6 +64,7 @@ type MetadataProgressModel struct {
 	err      error
 	errors   []error
 	errorsMu sync.Mutex
+	theme    theme.Theme
 }
 
 // Get reads cached metadata using the concurrent map.
@@ -100,6 +83,18 @@ func (m *MetadataProgressModel) Set(key string, meta *provider.Metadata) {
 	m.metadata.Store(key, meta)
 }
 
+func (m *MetadataProgressModel) fetchTMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
+	return core.FetchTMDBMetadata(m.ctx, m.tmdbProvider, m, item)
+}
+
+func (m *MetadataProgressModel) fetchOMDBMetadata(item MetadataItem) (*provider.Metadata, error) {
+	return core.FetchOMDBMetadata(m.ctx, m.omdbProvider, item, m)
+}
+
+func (m *MetadataProgressModel) fetchFFProbeMetadata(item MetadataItem) (*provider.Metadata, error) {
+	return core.FetchFFProbeMetadata(m.ctx, m.ffprobeProvider, item)
+}
+
 // metadataProgressMsg updates progress
 type metadataProgressMsg struct {
 	phase string
@@ -110,13 +105,18 @@ type metadataProgressMsg struct {
 type metadataCompleteMsg struct{}
 
 // NewMetadataProgressModel creates a new metadata progress model
-func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig) *MetadataProgressModel {
+func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, th theme.Theme) *MetadataProgressModel {
 	localProvider := local.New()
 
 	// Count items that need metadata
 	items := core.CountMetadataItems(tree, localProvider)
 
-	p := progress.New(progress.WithGradient(string(colorPrimary), string(colorAccent)))
+	gradient := th.ProgressGradient()
+	if len(gradient) < 2 {
+		colors := th.Colors()
+		gradient = []string{string(colors.Primary), string(colors.Accent)}
+	}
+	p := progress.New(progress.WithGradient(gradient[0], gradient[1]))
 	p.Width = 50
 
 	// Initialize TMDB provider if enabled
@@ -195,6 +195,7 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		errors:          make([]error, 0),
 		ctx:             ctx,
 		cancel:          cancel,
+		theme:           th,
 	}
 }
 
@@ -343,9 +344,9 @@ func (m *MetadataProgressModel) metadataWorker(workCh <-chan MetadataItem, resul
 		default:
 		}
 
-		tmdbMeta, tmdbErr := core.FetchTMDBMetadata(m.ctx, m.tmdbProvider, m, item)
-		omdbMeta, omdbErr := core.FetchOMDBMetadata(m.ctx, m.omdbProvider, item, m)
-		ffprobeMeta, ffprobeErr := core.FetchFFProbeMetadata(m.ctx, m.ffprobeProvider, item)
+		tmdbMeta, tmdbErr := m.fetchTMDBMetadata(item)
+		omdbMeta, omdbErr := m.fetchOMDBMetadata(item)
+		ffprobeMeta, ffprobeErr := m.fetchFFProbeMetadata(item)
 
 		base := tmdbMeta
 		extra := make([]*provider.Metadata, 0, 2)
@@ -446,33 +447,6 @@ func (m *MetadataProgressModel) collectMetadataItems() []MetadataItem {
 	return core.CollectMetadataItems(m.tree, m.localProvider)
 }
 
-func shouldReplaceItemNode(existing MetadataItem, candidate MetadataItem) bool {
-	if candidate.Node == nil {
-		return false
-	}
-	if existing.Node == nil {
-		return true
-	}
-
-	candidateData := candidate.Node.Data()
-	existingData := existing.Node.Data()
-
-	candidateVideo := local.IsVideo(candidate.Node.Name())
-	existingVideo := local.IsVideo(existing.Node.Name())
-
-	if candidateVideo && !existingVideo {
-		return true
-	}
-
-	if existingData != nil && existingData.IsDir() {
-		if candidateData != nil && !candidateData.IsDir() {
-			return true
-		}
-	}
-
-	return false
-}
-
 // Update processes messages
 func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -516,22 +490,18 @@ func (m *MetadataProgressModel) View() string {
 
 	percent := 100 * m.processedItems / m.totalItems
 	bar := m.progress.View()
+	colors := m.theme.Colors()
 
 	headerText := "Fetching Metadata"
 	if len(m.activeProviders) > 0 {
 		headerText = fmt.Sprintf("Fetching Metadata (%s)", strings.Join(m.activeProviders, ", "))
 	}
 
-	header := lipgloss.NewStyle().
-		Bold(true).
-		Background(colorPrimary).
-		Foreground(colorBackground).
-		Width(m.width).
-		Render(headerText)
+	header := m.theme.HeaderStyle().Width(m.width).Render(headerText)
 
 	// Phase and worker info
 	phaseStyle := lipgloss.NewStyle().
-		Foreground(colorAccent).
+		Foreground(colors.Accent).
 		Bold(true)
 
 	phaseInfo := ""
@@ -544,11 +514,12 @@ func (m *MetadataProgressModel) View() string {
 
 	info := fmt.Sprintf("Items processed: %d/%d", m.processedItems, m.totalItems)
 
-	statsStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1).
-		Width(m.width - 4)
+	panelStyle := m.theme.PanelStyle()
+	panelWidth := m.width - panelStyle.GetHorizontalFrameSize()
+	if panelWidth < 0 {
+		panelWidth = 0
+	}
+	statsStyle := panelStyle.Width(panelWidth)
 
 	stats := fmt.Sprintf("Total Items: %d\nProcessed: %d\nProgress: %d%%\nMax Worker Pool: %d workers",
 		m.totalItems, m.processedItems, percent, m.workerCount)
@@ -557,7 +528,7 @@ func (m *MetadataProgressModel) View() string {
 	errorInfo := ""
 	if len(m.errors) > 0 {
 		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF0000"))
+			Foreground(colors.Error)
 
 		// Show error count and error messages
 		errorLines := []string{fmt.Sprintf("Errors: %d", len(m.errors))}
@@ -607,11 +578,7 @@ func (m *MetadataProgressModel) View() string {
 		errorInfo = "\n" + errorStyle.Render(strings.Join(errorLines, "\n"))
 	}
 
-	status := lipgloss.NewStyle().
-		Background(colorSecondary).
-		Foreground(colorBackground).
-		Width(m.width).
-		Render("Fetching metadata in parallel... please wait")
+	status := m.theme.StatusBarStyle().Width(m.width).Render("Fetching metadata in parallel... please wait")
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		header,

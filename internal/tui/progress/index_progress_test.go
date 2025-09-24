@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/google/go-cmp/cmp"
@@ -32,7 +33,7 @@ func TestIndexProgressModel_CustomFilterDelegation(t *testing.T) {
 			called = append(called, fi.Name())
 			return fi.Name() == "keep.me"
 		},
-	})
+	}, theme.Default())
 	model.buildTreeAsync()
 
 	if diff := cmp.Diff([]string{"keep.me", "drop.me"}, called); diff != "" {
@@ -91,7 +92,7 @@ func TestIndexProgressModel_DefaultFilterFallback(t *testing.T) {
 				return &treeview.Tree[treeview.FileInfo]{}, nil
 			})
 
-			model := NewIndexProgressModel(tempDir, IndexConfig{IncludeDirs: tc.includeDirs})
+			model := NewIndexProgressModel(tempDir, IndexConfig{IncludeDirs: tc.includeDirs}, theme.Default())
 			model.buildTreeAsync()
 
 			if diff := cmp.Diff(tc.want, got); diff != "" {
@@ -102,7 +103,7 @@ func TestIndexProgressModel_DefaultFilterFallback(t *testing.T) {
 }
 
 func TestIndexProgressModel_UpdateProgressFrameMsg(t *testing.T) {
-	model := NewIndexProgressModel(t.TempDir(), IndexConfig{})
+	model := NewIndexProgressModel(t.TempDir(), IndexConfig{}, theme.Default())
 	frameCmd := model.progress.SetPercent(1)
 	msg := frameCmd()
 	frameMsg, ok := msg.(progress.FrameMsg)
@@ -120,7 +121,7 @@ func TestIndexProgressModel_UpdateProgressFrameMsg(t *testing.T) {
 }
 
 func TestIndexProgressModel_UpdateUnhandledMessage(t *testing.T) {
-	model := NewIndexProgressModel(t.TempDir(), IndexConfig{})
+	model := NewIndexProgressModel(t.TempDir(), IndexConfig{}, theme.Default())
 	type unknownMsg struct{}
 
 	updated, cmd := model.Update(unknownMsg{})

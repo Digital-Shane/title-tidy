@@ -6,6 +6,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/go-cmp/cmp"
 )
@@ -28,7 +29,7 @@ func (f fakeProvider) Fetch(context.Context, provider.FetchRequest) (*provider.M
 }
 
 func newBareModel() *Model {
-	return &Model{
+	m := &Model{
 		inputs: map[Section]string{
 			SectionShowFolder:   "{title}",
 			SectionSeasonFolder: "Season {season}",
@@ -39,6 +40,13 @@ func newBareModel() *Model {
 		loggingRetention: "30",
 		tmdbLanguage:     "en-US",
 	}
+	m.theme = theme.Default()
+	m.icons = m.theme.IconSet()
+	m.tmdbValidate = validateTMDBAPIKey
+	m.tmdbDebounce = debouncedTMDBValidate
+	m.omdbValidate = validateOMDBAPIKey
+	m.omdbDebounce = debouncedOMDBValidate
+	return m
 }
 
 func TestNewWithRegistrySetsTemplateRegistry(t *testing.T) {
@@ -231,17 +239,16 @@ func TestValidateTMDBOnSectionSwitch(t *testing.T) {
 	m := newBareModel()
 	m.tmdbAPIKey = "valid-key"
 
-	orig := tmdbValidateCommand
-	defer func() { tmdbValidateCommand = orig }()
-
+	orig := m.tmdbValidate
 	var called int
-	tmdbValidateCommand = func(apiKey string) tea.Cmd {
+	m.tmdbValidate = func(apiKey string) tea.Cmd {
 		called++
 		if apiKey != "valid-key" {
 			t.Fatalf("validate called with %q, want valid-key", apiKey)
 		}
 		return func() tea.Msg { return tmdbValidationMsg{apiKey: apiKey, valid: true} }
 	}
+	defer func() { m.tmdbValidate = orig }()
 
 	cmd := m.validateTMDBOnSectionSwitch()
 	if called != 1 {
@@ -273,17 +280,16 @@ func TestValidateOMDBOnSectionSwitch(t *testing.T) {
 	m := newBareModel()
 	m.omdbAPIKey = "abcd"
 
-	orig := omdbValidateCommand
-	defer func() { omdbValidateCommand = orig }()
-
+	orig := m.omdbValidate
 	var called int
-	omdbValidateCommand = func(apiKey string) tea.Cmd {
+	m.omdbValidate = func(apiKey string) tea.Cmd {
 		called++
 		if apiKey != "abcd" {
 			t.Fatalf("validate called with %q, want abcd", apiKey)
 		}
 		return func() tea.Msg { return omdbValidationMsg{apiKey: apiKey, valid: false} }
 	}
+	defer func() { m.omdbValidate = orig }()
 
 	cmd := m.validateOMDBOnSectionSwitch()
 	if called != 1 {

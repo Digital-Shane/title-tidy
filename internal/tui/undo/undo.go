@@ -6,6 +6,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -31,24 +32,74 @@ type UndoModel struct {
 	undoFailed     int
 	width          int
 	height         int
-	iconSet        map[string]string
 	splitRatio     float64 // ratio for left/right split
+	theme          theme.Theme
 
 	// Session details scrolling
-	detailsViewport viewport.Model
+	detailsViewport *viewport.Model
 	detailsFocused  bool // whether the details panel is focused for scrolling
 }
 
+// Option configures an UndoModel during construction.
+type Option func(*UndoModel)
+
+// WithTheme overrides the default theme for the undo TUI.
+func WithTheme(th theme.Theme) Option {
+	return func(m *UndoModel) {
+		m.theme = th
+	}
+}
+
+func (m *UndoModel) headerStyle() lipgloss.Style {
+	return m.theme.HeaderStyle()
+}
+
+func (m *UndoModel) statusBarStyle() lipgloss.Style {
+	return m.theme.StatusBarStyle()
+}
+
+func (m *UndoModel) panelStyle() lipgloss.Style {
+	return m.theme.PanelStyle()
+}
+
+func (m *UndoModel) colors() theme.Colors {
+	return m.theme.Colors()
+}
+
+func (m *UndoModel) sizedPanel(width, height int, borderColor lipgloss.Color) lipgloss.Style {
+	style := m.panelStyle()
+	if borderColor != "" {
+		style = style.BorderForeground(borderColor)
+	}
+	if width > 0 {
+		contentWidth := width - style.GetHorizontalFrameSize()
+		if contentWidth < 0 {
+			contentWidth = 0
+		}
+		style = style.Width(contentWidth)
+	}
+	if height > 0 {
+		contentHeight := height - style.GetVerticalFrameSize()
+		if contentHeight < 0 {
+			contentHeight = 0
+		}
+		style = style.Height(contentHeight)
+	}
+	return style.Padding(0, 1)
+}
+
 // NewUndoModel creates a new undo selection model
-func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *UndoModel {
+func NewUndoModel(tree *treeview.Tree[log.SessionSummary], opts ...Option) *UndoModel {
 	m := &UndoModel{
 		width:      80,
 		height:     24,
 		splitRatio: 0.5, // 50/50 split by default
 	}
 
-	// Detect terminal capabilities for icons
-	m.iconSet = components.SelectIcons()
+	initOpts := append([]Option{WithTheme(theme.Default())}, opts...)
+	for _, opt := range initOpts {
+		opt(m)
+	}
 
 	// Create underlying TUI model with same pattern as RenameModel
 	keyMap := treeview.DefaultKeyMap()
@@ -67,9 +118,8 @@ func NewUndoModel(tree *treeview.Tree[log.SessionSummary]) *UndoModel {
 
 	// Initialize details viewport
 	rightWidth := m.width - treeWidth
-	viewportHeight := m.height - 4 - 4                             // Account for header, borders, and instructions
-	m.detailsViewport = viewport.New(rightWidth-6, viewportHeight) // Account for border and padding
-	m.detailsViewport.Style = lipgloss.NewStyle()
+	viewportHeight := m.height - 4 - 4 // Account for header, borders, and instructions
+	m.detailsViewport = components.NewViewport(rightWidth-6, viewportHeight, m.theme)
 
 	return m
 }
@@ -201,13 +251,7 @@ func (m *UndoModel) View() string {
 	var b strings.Builder
 
 	// Header
-	header := lipgloss.NewStyle().
-		Bold(true).
-		Background(colorPrimary).
-		Foreground(colorBackground).
-		Align(lipgloss.Center).
-		Width(m.width).
-		Render("Title-Tidy Undo Sessions")
+	header := m.headerStyle().Width(m.width).Render("Title-Tidy Undo Sessions")
 
 	b.WriteString(header)
 	b.WriteByte('\n')
@@ -219,12 +263,7 @@ func (m *UndoModel) View() string {
 			resultText = fmt.Sprintf("Undo completed: %d success, %d failed", m.undoSuccess, m.undoFailed)
 		}
 
-		result := lipgloss.NewStyle().
-			Background(colorSecondary).
-			Foreground(colorBackground).
-			Padding(1).
-			Width(m.width).
-			Render(resultText)
+		result := m.statusBarStyle().Width(m.width).Render(resultText)
 
 		b.WriteString(result)
 		b.WriteByte('\n')
@@ -232,18 +271,15 @@ func (m *UndoModel) View() string {
 		statusText := "Press 'Ctrl+C' or 'esc' to exit"
 		status := lipgloss.NewStyle().
 			Width(m.width).
+			Align(lipgloss.Center).
+			Foreground(m.colors().Muted).
 			Render(statusText)
 		b.WriteString(status)
 
 	} else if m.undoInProgress {
 		// Show undo in progress
 		progressText := "Undoing operations..."
-		progress := lipgloss.NewStyle().
-			Background(colorSecondary).
-			Foreground(colorBackground).
-			Padding(1).
-			Width(m.width).
-			Render(progressText)
+		progress := m.statusBarStyle().Width(m.width).Render(progressText)
 
 		b.WriteString(progress)
 		b.WriteByte('\n')
@@ -293,7 +329,7 @@ func (m *UndoModel) renderMainView() string {
 		Italic(true).
 		Width(m.width).
 		Align(lipgloss.Center).
-		Foreground(lipgloss.Color("240")).
+		Foreground(m.colors().Muted).
 		Render(instruction)
 
 	return content + "\n" + instructionStyle
@@ -301,19 +337,16 @@ func (m *UndoModel) renderMainView() string {
 
 // renderSessionList renders the left panel with the session tree
 func (m *UndoModel) renderSessionList(width, height int) string {
-	// Create border style for left panel
-	borderStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
-		Width(width-2).
-		Height(height).
-		Padding(0, 1)
-
-	// Add title
+	colors := m.colors()
+	borderStyle := m.sizedPanel(width, height, colors.Primary)
+	titleWidth := width - 4
+	if titleWidth < 0 {
+		titleWidth = width
+	}
 	title := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(colorPrimary).
-		Width(width - 4).
+		Foreground(colors.Primary).
+		Width(titleWidth).
 		Align(lipgloss.Center).
 		Render("Sessions")
 
@@ -337,24 +370,23 @@ func (m *UndoModel) renderSessionPreview(width, height int) string {
 	} else {
 		emptyContent := lipgloss.NewStyle().
 			Italic(true).
-			Foreground(lipgloss.Color("240")).
+			Foreground(m.colors().Muted).
 			Render("Select a session to view details")
 		m.detailsViewport.SetContent(emptyContent)
 	}
 
-	// Create border style for right panel
-	borderStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(colorSecondary).
-		Width(width-2).
-		Height(height).
-		Padding(0, 1)
+	colors := m.colors()
+	borderStyle := m.sizedPanel(width, height, colors.Secondary)
 
+	titleWidth := width - 4
+	if titleWidth < 0 {
+		titleWidth = width
+	}
 	// Create title with scroll indicator
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(colorSecondary).
-		Width(width - 4).
+		Foreground(colors.Secondary).
+		Width(titleWidth).
 		Align(lipgloss.Center)
 
 	scrollIndicator := ""
@@ -383,15 +415,16 @@ func (m *UndoModel) renderSessionPreview(width, height int) string {
 func (m *UndoModel) formatSessionDetails(summary log.SessionSummary, width int) string {
 	var b strings.Builder
 	session := summary.Session
+	colors := m.colors()
 
 	// Style for labels
 	labelStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(colorAccent)
+		Foreground(colors.Accent)
 
 	// Style for values
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+		Foreground(colors.Primary)
 
 	// Command
 	b.WriteString(labelStyle.Render("Command: "))
@@ -455,7 +488,7 @@ func (m *UndoModel) formatSessionDetails(summary log.SessionSummary, width int) 
 	b.WriteString("\n")
 	b.WriteString(labelStyle.Render("Session ID: "))
 	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
+		Foreground(colors.Muted).
 		Italic(true).
 		Render(session.Metadata.SessionID))
 
@@ -482,10 +515,7 @@ func (m *UndoModel) getOperationIcon(op log.OperationLog) string {
 }
 
 func (m *UndoModel) getIcon(iconType string) string {
-	if icon, exists := m.iconSet[iconType]; exists {
-		return icon
-	}
-	return components.ASCIIIcons[iconType]
+	return m.theme.Icon(iconType)
 }
 
 // formatOperation formats a single operation for display
@@ -548,13 +578,13 @@ func (m *UndoModel) renderConfirmation(summary log.SessionSummary) string {
 	session := summary.Session
 
 	// Create confirmation box
-	confirmStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Background(lipgloss.Color("235")).
+	colors := m.colors()
+	confirmStyle := m.panelStyle().
+		BorderForeground(colors.Accent).
 		Padding(1, 2).
 		Width(60).
-		Align(lipgloss.Center)
+		Align(lipgloss.Center).
+		Background(colors.Background)
 
 	confirmText := fmt.Sprintf(
 		"Confirm Undo Operation\n\n"+

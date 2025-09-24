@@ -12,6 +12,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
@@ -39,21 +40,6 @@ type MetadataProgressMsg struct {
 type MetadataCompleteMsg struct {
 	Errors int
 }
-
-// Cached base styles (applied with dynamic Width each render) to avoid
-// re-allocating identical style pipelines on every View() call.
-var (
-	headerStyleBase = lipgloss.NewStyle().
-			Bold(true).
-			Background(colorPrimary).
-			Foreground(colorBackground).
-			Align(lipgloss.Center)
-
-	statusStyleBase = lipgloss.NewStyle().
-			Background(colorSecondary).
-			Foreground(colorBackground).
-			Padding(0, 1)
-)
 
 // RenameModel wraps the underlying treeview TUI model to add media rename
 // functionality and real‑time statistics.
@@ -87,8 +73,7 @@ type RenameModel struct {
 	statsCache Statistics
 	statsDirty bool
 
-	// Icon support
-	iconSet map[string]string
+	theme theme.Theme
 
 	// Command info for logging
 	Command     string
@@ -102,7 +87,7 @@ type RenameModel struct {
 	undoFailed     int
 
 	// Stats panel scrolling
-	statsViewport viewport.Model
+	statsViewport *viewport.Model
 	statsFocused  bool // whether the stats panel is focused for scrolling
 
 	// Metadata fetching progress
@@ -113,45 +98,68 @@ type RenameModel struct {
 	metadataStatus    string
 }
 
+// Option configures a RenameModel during construction.
+type Option func(*RenameModel)
+
+// WithTheme overrides the theme used by the rename TUI.
+func WithTheme(th theme.Theme) Option {
+	return func(m *RenameModel) {
+		m.theme = th
+	}
+}
+
+func (m *RenameModel) headerStyle() lipgloss.Style {
+	return m.theme.HeaderStyle()
+}
+
+func (m *RenameModel) statusBarStyle() lipgloss.Style {
+	return m.theme.StatusBarStyle()
+}
+
+func (m *RenameModel) panelStyle() lipgloss.Style {
+	return m.theme.PanelStyle()
+}
+
+func (m *RenameModel) panelTitleStyle() lipgloss.Style {
+	return m.theme.PanelTitleStyle()
+}
+
 // NewRenameModel returns an initialized RenameModel for the provided tree with
 // default dimensions (later adjusted on the first WindowSize message).
-func NewRenameModel(tree *treeview.Tree[treeview.FileInfo]) *RenameModel {
+func NewRenameModel(tree *treeview.Tree[treeview.FileInfo], opts ...Option) *RenameModel {
 	m := &RenameModel{
 		width:      80,
 		height:     24,
 		statsDirty: true,
 	}
 
-	// Detect terminal capabilities and configure icons
-	m.detectTerminalCapabilities()
+	initOpts := append([]Option{WithTheme(theme.Default())}, opts...)
+	for _, opt := range initOpts {
+		opt(m)
+	}
+
 	runewidth.DefaultCondition.EastAsianWidth = false
 	runewidth.DefaultCondition.StrictEmojiNeutral = true
 
-	m.progressModel = progress.New(progress.WithGradient(string(colorPrimary), string(colorAccent)))
+	gradient := m.theme.ProgressGradient()
+	if len(gradient) < 2 {
+		gradient = []string{string(m.theme.Colors().Primary), string(m.theme.Colors().Accent)}
+	}
+	m.progressModel = progress.New(progress.WithGradient(gradient[0], gradient[1]))
 	m.progressModel.Width = 40
 	// establish initial layout metrics before building underlying model
 	m.CalculateLayout()
 
 	// Initialize stats viewport
-	m.statsViewport = viewport.New(m.statsWidth, m.statsHeight)
-	m.statsViewport.Style = lipgloss.NewStyle()
+	m.statsViewport = components.NewViewport(m.statsWidth, m.statsHeight, m.theme)
 
 	m.TuiTreeModel = m.createSizedTuiModel(tree)
 	return m
 }
 
-// detectTerminalCapabilities determines what icons to use based on terminal and environment
-func (m *RenameModel) detectTerminalCapabilities() {
-	m.iconSet = components.SelectIcons()
-}
-
 // getIcon returns the appropriate icon for the current terminal
 func (m *RenameModel) getIcon(iconType string) string {
-	if icon, exists := m.iconSet[iconType]; exists {
-		return icon
-	}
-	// Fallback to ASCII if icon not found
-	return components.ASCIIIcons[iconType]
+	return m.theme.Icon(iconType)
 }
 
 // CalculateLayout recomputes panel dimensions from current window size.
@@ -176,7 +184,7 @@ func (m *RenameModel) CalculateLayout() {
 	}
 
 	// Update stats viewport dimensions if initialized
-	if m.statsViewport.Width > 0 || m.statsViewport.Height > 0 {
+	if m.statsViewport != nil && (m.statsViewport.Width > 0 || m.statsViewport.Height > 0) {
 		// Account for border and padding in viewport dimensions
 		// Border (2) + padding (2) = 4 total horizontal frame size
 		frameWidth := 4
@@ -412,7 +420,7 @@ func (m *RenameModel) View() string {
 
 // renderHeader creates the single‑line header bar with mode + working directory.
 func (m *RenameModel) renderHeader() string {
-	style := headerStyleBase.Width(m.width)
+	style := m.headerStyle().Width(m.width)
 
 	path, _ := os.Getwd()
 	var title string
@@ -436,10 +444,7 @@ func (m *RenameModel) renderHeader() string {
 func (m *RenameModel) renderStatusBar() string {
 	// Show metadata fetching progress if active
 	if m.metadataFetching {
-		textStyle := lipgloss.NewStyle().
-			Background(colorSecondary).
-			Foreground(colorBackground).
-			Padding(0, 1)
+		textStyle := m.statusBarStyle()
 		statusMsg := "Fetching metadata..."
 		if m.metadataTotal > 0 {
 			statusMsg = fmt.Sprintf("Fetching metadata... (%d/%d)", m.metadataCompleted, m.metadataTotal)
@@ -447,17 +452,14 @@ func (m *RenameModel) renderStatusBar() string {
 		if m.metadataStatus != "" {
 			statusMsg = m.metadataStatus
 		}
-		return statusStyleBase.Width(m.width).Render(textStyle.Render(statusMsg))
+		return m.statusBarStyle().Width(m.width).Render(textStyle.Render(statusMsg))
 	}
 
 	if m.progressVisible && m.renameInProgress {
 		// show progress bar with styled text
 		bar := m.progressModel.View()
 		// Style the text with the same background as the right side of the gradient
-		textStyle := lipgloss.NewStyle().
-			Background(colorSecondary).
-			Foreground(colorBackground).
-			Padding(0, 1)
+		textStyle := m.statusBarStyle()
 		operationText := "Renaming..."
 		if m.IsLinkMode {
 			operationText = "Linking..."
@@ -465,19 +467,16 @@ func (m *RenameModel) renderStatusBar() string {
 		statusText := textStyle.Render(fmt.Sprintf("%d/%d - %s", m.completedOps, m.totalRenameOps, operationText))
 		// Combine bar and styled text, then apply the full width style
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
-		return statusStyleBase.Width(m.width - 1).Render(combined)
+		return m.statusBarStyle().Width(m.width - 1).Render(combined)
 	}
 
 	if m.progressVisible && m.undoInProgress {
 		// show progress bar with undo text
 		bar := m.progressModel.View()
-		textStyle := lipgloss.NewStyle().
-			Background(colorSecondary).
-			Foreground(colorBackground).
-			Padding(0, 1)
+		textStyle := m.statusBarStyle()
 		statusText := textStyle.Render("Undoing operations...")
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
-		return statusStyleBase.Width(m.width).Render(combined)
+		return m.statusBarStyle().Width(m.width).Render(combined)
 	}
 
 	renameKey := "r: Rename"
@@ -510,7 +509,7 @@ func (m *RenameModel) renderStatusBar() string {
 		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
 		renameKey,
 		undoInfo)
-	return statusStyleBase.Width(m.width - 1).Render(statusText)
+	return m.statusBarStyle().Width(m.width - 1).Render(statusText)
 }
 
 // renderTwoPanelLayout joins the tree view and statistics panel horizontally.
@@ -536,16 +535,10 @@ func (m *RenameModel) renderStatsPanel() string {
 	}
 
 	// Create border style
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1)
+	borderStyle := m.panelStyle()
 
 	// Create title with scroll indicator
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Underline(true).
-		MarginBottom(1)
+	titleStyle := m.panelTitleStyle().MarginBottom(1)
 
 	scrollIndicator := ""
 	if m.statsViewport.TotalLineCount() > m.statsViewport.Height {

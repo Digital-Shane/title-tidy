@@ -11,6 +11,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -92,7 +93,7 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 		MaxDepth:    cmdConfig.MaxDepth,
 		IncludeDirs: cmdConfig.IncludeDirs,
 		Filter:      createMediaFilter(cmdConfig.IncludeDirs),
-	})
+	}, theme.Default())
 
 	finalModel, err := tea.NewProgram(idxModel, tea.WithAltScreen()).Run()
 	if err != nil {
@@ -141,7 +142,7 @@ func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *c
 		return nil
 	}
 
-	metaModel := tui.NewMetadataProgressModel(t, formatConfig)
+	metaModel := tui.NewMetadataProgressModel(t, formatConfig, theme.Default())
 	finalMetaModel, err := tea.NewProgram(metaModel, tea.WithAltScreen()).Run()
 	if err != nil {
 		return nil

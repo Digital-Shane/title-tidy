@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
+
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -41,6 +43,8 @@ type IndexProgressModel struct {
 	msgCh    chan tea.Msg
 	rootPath string
 	seen     map[string]struct{}
+
+	theme theme.Theme
 }
 
 // indexProgressMsg updates counters.
@@ -61,10 +65,16 @@ type treeBuilderFunc func(context.Context, string, bool, ...treeview.Option[tree
 var indexProgressTreeBuilder treeBuilderFunc = treeview.NewTreeFromFileSystem
 
 // NewIndexProgressModel creates a model and pre computes root entry count.
-func NewIndexProgressModel(path string, cfg IndexConfig) *IndexProgressModel {
+
+func NewIndexProgressModel(path string, cfg IndexConfig, th theme.Theme) *IndexProgressModel {
 	entries, _ := os.ReadDir(path)
 	total := max(len(entries), 1)
-	p := progress.New(progress.WithGradient(string(colorPrimary), string(colorAccent)))
+	gradient := th.ProgressGradient()
+	if len(gradient) < 2 {
+		colors := th.Colors()
+		gradient = []string{string(colors.Primary), string(colors.Accent)}
+	}
+	p := progress.New(progress.WithGradient(gradient[0], gradient[1]))
 	p.Width = 50
 	rootPath, _ := filepath.Abs(path)
 	return &IndexProgressModel{
@@ -77,6 +87,7 @@ func NewIndexProgressModel(path string, cfg IndexConfig) *IndexProgressModel {
 		msgCh:      make(chan tea.Msg, 64),
 		rootPath:   rootPath,
 		seen:       make(map[string]struct{}),
+		theme:      th,
 	}
 }
 
@@ -164,10 +175,15 @@ func (m *IndexProgressModel) View() string {
 	percent := 100 * m.processedRoots / m.totalRoots
 	bar := m.progress.View()
 	info := fmt.Sprintf("Roots processed: %d/%d  Files indexed: %d", m.processedRoots, m.totalRoots, m.filesIndexed)
-	header := lipgloss.NewStyle().Bold(true).Background(colorPrimary).Foreground(colorBackground).Width(m.width).Render("Indexing Media Library")
-	statsStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).Padding(1).Width(m.width - 4)
+	header := m.theme.HeaderStyle().Width(m.width).Render("Indexing Media Library")
+	panelStyle := m.theme.PanelStyle()
+	panelWidth := m.width - panelStyle.GetHorizontalFrameSize()
+	if panelWidth < 0 {
+		panelWidth = 0
+	}
+	statsStyle := panelStyle.Width(panelWidth)
 	stats := fmt.Sprintf("Root Directories: %d\nProcessed Roots: %d\nFiles Indexed: %d\nProgress: %d%%", m.totalRoots, m.processedRoots, m.filesIndexed, percent)
-	status := lipgloss.NewStyle().Background(colorSecondary).Foreground(colorBackground).Width(m.width).Render("Indexing... please wait")
+	status := m.theme.StatusBarStyle().Width(m.width).Render("Indexing... please wait")
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		bar,

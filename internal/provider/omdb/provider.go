@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -222,29 +221,6 @@ func (p *Provider) mapError(err error) error {
 			Retry:    false,
 		}
 	}
-}
-
-// buildRequest constructs an HTTP request with common parameters applied.
-func (p *Provider) buildRequest(ctx context.Context, params map[string]string) (*http.Request, error) {
-	if p.httpClient == nil {
-		return nil, fmt.Errorf("http client not configured")
-	}
-
-	values := url.Values{}
-	for k, v := range params {
-		if v == "" {
-			continue
-		}
-		values.Set(k, v)
-	}
-	values.Set("apikey", p.apiKey)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.URL.RawQuery = values.Encode()
-	return req, nil
 }
 
 // parseRuntime attempts to convert runtime strings (e.g., "136 min") to integer minutes.
