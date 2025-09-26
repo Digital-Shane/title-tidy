@@ -6,10 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [v1.13.0] - 2025-09-24
 ### Updated
 * TUI testing to use teatest for integration testing
 * README to document OMDB provider configuration
-* Split TUI package into subpackages and extracted core filesystem operations
+* Split TI package into subpackages and extracted core filesystem operations
+* Split config TUI model code into individual sections for better maintainability and code reuse
+* Update config TUI screens to use central theme provider
+* Rename and linking to use a queue driven executor
 ### Added
 * Centralized theme into a central provider for all TUIs
 

@@ -36,67 +36,6 @@ type localNodeInfo struct {
 	metadata  *provider.Metadata
 }
 
-// CountMetadataItems counts unique items that need metadata fetching.
-func CountMetadataItems(tree *treeview.Tree[treeview.FileInfo], localProv *local.Provider) int {
-	seen := make(map[string]bool)
-	cache := make(map[*treeview.Node[treeview.FileInfo]]*localNodeInfo)
-	failures := make(map[*treeview.Node[treeview.FileInfo]]struct{})
-	count := 0
-
-	for ni := range tree.BreadthFirst(context.Background()) {
-		info := analyzeNodeCached(localProv, cache, failures, ni.Node)
-		if info == nil || info.metadata == nil {
-			continue
-		}
-
-		meta := info.metadata
-		switch info.mediaType {
-		case provider.MediaTypeMovie:
-			if meta.Core.Title == "" {
-				continue
-			}
-			key := provider.GenerateMetadataKey("movie", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, key) {
-				count++
-			}
-		case provider.MediaTypeShow:
-			if meta.Core.Title == "" {
-				continue
-			}
-			key := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, key) {
-				count++
-			}
-		case provider.MediaTypeSeason:
-			if meta.Core.Title == "" {
-				continue
-			}
-			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, showKey) {
-				count++
-			}
-			seasonKey := provider.GenerateMetadataKey("season", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, 0)
-			if addKey(seen, seasonKey) {
-				count++
-			}
-		case provider.MediaTypeEpisode:
-			if meta.Core.Title == "" {
-				continue
-			}
-			showKey := provider.GenerateMetadataKey("show", meta.Core.Title, meta.Core.Year, 0, 0)
-			if addKey(seen, showKey) {
-				count++
-			}
-			episodeKey := provider.GenerateMetadataKey("episode", meta.Core.Title, meta.Core.Year, meta.Core.SeasonNum, meta.Core.EpisodeNum)
-			if addKey(seen, episodeKey) {
-				count++
-			}
-		}
-	}
-
-	return count
-}
-
 // CollectMetadataItems walks the tree collecting unique metadata requests.
 func CollectMetadataItems(tree *treeview.Tree[treeview.FileInfo], localProv *local.Provider) []MetadataItem {
 	items := make([]MetadataItem, 0)
@@ -556,14 +495,6 @@ func analyzeNodeCached(provider *local.Provider, cache map[*treeview.Node[treevi
 	meta.Core.MediaType = mediaType
 	cache[node] = info
 	return info
-}
-
-func addKey(seen map[string]bool, key string) bool {
-	if key == "" || seen[key] {
-		return false
-	}
-	seen[key] = true
-	return true
 }
 
 func min(a, b int) int {

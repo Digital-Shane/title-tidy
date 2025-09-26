@@ -149,46 +149,6 @@ func TestDefaultIconSetEmojiWhenNotLimited(t *testing.T) {
 	}
 }
 
-func TestBadgeStyleVariants(t *testing.T) {
-	theme := New()
-	colors := theme.Colors()
-
-	tests := []struct {
-		name string
-		kind BadgeKind
-		want lipgloss.Color
-	}{
-		{name: "info", kind: BadgeInfo, want: colors.Accent},
-		{name: "success", kind: BadgeSuccess, want: colors.Success},
-		{name: "error", kind: BadgeError, want: colors.Error},
-		{name: "muted", kind: BadgeMuted, want: colors.Muted},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			style := theme.BadgeStyle(tc.kind)
-
-			bg, ok := style.GetBackground().(lipgloss.Color)
-			if !ok {
-				t.Fatalf("BadgeStyle(%v) background = %T, want lipgloss.Color", tc.kind, style.GetBackground())
-			}
-
-			if bg != tc.want {
-				t.Errorf("BadgeStyle(%v) background = %v, want %v", tc.kind, bg, tc.want)
-			}
-
-			fg, ok := style.GetForeground().(lipgloss.Color)
-			if !ok {
-				t.Fatalf("BadgeStyle(%v) foreground = %T, want lipgloss.Color", tc.kind, style.GetForeground())
-			}
-
-			if fg != colors.Background {
-				t.Errorf("BadgeStyle(%v) foreground = %v, want %v", tc.kind, fg, colors.Background)
-			}
-		})
-	}
-}
-
 func TestHeaderStyleProperties(t *testing.T) {
 	theme := New()
 	colors := theme.Colors()

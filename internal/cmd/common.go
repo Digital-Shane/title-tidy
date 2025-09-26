@@ -13,7 +13,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -156,21 +156,11 @@ func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *c
 
 // executeInstantMode runs the rename operation in non-interactive mode
 func executeInstantMode(model *tui.RenameModel, commandName string, commandArgs []string) error {
-	if err := log.StartSession(commandName, commandArgs); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Failed to start operation log: %v\n", err)
-	}
-
-	cmd := model.PerformRenames()
-	if cmd != nil {
-		msg := cmd()
-		if result, ok := msg.(tui.RenameCompleteMsg); ok && result.ErrorCount() > 0 {
-			log.EndSession()
-			return fmt.Errorf("%d errors occurred during renaming", result.ErrorCount())
-		}
-	}
-
-	if err := log.EndSession(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Failed to save operation log: %v\n", err)
+	model.Command = commandName
+	model.CommandArgs = commandArgs
+	result := model.NewOperationEngine().RunToCompletion()
+	if result.ErrorCount() > 0 {
+		return fmt.Errorf("%d errors occurred during renaming", result.ErrorCount())
 	}
 	return nil
 }

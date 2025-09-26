@@ -202,7 +202,8 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 	for ni := range t.All(ctx) {
 		m := core.EnsureMeta(ni.Node)
 
-		if ni.Depth == 0 {
+		switch ni.Depth {
+		case 0:
 			if ni.Node.Data().IsDir() {
 				m.Type = core.MediaMovie
 				movieName, year := detectMovieNameAndYear(ni.Node)
@@ -270,7 +271,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 					}
 				}
 			}
-		} else if ni.Depth == 1 {
+		case 1:
 			if local.IsVideo(ni.Node.Name()) {
 				m.Type = core.MediaMovieFile
 

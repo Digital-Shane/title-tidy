@@ -17,7 +17,7 @@ import (
 	"github.com/Digital-Shane/treeview"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
@@ -49,14 +49,10 @@ type RenameModel struct {
 	renameComplete   bool
 	successCount     int
 	errorCount       int
-	totalRenameOps   int
-	completedOps     int
 	progressModel    progress.Model
 	progressVisible  bool
-	currentOpIndex   int
-	virtualDirCount  int
-	deletionCount    int
-	renameCount      int
+	progress         OperationProgress
+	engine           *OperationEngine
 	width            int
 	height           int
 	IsMovieMode      bool
@@ -106,6 +102,21 @@ func WithTheme(th theme.Theme) Option {
 	return func(m *RenameModel) {
 		m.theme = th
 	}
+}
+
+// NewOperationEngine constructs a fresh operation engine snapshot using the
+// current rename model configuration and tree state.
+func (m *RenameModel) NewOperationEngine() *OperationEngine {
+	if m.TuiTreeModel == nil {
+		return NewOperationEngine(OperationConfig{})
+	}
+	return NewOperationEngine(OperationConfig{
+		Tree:        m.TuiTreeModel.Tree,
+		IsLinkMode:  m.IsLinkMode,
+		LinkPath:    m.LinkPath,
+		Command:     m.Command,
+		CommandArgs: m.CommandArgs,
+	})
 }
 
 func (m *RenameModel) headerStyle() lipgloss.Style {
@@ -160,6 +171,18 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo], opts ...Option) *Ren
 // getIcon returns the appropriate icon for the current terminal
 func (m *RenameModel) getIcon(iconType string) string {
 	return m.theme.Icon(iconType)
+}
+
+func (m *RenameModel) arrowIcons() (string, string) {
+	icons := []rune(m.getIcon("arrows"))
+	switch {
+	case len(icons) >= 4:
+		return string(icons[0:2]), string(icons[2:4])
+	case len(icons) >= 2:
+		return string(icons[0]), string(icons[1:])
+	default:
+		return "↑↓", "←→"
+	}
 }
 
 // CalculateLayout recomputes panel dimensions from current window size.
@@ -259,8 +282,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "delete", "d":
 			if focusedNode := m.TuiTreeModel.Tree.GetFocusedNode(); focusedNode != nil {
-				// Move focus up one position before deletion to maintain nearby focus
-				m.TuiTreeModel.Tree.Move(context.Background(), -1)
+				retargetFocusAfterRemoval(m.TuiTreeModel.Tree)
 				m.removeNodeFromTree(focusedNode)
 				m.statsDirty = true
 			}
@@ -268,13 +290,17 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if !m.renameInProgress {
 				m.renameInProgress = true
-				// Start logging session
-				if err := log.StartSession(m.Command, m.CommandArgs); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: Failed to start operation log: %v\n", err)
+				m.renameComplete = false
+				m.successCount = 0
+				m.errorCount = 0
+				m.engine = m.NewOperationEngine()
+				m.progress = OperationProgress{
+					OverallTotal: m.engine.TotalOperations(),
 				}
-				m.prepareRenameProgress()
 				m.progressVisible = true
-				return m, m.PerformRenames()
+				cmds := []tea.Cmd{m.progressModel.SetPercent(0)}
+				cmds = append(cmds, m.engine.ProcessNextCmd())
+				return m, tea.Batch(cmds...)
 			}
 		case "u", "U":
 			if m.undoAvailable && !m.undoInProgress {
@@ -364,11 +390,12 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statsDirty = true
 		m.progressVisible = false
 		m.undoAvailable = msg.successCount > 0
-		// End logging session
-		if err := log.EndSession(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to save operation log: %v\n", err)
-		}
-		return m, nil
+		m.engine = nil
+		m.progress.SuccessCount = msg.successCount
+		m.progress.ErrorCount = msg.errorCount
+		m.progress.OverallCompleted = m.progress.OverallTotal
+		cmd := m.progressModel.SetPercent(1)
+		return m, cmd
 	case UndoCompleteMsg:
 		m.undoInProgress = false
 		m.undoComplete = true
@@ -376,15 +403,20 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.undoFailed = msg.errorCount
 		m.progressVisible = false
 		return m, nil
-	case renameProgressMsg:
-		// update bar percent
+	case OperationProgressMsg:
+		m.progress = msg.Progress
+		m.successCount = msg.Progress.SuccessCount
+		m.errorCount = msg.Progress.ErrorCount
+		m.statsDirty = true
 		var pct float64
-		if m.totalRenameOps > 0 {
-			pct = math.Min(float64(m.completedOps)/float64(m.totalRenameOps), 1)
+		if msg.Progress.OverallTotal > 0 {
+			pct = math.Min(float64(msg.Progress.OverallCompleted)/float64(msg.Progress.OverallTotal), 1)
 		}
-		cmd := m.progressModel.SetPercent(pct)
-		// schedule next step until completion
-		return m, tea.Batch(cmd, m.PerformRenames())
+		cmds := []tea.Cmd{m.progressModel.SetPercent(pct)}
+		if m.engine != nil {
+			cmds = append(cmds, m.engine.ProcessNextCmd())
+		}
+		return m, tea.Batch(cmds...)
 	case progress.FrameMsg:
 		// propagate animation frames for the progress bar so percent updates render
 		pm, cmd := m.progressModel.Update(msg)
@@ -464,7 +496,9 @@ func (m *RenameModel) renderStatusBar() string {
 		if m.IsLinkMode {
 			operationText = "Linking..."
 		}
-		statusText := textStyle.Render(fmt.Sprintf("%d/%d - %s", m.completedOps, m.totalRenameOps, operationText))
+		completed := m.progress.OverallCompleted
+		total := m.progress.OverallTotal
+		statusText := textStyle.Render(fmt.Sprintf("%d/%d - %s", completed, total, operationText))
 		// Combine bar and styled text, then apply the full width style
 		combined := fmt.Sprintf("%s  %s", bar, statusText)
 		return m.statusBarStyle().Width(m.width - 1).Render(combined)
@@ -503,10 +537,11 @@ func (m *RenameModel) renderStatusBar() string {
 		focusInfo = "Tab: Stats Focus  │  "
 	}
 
+	upDown, leftRight := m.arrowIcons()
 	statusText := fmt.Sprintf("%s%s: Navigate  PgUp/PgDn: Page  %s: Expand/Collapse  │  %s  │  %sd: Remove  │  Esc/Ctrl+C: Quit",
 		focusInfo,
-		m.getIcon("arrows")[:2], // First two characters (up/down arrows)
-		m.getIcon("arrows")[2:], // Last two characters (left/right arrows)
+		upDown,
+		leftRight,
 		renameKey,
 		undoInfo)
 	return m.statusBarStyle().Width(m.width - 1).Render(statusText)
@@ -607,11 +642,13 @@ func (m *RenameModel) updateStatsContent() {
 
 	if m.progressVisible && m.renameInProgress {
 		percent := 0
-		if m.totalRenameOps > 0 {
-			percent = (m.completedOps * 100) / m.totalRenameOps
+		completed := m.progress.OverallCompleted
+		total := m.progress.OverallTotal
+		if total > 0 {
+			percent = (completed * 100) / total
 		}
 		b.WriteString("\nRename Progress:\n")
-		fmt.Fprintf(&b, "  %d/%d (%d%%)\n", m.completedOps, m.totalRenameOps, percent)
+		fmt.Fprintf(&b, "  %d/%d (%d%%)\n", completed, total, percent)
 	}
 
 	var totalItems int
@@ -715,6 +752,17 @@ func (m *RenameModel) calculateStats() Statistics {
 	m.statsCache = stats
 	m.statsDirty = false
 	return stats
+}
+
+func retargetFocusAfterRemoval(tree *treeview.Tree[treeview.FileInfo]) {
+	if tree == nil {
+		return
+	}
+	ctx := context.Background()
+	if moved, err := tree.Move(ctx, -1); err == nil && moved {
+		return
+	}
+	_, _ = tree.Move(ctx, 1)
 }
 
 // removeNodeFromTree removes the given node from the tree by checking if it's a root node
