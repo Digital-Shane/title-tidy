@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.14.0] - 2025-10-06
+### Added
+* Updated metadata progress UI to allow the users to manually enter search terms when metadata provider lookup fails
+
 ## [v1.13.0] - 2025-09-24
 ### Updated
 * TUI testing to use teatest for integration testing

@@ -26,9 +26,12 @@ type MetadataItem struct {
 
 // MetadataResult represents the result of fetching metadata for an item.
 type MetadataResult struct {
-	Item MetadataItem
-	Meta *provider.Metadata
-	Errs []error
+	Item       MetadataItem
+	Meta       *provider.Metadata
+	Errs       []error
+	TMDBErr    error
+	OMDBErr    error
+	FFProbeErr error
 }
 
 type localNodeInfo struct {

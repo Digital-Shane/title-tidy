@@ -61,6 +61,13 @@ func newMetadataTestTree() *treeview.Tree[treeview.FileInfo] {
 	return tree
 }
 
+func newSingleMovieTree() *treeview.Tree[treeview.FileInfo] {
+	movie := newMetadataFileNode("movie", "Manual Movie (2022).mkv", "/library/Manual Movie (2022).mkv", false)
+	tree := &treeview.Tree[treeview.FileInfo]{}
+	tree.SetNodes([]*treeview.Node[treeview.FileInfo]{movie})
+	return tree
+}
+
 type metadataFakeProvider struct {
 	name      string
 	fetchFunc func(provider.FetchRequest) (*provider.Metadata, error)
@@ -369,5 +376,93 @@ func TestMetadataProgressDisplaysErrorsAndExposesErr(t *testing.T) {
 		if !bytes.Contains(output, []byte(want)) {
 			t.Errorf("final output missing %q; output = %q", want, output)
 		}
+	}
+}
+
+func TestMetadataProgressManualRetryResolvesFailure(t *testing.T) {
+	tree := newSingleMovieTree()
+
+	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+	model := NewMetadataProgressModel(tree, cfg, theme.Default())
+	provider := newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
+		if req.Name == "Manual k Success" {
+			return &provider.Metadata{Core: provider.CoreMetadata{Title: req.Name, MediaType: req.MediaType}}, nil
+		}
+		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "NOT_FOUND", Message: fmt.Sprintf("no results for %s", req.Name), Retry: false}
+	})
+	configureTestEngine(model, tree, provider, 1)
+
+	tm := newMetadataProgressTestModel(t, model, teatest.WithInitialTermSize(90, 20))
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Resolve Metadata Search"))
+	}, teatest.WithDuration(2*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlU})
+	tm.Type("Manual k Success")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
+	finalModel := finalMetadataProgressModel(t, tm)
+
+	if !finalModel.done {
+		t.Error("done = false, want true after resolving failures")
+	}
+	if finalModel.manualActive {
+		t.Error("manualActive = true, want false after resolution")
+	}
+	if diff := cmp.Diff(0, len(finalModel.failures)); diff != "" {
+		t.Errorf("failures length mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(0, finalModel.summary.ErrorCount); diff != "" {
+		t.Errorf("summary.ErrorCount mismatch (-want +got):\n%s", diff)
+	}
+
+	metadata := finalModel.Metadata()
+	if len(metadata) == 0 {
+		t.Fatal("Metadata() returned no entries, want manual result")
+	}
+	found := false
+	for _, meta := range metadata {
+		if meta != nil && meta.Core.Title == "Manual k Success" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Metadata() missing manual title 'Manual k Success'; metadata = %+v", metadata)
+	}
+}
+
+func TestMetadataProgressManualSkipAllowsContinue(t *testing.T) {
+	tree := newSingleMovieTree()
+
+	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+	model := NewMetadataProgressModel(tree, cfg, theme.Default())
+	provider := newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
+		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "NOT_FOUND", Message: fmt.Sprintf("no results for %s", req.Name), Retry: false}
+	})
+	configureTestEngine(model, tree, provider, 1)
+
+	tm := newMetadataProgressTestModel(t, model, teatest.WithInitialTermSize(90, 20))
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Resolve Metadata Search"))
+	}, teatest.WithDuration(2*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlS})
+
+	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
+	finalModel := finalMetadataProgressModel(t, tm)
+
+	if !finalModel.manualSkipped {
+		t.Error("manualSkipped = false, want true after ctrl+s")
+	}
+	if finalModel.manualActive {
+		t.Error("manualActive = true, want false after skip")
+	}
+	if diff := cmp.Diff(finalModel.summary.ErrorCount, len(finalModel.failures)); diff != "" {
+		t.Errorf("error count mismatch (-want +got):\n%s", diff)
+	}
+	if finalModel.Err() != nil {
+		t.Errorf("Err() = %v, want nil when skipping", finalModel.Err())
 	}
 }
