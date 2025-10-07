@@ -28,8 +28,8 @@ cp "$VIDEO_SRC" "$SHOW1_DIR/s2/Episode 5.mkv"    # S02E05 via parent
 touch "$SHOW1_DIR/s2/Episode 5.nfo"
 cp "$VIDEO_SRC" "$SHOW1_DIR/s2/E06.mkv"          # S02E06 via parent (E06)
 touch "$SHOW1_DIR/s2/poster.jpg"
-# Season 3 style alt name (Season_03) plus subtitles & dotted season 10 example (ignored here)
-cp "$VIDEO_SRC" "$SHOW1_DIR/Season_03 Extras/10.12.mkv" # S10E12 (season 10) even though under Season 3 folder
+# Season 3 style alt name (Season_03) plus subtitles & dotted season 5 example (ignored here)
+cp "$VIDEO_SRC" "$SHOW1_DIR/Season_03 Extras/5.12.mkv" # S05E12 (season 5) even though under Season 3 folder
 touch "$SHOW1_DIR/Season_03 Extras/Breaking.Bad.S03E01.en.srt"
 touch "$SHOW1_DIR/Season_03 Extras/Breaking.Bad.S03E01.en-US.srt"
 touch "$SHOW1_DIR/Season_03 Extras/Breaking.Bad.S03E02.srt"

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
@@ -35,6 +36,9 @@ type MetadataEngine struct {
 	errorsMu sync.Mutex
 	errors   []error
 
+	failuresMu sync.Mutex
+	failures   []MetadataFailure
+
 	activeProviders []string
 }
 
@@ -57,6 +61,26 @@ type MetadataSummary struct {
 type MetadataEvent struct {
 	Summary MetadataSummary
 	Err     error
+}
+
+// MetadataProviderType identifies a metadata provider that can contribute
+// results to the aggregation pipeline. Only providers that support manual
+// search overrides are currently enumerated.
+type MetadataProviderType string
+
+const (
+	MetadataProviderTMDB MetadataProviderType = "tmdb"
+	MetadataProviderOMDB MetadataProviderType = "omdb"
+)
+
+// MetadataFailure captures a provider-specific failure for a metadata item so
+// callers (e.g., the TUI) can offer manual search overrides before proceeding.
+type MetadataFailure struct {
+	Item     MetadataItem
+	Provider MetadataProviderType
+	Query    string
+	Err      error
+	Attempts int
 }
 
 // MetadataEngineConfig configures provider access for the metadata engine.
@@ -369,7 +393,14 @@ func (e *MetadataEngine) worker(ctx context.Context, wg *sync.WaitGroup, workCh 
 		}
 
 		select {
-		case resultCh <- MetadataResult{Item: item, Meta: combined, Errs: errs}:
+		case resultCh <- MetadataResult{
+			Item:       item,
+			Meta:       combined,
+			Errs:       errs,
+			TMDBErr:    tmdbErr,
+			OMDBErr:    omdbErr,
+			FFProbeErr: ffprobeErr,
+		}:
 		case <-ctx.Done():
 			return
 		}
@@ -381,10 +412,11 @@ func (e *MetadataEngine) processResult(res MetadataResult) {
 		e.metadata.Store(res.Item.Key, res.Meta)
 	}
 
-	errorCount := e.appendErrors(res)
+	failureCount := e.updateProviderFailures(res)
+	e.appendErrors(res)
 	e.summaryMu.Lock()
 	e.summary.ProcessedItems++
-	e.summary.ErrorCount = errorCount
+	e.summary.ErrorCount = failureCount
 	e.summary.LastItem = FormatMetadataProgressMessage(res.Item)
 	e.summaryMu.Unlock()
 }
@@ -402,10 +434,6 @@ func (e *MetadataEngine) appendErrors(res MetadataResult) int {
 		if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			continue
 		}
-		var provErr *provider.ProviderError
-		if errors.As(err, &provErr) && provErr.Code == "NOT_FOUND" {
-			continue
-		}
 		filtered = append(filtered, fmt.Errorf("%s: %w", res.Item.Name, err))
 	}
 
@@ -421,6 +449,221 @@ func (e *MetadataEngine) appendErrors(res MetadataResult) int {
 	count := len(e.errors)
 	e.errorsMu.Unlock()
 	return count
+}
+
+func (e *MetadataEngine) updateProviderFailures(res MetadataResult) int {
+	e.failuresMu.Lock()
+	defer e.failuresMu.Unlock()
+
+	e.updateFailureLocked(res.Item, MetadataProviderTMDB, res.Item.Name, res.TMDBErr)
+	e.updateFailureLocked(res.Item, MetadataProviderOMDB, res.Item.Name, res.OMDBErr)
+
+	return len(e.failures)
+}
+
+// ProviderFailures returns a snapshot of provider errors that require manual
+// intervention before progressing. The returned slice is a copy safe for
+// modification by the caller.
+func (e *MetadataEngine) ProviderFailures() []MetadataFailure {
+	e.failuresMu.Lock()
+	defer e.failuresMu.Unlock()
+
+	if len(e.failures) == 0 {
+		return nil
+	}
+
+	cloned := make([]MetadataFailure, len(e.failures))
+	copy(cloned, e.failures)
+	return cloned
+}
+
+// RetryProvider re-executes a provider lookup using an optional manual search
+// term. It returns nil when the failure has been resolved. If the provider
+// still fails, the updated failure (including attempt count and error) is
+// returned for display. A non-nil error indicates an unexpected engine issue.
+func (e *MetadataEngine) RetryProvider(ctx context.Context, key string, providerType MetadataProviderType, nameOverride string) (*MetadataFailure, error) {
+	e.failuresMu.Lock()
+	idx := e.findFailureIndexLocked(key, providerType)
+	if idx < 0 {
+		e.failuresMu.Unlock()
+		return nil, fmt.Errorf("metadata failure for %s/%s not found", providerType, key)
+	}
+	failure := e.failures[idx]
+	e.failuresMu.Unlock()
+
+	query := strings.TrimSpace(nameOverride)
+	if query == "" {
+		query = strings.TrimSpace(failure.Query)
+	}
+	if query == "" {
+		query = failure.Item.Name
+	}
+
+	attemptItem := failure.Item
+	attemptItem.Name = query
+
+	var (
+		meta     *provider.Metadata
+		fetchErr error
+	)
+
+	switch providerType {
+	case MetadataProviderTMDB:
+		if e.tmdbProvider == nil {
+			return nil, fmt.Errorf("tmdb provider not configured")
+		}
+		meta, fetchErr = FetchTMDBMetadata(ctx, e.tmdbProvider, e.metadataCache(), attemptItem)
+	case MetadataProviderOMDB:
+		if e.omdbProvider == nil {
+			return nil, fmt.Errorf("omdb provider not configured")
+		}
+		meta, fetchErr = FetchOMDBMetadata(ctx, e.omdbProvider, attemptItem, e.metadataCache())
+	default:
+		return nil, fmt.Errorf("unsupported metadata provider %q", providerType)
+	}
+
+	if fetchErr != nil || meta == nil {
+		e.failuresMu.Lock()
+		defer e.failuresMu.Unlock()
+
+		idx = e.findFailureIndexLocked(key, providerType)
+		if idx < 0 {
+			return nil, fmt.Errorf("metadata failure for %s/%s not found after retry", providerType, key)
+		}
+
+		updated := e.failures[idx]
+		updated.Attempts++
+		updated.Query = query
+		updated.Item.Name = attemptItem.Name
+		if meta == nil && fetchErr == nil {
+			fetchErr = fmt.Errorf("no metadata returned for %q", query)
+		}
+		updated.Err = fetchErr
+		e.failures[idx] = updated
+
+		e.summaryMu.Lock()
+		e.summary.ErrorCount = len(e.failures)
+		e.summaryMu.Unlock()
+
+		failureCopy := updated
+		return &failureCopy, nil
+	}
+
+	e.applyManualMetadata(attemptItem, providerType, meta)
+
+	e.failuresMu.Lock()
+	idx = e.findFailureIndexLocked(key, providerType)
+	if idx >= 0 {
+		e.failures = append(e.failures[:idx], e.failures[idx+1:]...)
+	}
+	remaining := len(e.failures)
+	e.failuresMu.Unlock()
+
+	e.summaryMu.Lock()
+	e.summary.ErrorCount = remaining
+	e.summary.LastItem = FormatMetadataProgressMessage(attemptItem)
+	e.summaryMu.Unlock()
+
+	return nil, nil
+}
+
+func (e *MetadataEngine) updateFailureLocked(item MetadataItem, providerType MetadataProviderType, query string, err error) {
+	idx := e.findFailureIndexLocked(item.Key, providerType)
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if idx >= 0 {
+			e.failures = append(e.failures[:idx], e.failures[idx+1:]...)
+		}
+		return
+	}
+
+	if query == "" {
+		query = item.Name
+	}
+
+	var provErr *provider.ProviderError
+	if errors.As(err, &provErr) {
+		// Only treat search-not-found scenarios as retryable in the manual UI.
+		if provErr.Code != "NOT_FOUND" {
+			if idx >= 0 {
+				e.failures = append(e.failures[:idx], e.failures[idx+1:]...)
+			}
+			return
+		}
+	}
+
+	if idx >= 0 {
+		existing := e.failures[idx]
+		existing.Err = err
+		existing.Query = query
+		existing.Item = item
+		if existing.Attempts == 0 {
+			existing.Attempts = 1
+		}
+		e.failures[idx] = existing
+		return
+	}
+
+	failure := MetadataFailure{
+		Item:     item,
+		Provider: providerType,
+		Query:    query,
+		Err:      err,
+		Attempts: 1,
+	}
+	e.failures = append(e.failures, failure)
+}
+
+func (e *MetadataEngine) findFailureIndexLocked(key string, providerType MetadataProviderType) int {
+	for idx, failure := range e.failures {
+		if failure.Item.Key == key && failure.Provider == providerType {
+			return idx
+		}
+	}
+	return -1
+}
+
+func (e *MetadataEngine) applyManualMetadata(item MetadataItem, providerType MetadataProviderType, meta *provider.Metadata) {
+	if meta == nil {
+		return
+	}
+
+	existing, _ := e.metadata.Load(item.Key)
+
+	switch providerType {
+	case MetadataProviderTMDB:
+		extra := make([]*provider.Metadata, 0, 1)
+		if existing != nil {
+			extra = append(extra, existing)
+		}
+		combined := MergeMetadata(item, meta, extra...)
+		if combined != nil {
+			e.metadata.Store(item.Key, combined)
+		}
+	case MetadataProviderOMDB:
+		if existing != nil {
+			combined := MergeMetadata(item, existing, meta)
+			if combined != nil {
+				e.metadata.Store(item.Key, combined)
+			}
+			return
+		}
+		combined := MergeMetadata(item, meta)
+		if combined != nil {
+			e.metadata.Store(item.Key, combined)
+		}
+	default:
+		if existing != nil {
+			combined := MergeMetadata(item, existing, meta)
+			if combined != nil {
+				e.metadata.Store(item.Key, combined)
+			}
+			return
+		}
+		combined := MergeMetadata(item, meta)
+		if combined != nil {
+			e.metadata.Store(item.Key, combined)
+		}
+	}
 }
 
 func (e *MetadataEngine) emit(ctx context.Context, events chan<- MetadataEvent, err error) {
