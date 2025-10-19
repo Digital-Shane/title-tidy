@@ -65,6 +65,15 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Provider:    providerName,
 		},
 		{
+			Name:        "video_resolution",
+			DisplayName: "Video Resolution",
+			Description: "Primary video resolution reported by ffprobe",
+			MediaTypes:  mediaTypes,
+			Example:     "1080p",
+			Category:    "technical",
+			Provider:    providerName,
+		},
+		{
 			Name:        "audio_codec",
 			DisplayName: "Audio Codec",
 			Description: "Primary audio codec reported by ffprobe",
@@ -143,6 +152,11 @@ func (p *Provider) buildMetadata(request provider.FetchRequest, data *ffprobe.Pr
 			meta.Extended["video_codec"] = codec
 			meta.Sources["video_codec"] = providerName
 		}
+
+		if resolution := formatVideoResolution(videoStream); resolution != "" {
+			meta.Extended["video_resolution"] = resolution
+			meta.Sources["video_resolution"] = providerName
+		}
 	}
 
 	if audioStream := data.FirstAudioStream(); audioStream != nil {
@@ -196,4 +210,14 @@ func pickCodecName(stream *ffprobe.Stream) string {
 		return stream.CodecName
 	}
 	return stream.CodecLongName
+}
+
+func formatVideoResolution(stream *ffprobe.Stream) string {
+	if stream == nil {
+		return ""
+	}
+	if stream.Height <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dp", stream.Height)
 }

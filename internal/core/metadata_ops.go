@@ -176,6 +176,19 @@ func ShouldReplaceItemNode(existing MetadataItem, candidate MetadataItem) bool {
 	if !existingData.IsDir() && candidateData.IsDir() {
 		return false
 	}
+
+	existingName := existing.Node.Name()
+	candidateName := candidate.Node.Name()
+
+	existingIsVideo := local.IsVideo(existingName)
+	candidateIsVideo := local.IsVideo(candidateName)
+
+	if candidateIsVideo && !existingIsVideo {
+		return true
+	}
+	if existingIsVideo && !candidateIsVideo {
+		return false
+	}
 	// Prefer candidate when existing metadata is missing key details
 	if existing.Name == "" && candidate.Name != "" {
 		return true

@@ -18,6 +18,7 @@ func TestFetch_Success(t *testing.T) {
 				{
 					CodecName: "h264",
 					CodecType: string(ffprobeLib.StreamVideo),
+					Height:    1080,
 				},
 				{
 					CodecName: "aac",
@@ -52,12 +53,20 @@ func TestFetch_Success(t *testing.T) {
 		t.Errorf("audio_codec = %v, want aac", got)
 	}
 
+	if got := meta.Extended["video_resolution"]; got != "1080p" {
+		t.Errorf("video_resolution = %v, want 1080p", got)
+	}
+
 	if got := meta.Sources["video_codec"]; got != providerName {
 		t.Errorf("source(video_codec) = %v, want %v", got, providerName)
 	}
 
 	if got := meta.Sources["audio_codec"]; got != providerName {
 		t.Errorf("source(audio_codec) = %v, want %v", got, providerName)
+	}
+
+	if got := meta.Sources["video_resolution"]; got != providerName {
+		t.Errorf("source(video_resolution) = %v, want %v", got, providerName)
 	}
 }
 
@@ -77,6 +86,42 @@ func TestFetch_MissingPath(t *testing.T) {
 
 	if provErr.Code != "MISSING_PATH" {
 		t.Errorf("ProviderError.Code = %v, want MISSING_PATH", provErr.Code)
+	}
+}
+
+func TestFetch_SkipsResolutionWhenHeightMissing(t *testing.T) {
+	p := New()
+	p.probe = func(ctx context.Context, path string, extraOpts ...string) (*ffprobeLib.ProbeData, error) {
+		return &ffprobeLib.ProbeData{
+			Format: &ffprobeLib.Format{},
+			Streams: []*ffprobeLib.Stream{
+				{
+					CodecName: "h264",
+					CodecType: string(ffprobeLib.StreamVideo),
+				},
+			},
+		}, nil
+	}
+
+	req := provider.FetchRequest{
+		MediaType: provider.MediaTypeMovie,
+		Name:      "Example",
+		Extra: map[string]interface{}{
+			"path": "/videos/example.mkv",
+		},
+	}
+
+	meta, err := p.Fetch(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Fetch() unexpected error: %v", err)
+	}
+
+	if _, ok := meta.Extended["video_resolution"]; ok {
+		t.Errorf("video_resolution present = %t, want false", ok)
+	}
+
+	if _, ok := meta.Sources["video_resolution"]; ok {
+		t.Errorf("source(video_resolution) present = %t, want false", ok)
 	}
 }
 

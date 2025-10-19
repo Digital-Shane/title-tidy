@@ -111,6 +111,7 @@ Customize how your media files and folders are named:
 
 **ffprobe Metadata Variables (when ffprobe is enabled):**
 * `{video_codec}` - Video codec used in the media container file (episodes and movies only)
+* `{video_resolution}` - Video resolution reported by ffprobe (episodes and movies only)
 * `{audio_codec}` - Audio codec used in the media container file (episodes and movies only)
 
 **Template Examples:**
@@ -153,7 +154,7 @@ With OMDB enabled, Title Tidy enriches your media with IMDB ratings, genre lists
 
 The ffprobe integration only allows Enable/Disable in the configuration.
 
-When ffprobe is enabled, Title Tidy will automatically scan your media files to extract the video and audio codec in use for use in file names.
+When ffprobe is enabled, Title Tidy will automatically scan your media files to extract the video resolution plus the video and audio codecs for use in file names.
 
 ### Shows
 

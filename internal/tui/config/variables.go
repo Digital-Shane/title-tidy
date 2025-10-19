@@ -30,7 +30,7 @@ func buildVariables(section Section, state *ConfigState, registry *config.Templa
 			{"OMDb API Key", "Create at omdbapi.com/apikey.aspx", "8+ characters"},
 			{"TMDB API Key", "Generate from the TMDB web console", "32 hex characters"},
 			{"TMDB Language", "Preferred metadata language code", "en-US, fr-FR, etc."},
-			{"ffprobe", "Enable codec metadata extraction", "Adds audio/video codec variables"},
+			{"ffprobe", "Enable codec metadata extraction", "Adds audio/video codec and resolution variables"},
 		}
 	}
 
