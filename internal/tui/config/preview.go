@@ -86,10 +86,11 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		},
 		IDs: map[string]string{"imdb_id": "tt0903747"},
 		Extended: map[string]interface{}{
-			"tagline":     "All Hail the King",
-			"networks":    "AMC",
-			"audio_codec": "aac",
-			"video_codec": "264",
+			"tagline":          "All Hail the King",
+			"networks":         "AMC",
+			"audio_codec":      "aac",
+			"video_codec":      "264",
+			"video_resolution": "1080p",
 		},
 	}
 
@@ -102,10 +103,11 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		},
 		IDs: map[string]string{"imdb_id": "tt0133093"},
 		Extended: map[string]interface{}{
-			"tagline":     "Welcome to the Real World",
-			"studios":     "Warner Bros.",
-			"audio_codec": "aac",
-			"video_codec": "264",
+			"tagline":          "Welcome to the Real World",
+			"studios":          "Warner Bros.",
+			"audio_codec":      "aac",
+			"video_codec":      "264",
+			"video_resolution": "2160p",
 		},
 	}
 
