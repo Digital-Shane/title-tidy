@@ -105,6 +105,32 @@ func TestRenameRegular_Success(t *testing.T) {
 	}
 }
 
+func TestRenameRegular_SanitizesInvalidChars(t *testing.T) {
+	tmp := t.TempDir()
+	cwd, _ := os.Getwd()
+	defer os.Chdir(cwd)
+	os.Chdir(tmp)
+	if err := os.WriteFile("orig.txt", []byte("content"), 0o644); err != nil {
+		t.Fatalf("write orig: %v", err)
+	}
+	n := fsTestNode("orig.txt", false, "orig.txt")
+	mm := core.EnsureMeta(n)
+	mm.NewName = "Movie:2.txt"
+	renamed, err := core.RenameRegular(n, mm)
+	if err != nil || !renamed {
+		t.Errorf("RenameRegular(sanitize) = (%v,%v), want (true,<nil>)", renamed, err)
+	}
+	if mm.NewName != "Movie 2.txt" {
+		t.Errorf("RenameRegular(sanitize) new name = %q, want %q", mm.NewName, "Movie 2.txt")
+	}
+	if n.Data().Path != "Movie 2.txt" {
+		t.Errorf("RenameRegular(sanitize) path = %s, want Movie 2.txt", n.Data().Path)
+	}
+	if _, err := os.Stat("Movie 2.txt"); err != nil {
+		t.Errorf("RenameRegular(sanitize) new file stat error = %v", err)
+	}
+}
+
 func TestCreateVirtualDir_MkdirFails(t *testing.T) {
 	tmp := t.TempDir()
 	cwd, _ := os.Getwd()

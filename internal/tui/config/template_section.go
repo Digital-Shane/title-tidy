@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
 	"github.com/charmbracelet/bubbletea"
@@ -46,6 +48,12 @@ func (t *templateSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key.Type == tea.KeySpace {
 			key = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
+		}
+		if key.Type == tea.KeyRunes {
+			key.Runes = filterInvalidFilenameRunes(key.Runes)
+			if len(key.Runes) == 0 {
+				return t, nil
+			}
 			var cmd tea.Cmd
 			t.state.Input, cmd = t.state.Input.Update(key)
 			return t, cmd
@@ -61,3 +69,23 @@ func (t *templateSection) View() string {
 	label := t.theme.PanelTitleStyle().Render("Format Template:")
 	return lipgloss.JoinVertical(lipgloss.Left, label, t.state.Input.View())
 }
+
+func filterInvalidFilenameRunes(runes []rune) []rune {
+	if len(runes) == 0 {
+		return runes
+	}
+
+	filtered := runes[:0]
+	for _, r := range runes {
+		if r < 32 || r == 127 {
+			continue
+		}
+		if strings.ContainsRune(invalidFilenameChars, r) {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered
+}
+
+const invalidFilenameChars = "<>:\"/\\|?*"
