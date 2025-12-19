@@ -233,6 +233,13 @@ func TestSeasonEpisodeFromContext(t *testing.T) {
 			wantFound:   true,
 		},
 		{
+			name:        "ExplicitWithAudioChannels",
+			filename:    "Show.S01E02.AAC.5.1.1080p.mkv",
+			wantSeason:  1,
+			wantEpisode: 2,
+			wantFound:   true,
+		},
+		{
 			name:        "Dotted",
 			filename:    "The.Wire.1.04.avi",
 			wantSeason:  1,

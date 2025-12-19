@@ -12,7 +12,16 @@ import (
 // RenameRegular renames a node; returns true only when an actual filesystem rename occurred.
 func RenameRegular(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (bool, error) {
 	oldPath := node.Data().Path
-	newPath := filepath.Join(filepath.Dir(oldPath), mm.NewName)
+	newName, err := sanitizeFilename(mm.NewName)
+	if err != nil {
+		log.LogRename(oldPath, "", false, err)
+		return false, mm.Fail(err)
+	}
+	if newName != mm.NewName {
+		mm.NewName = newName
+	}
+
+	newPath := filepath.Join(filepath.Dir(oldPath), newName)
 	if oldPath == newPath {
 		return false, nil
 	}
@@ -38,7 +47,17 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (in
 	successes := 0
 	errs := []error{}
 
-	dirPath := filepath.Join(".", mm.NewName)
+	dirName, err := sanitizeFilename(mm.NewName)
+	if err != nil {
+		log.LogCreateDir(mm.NewName, false, err)
+		errs = append(errs, mm.Fail(err))
+		return successes, errs
+	}
+	if dirName != mm.NewName {
+		mm.NewName = dirName
+	}
+
+	dirPath := filepath.Join(".", dirName)
 	if err := os.Mkdir(dirPath, 0755); err != nil {
 		log.LogCreateDir(dirPath, false, err)
 		errs = append(errs, fmt.Errorf("create %s: %w", mm.NewName, mm.Fail(err)))
@@ -62,6 +81,15 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (in
 		childName := cm.NewName
 		if childName == "" {
 			childName = child.Name()
+		}
+		childName, err := sanitizeFilename(childName)
+		if err != nil {
+			log.LogRename(child.Data().Path, "", false, err)
+			errs = append(errs, fmt.Errorf("%s: %w", child.Name(), cm.Fail(err)))
+			continue
+		}
+		if childName != cm.NewName {
+			cm.NewName = childName
 		}
 
 		oldChildPath := child.Data().Path
@@ -89,6 +117,16 @@ func LinkRegular(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (bool, e
 		err := fmt.Errorf("no destination path specified")
 		log.LogLink(srcPath, destPath, false, err)
 		return false, mm.Fail(err)
+	}
+
+	sanitizedPath, err := sanitizePath(destPath)
+	if err != nil {
+		log.LogLink(srcPath, destPath, false, err)
+		return false, mm.Fail(err)
+	}
+	if sanitizedPath != destPath {
+		destPath = sanitizedPath
+		mm.DestinationPath = sanitizedPath
 	}
 
 	// Create parent directory if it doesn't exist
@@ -131,7 +169,17 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta, linkP
 	errs := []error{}
 
 	// Create directory in the destination
-	dirPath := filepath.Join(linkPath, mm.NewName)
+	dirName, err := sanitizeFilename(mm.NewName)
+	if err != nil {
+		log.LogCreateDir(mm.NewName, false, err)
+		errs = append(errs, mm.Fail(err))
+		return successes, errs
+	}
+	if dirName != mm.NewName {
+		mm.NewName = dirName
+	}
+
+	dirPath := filepath.Join(linkPath, dirName)
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		log.LogCreateDir(dirPath, false, err)
 		errs = append(errs, fmt.Errorf("create %s: %w", mm.NewName, mm.Fail(err)))
@@ -154,6 +202,15 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta, linkP
 		childName := cm.NewName
 		if childName == "" {
 			childName = child.Name()
+		}
+		childName, err := sanitizeFilename(childName)
+		if err != nil {
+			log.LogLink(child.Data().Path, "", false, err)
+			errs = append(errs, fmt.Errorf("%s: %w", child.Name(), cm.Fail(err)))
+			continue
+		}
+		if childName != cm.NewName {
+			cm.NewName = childName
 		}
 
 		srcPath := child.Data().Path
@@ -208,6 +265,17 @@ func DeleteMarkedNode(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) err
 
 // EnsureDestinationDir makes sure the destination directory exists for link mode operations.
 func EnsureDestinationDir(path string, mm *MediaMeta) error {
+	sanitizedPath, err := sanitizePath(path)
+	if err != nil {
+		log.LogCreateDir(path, false, err)
+		mm.Fail(err)
+		return err
+	}
+	if sanitizedPath != path {
+		path = sanitizedPath
+		mm.DestinationPath = sanitizedPath
+	}
+
 	if err := os.MkdirAll(path, 0755); err != nil {
 		log.LogCreateDir(path, false, err)
 		mm.Fail(err)

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [v1.15.1] - 2025-12-19
+### Fixed
+* Episode extraction to prefer explicit SxxExx/1x02 patterns so audio channel tags no longer override valid info.
+  * Added a regression test to lock in the behavior.
+* Config UI now ignores file system control characters when creating file templates.
+  * Including extra characters windows can't handle: `<>:"/\\|?*`.
+* Sanitation of filenames now occurs before rename to prevent invalid characters from metadata. 
+
 ## [v1.15.0] - 2025-10-19
 ### Added
 * Updated ffprobe provider to supply video resolution as metadata
