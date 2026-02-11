@@ -339,3 +339,28 @@ func TestAnnotateMoviesTreePreservesExistingTagsWhenEnabled(t *testing.T) {
 		t.Errorf("rename for theatrical = %q, want %q", got, "A Nightmare on Elm Street (1984) - [h265][2160p][imdbid-tt0087800][Theatrical Cut].mkv")
 	}
 }
+
+func TestMoviePreprocessVirtualDirectoryIDsUnique(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	videoA := treeview.NewNode("movie-a", "Alien (1979).mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Alien (1979).mkv", false),
+		Path:     "Alien (1979).mkv",
+		Extra:    map[string]any{},
+	})
+	videoB := treeview.NewNode("movie-b", "Blade Runner (1982).mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Blade Runner (1982).mkv", false),
+		Path:     "Blade Runner (1982).mkv",
+		Extra:    map[string]any{},
+	})
+
+	processed := moviePreprocess([]*treeview.Node[treeview.FileInfo]{videoA, videoB}, cfg, false)
+
+	if len(processed) != 2 {
+		t.Errorf("moviePreprocess(%d nodes) root count = %d, want %d", 2, len(processed), 2)
+	}
+
+	if processed[0].ID() == processed[1].ID() {
+		t.Errorf("moviePreprocess virtual dir IDs = %q and %q, want unique IDs", processed[0].ID(), processed[1].ID())
+	}
+}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
@@ -162,7 +163,8 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 
 		// Create a mock FileInfo for the virtual directory
 		mockInfo := core.NewSimpleFileInfo(videoBaseName, true)
-		virtualDir := treeview.NewNode("virtual_movie_dir", videoBaseName, treeview.FileInfo{
+		virtualID := fmt.Sprintf("virtual_movie_dir:%s", n.ID())
+		virtualDir := treeview.NewNode(virtualID, videoBaseName, treeview.FileInfo{
 			FileInfo: mockInfo,
 			Path:     videoBaseName,
 			Extra:    make(map[string]any),
