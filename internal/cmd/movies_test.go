@@ -224,7 +224,7 @@ func TestSubtitleBaseNameExtraction(t *testing.T) {
 	}
 }
 
-func TestAppendPreservedTags(t *testing.T) {
+func TestPreserveExistingBracketTags(t *testing.T) {
 	tests := []struct {
 		name       string
 		baseName   string
@@ -257,9 +257,13 @@ func TestAppendPreservedTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := appendPreservedTags(tt.baseName, tt.sourceName, tt.preserve)
+			sourceBase := tt.sourceName
+			if ext := local.ExtractExtension(sourceBase); ext != "" {
+				sourceBase = sourceBase[:len(sourceBase)-len(ext)]
+			}
+			got := core.PreserveExistingBracketTags(tt.baseName, sourceBase, tt.preserve)
 			if got != tt.want {
-				t.Errorf("appendPreservedTags(%q, %q, %v) = %q, want %q", tt.baseName, tt.sourceName, tt.preserve, got, tt.want)
+				t.Errorf("PreserveExistingBracketTags(%q, %q, %v) = %q, want %q", tt.baseName, sourceBase, tt.preserve, got, tt.want)
 			}
 		})
 	}

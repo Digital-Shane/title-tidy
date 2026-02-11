@@ -69,7 +69,8 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			}
 
 			ctx := createFormatContext(cfg, showMeta.Core.Title, "", showMeta.Core.Year, 0, 0, meta)
-			m.NewName = cfg.ApplyShowFolderTemplate(ctx)
+			generated := cfg.ApplyShowFolderTemplate(ctx)
+			m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
 
 			if meta != nil {
 				showMetadata[ni.Node] = meta
@@ -113,7 +114,8 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			}
 
 			ctx := createFormatContext(cfg, showName, "", year, seasonMeta.Core.SeasonNum, 0, meta)
-			m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
+			generated := cfg.ApplySeasonFolderTemplate(ctx)
+			m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
 
 			if linkPath != "" {
 				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
@@ -177,7 +179,14 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 			}
 
 			ctx := createFormatContext(cfg, showName, "", year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum, meta)
-			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
+			ext := local.ExtractExtension(ni.Node.Name())
+			sourceBase := ni.Node.Name()
+			if ext != "" {
+				sourceBase = sourceBase[:len(sourceBase)-len(ext)]
+			}
+			generated := cfg.ApplyEpisodeTemplate(ctx)
+			generated = core.PreserveExistingBracketTags(generated, sourceBase, cfg.PreserveExistingTags)
+			m.NewName = generated + ext
 
 			if linkPath != "" {
 				fileName := m.NewName

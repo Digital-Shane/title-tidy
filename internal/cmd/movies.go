@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
@@ -13,8 +11,6 @@ import (
 	"github.com/Digital-Shane/treeview"
 	"github.com/spf13/cobra"
 )
-
-var bracketTagPattern = regexp.MustCompile(`\[[^\[\]]+\]`)
 
 var moviesCmd = &cobra.Command{
 	Use:   "movies",
@@ -69,66 +65,6 @@ func fallbackMovieNameYear(node *treeview.Node[treeview.FileInfo]) (string, stri
 	return local.ExtractNameAndYear(name)
 }
 
-func extractBracketTags(baseName string) []string {
-	if baseName == "" {
-		return nil
-	}
-	matches := bracketTagPattern.FindAllString(baseName, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	return matches
-}
-
-func normalizeBracketTag(tag string) string {
-	trimmed := strings.TrimSpace(tag)
-	if len(trimmed) >= 2 && strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-		trimmed = trimmed[1 : len(trimmed)-1]
-	}
-	return strings.ToLower(strings.TrimSpace(trimmed))
-}
-
-func appendPreservedTags(baseName string, sourceFileName string, preserve bool) string {
-	if !preserve {
-		return baseName
-	}
-
-	sourceBase := sourceFileName
-	if ext := local.ExtractExtension(sourceBase); ext != "" {
-		sourceBase = sourceBase[:len(sourceBase)-len(ext)]
-	}
-
-	tagsToPreserve := extractBracketTags(sourceBase)
-	if len(tagsToPreserve) == 0 {
-		return baseName
-	}
-
-	existingTags := extractBracketTags(baseName)
-	existing := make(map[string]struct{}, len(existingTags))
-	for _, tag := range existingTags {
-		norm := normalizeBracketTag(tag)
-		if norm == "" {
-			continue
-		}
-		existing[norm] = struct{}{}
-	}
-
-	result := baseName
-	for _, tag := range tagsToPreserve {
-		norm := normalizeBracketTag(tag)
-		if norm == "" {
-			continue
-		}
-		if _, ok := existing[norm]; ok {
-			continue
-		}
-		result += tag
-		existing[norm] = struct{}{}
-	}
-
-	return result
-}
-
 func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.FormatConfig, noDir bool) []*treeview.Node[treeview.FileInfo] {
 	if noDir {
 		// First pass: process video files and build a map of base names to new names
@@ -151,7 +87,7 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 				movieName, year := detectMovieNameAndYear(n)
 				ctx := createFormatContext(cfg, "", movieName, year, 0, 0, nil)
 				newBase := cfg.ApplyMovieTemplate(ctx)
-				newBase = appendPreservedTags(newBase, n.Name(), cfg.PreserveExistingTags)
+				newBase = core.PreserveExistingBracketTags(newBase, base, cfg.PreserveExistingTags)
 				m.NewName = newBase + fileExt
 
 				// Store the rename mapping for subtitle matching
@@ -280,7 +216,8 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 				}
 
 				ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
-				m.NewName = cfg.ApplyMovieTemplate(ctx)
+				generated := cfg.ApplyMovieTemplate(ctx)
+				m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
 
 				if linkPath != "" {
 					m.DestinationPath = linkPath
@@ -299,7 +236,8 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 
 					formatCtx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 					newBase := cfg.ApplyMovieTemplate(formatCtx)
-					newBase = appendPreservedTags(newBase, ni.Node.Name(), cfg.PreserveExistingTags)
+					sourceBase := stripExtension(ni.Node.Name())
+					newBase = core.PreserveExistingBracketTags(newBase, sourceBase, cfg.PreserveExistingTags)
 					m.NewName = newBase + local.ExtractExtension(ni.Node.Name())
 
 					if linkPath != "" {
@@ -352,7 +290,8 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 
 					ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 					baseNewName := cfg.ApplyMovieTemplate(ctx)
-					baseNewName = appendPreservedTags(baseNewName, ni.Node.Name(), cfg.PreserveExistingTags)
+					sourceBase := stripExtension(ni.Node.Name())
+					baseNewName = core.PreserveExistingBracketTags(baseNewName, sourceBase, cfg.PreserveExistingTags)
 					m.NewName = baseNewName + local.ExtractExtension(ni.Node.Name())
 				}
 
@@ -376,7 +315,8 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 
 					ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 					baseNewName := cfg.ApplyMovieTemplate(ctx)
-					baseNewName = appendPreservedTags(baseNewName, ni.Node.Name(), cfg.PreserveExistingTags)
+					sourceBase := stripExtension(ni.Node.Name())
+					baseNewName = core.PreserveExistingBracketTags(baseNewName, sourceBase, cfg.PreserveExistingTags)
 
 					// Preserve the subtitle extension including language codes
 					m.NewName = baseNewName + local.ExtractExtension(ni.Node.Name())
