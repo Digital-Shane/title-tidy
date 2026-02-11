@@ -96,7 +96,7 @@ func TestConfigTUISectionNavigation(t *testing.T) {
 
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	tabs := []string{"[ Season Folder ]", "[ Episode ]", "[ Movie ]", "[ Logging ]", "[ Providers ]"}
+	tabs := []string{"[ Season Folder ]", "[ Episode ]", "[ Movie ]", "[ Rename ]", "[ Logging ]", "[ Providers ]"}
 	for _, label := range tabs {
 		press(tm, tea.KeyTab)
 		waitForOutput(t, tm, label)
@@ -147,7 +147,7 @@ func TestConfigTUILoggingKeys(t *testing.T) {
 	tm := newConfigTestModel(t)
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	for range []int{0, 1, 2, 3} {
+	for range []int{0, 1, 2, 3, 4} {
 		press(tm, tea.KeyTab)
 	}
 	waitForOutput(t, tm, "Logging Configuration")
@@ -244,7 +244,7 @@ func TestConfigTUIProvidersTMDB(t *testing.T) {
 	tm := newConfigTestModel(t)
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	for range []int{0, 1, 2, 3, 4} {
+	for range []int{0, 1, 2, 3, 4, 5} {
 		press(tm, tea.KeyTab)
 	}
 	waitForOutput(t, tm, "Provider Controls")
@@ -297,7 +297,7 @@ func TestConfigTUIProvidersOMDB(t *testing.T) {
 	tm := newConfigTestModel(t)
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	for range []int{0, 1, 2, 3, 4} {
+	for range []int{0, 1, 2, 3, 4, 5} {
 		press(tm, tea.KeyTab)
 	}
 	waitForOutput(t, tm, "Provider Controls")
@@ -336,7 +336,7 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 	tm := newConfigTestModel(t)
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	for range []int{0, 1, 2, 3, 4} {
+	for range []int{0, 1, 2, 3, 4, 5} {
 		press(tm, tea.KeyTab)
 	}
 	waitForOutput(t, tm, "Provider Controls")

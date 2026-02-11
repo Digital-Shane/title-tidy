@@ -16,6 +16,15 @@ type preview struct {
 
 func buildPreviews(section Section, state *ConfigState, icons map[string]string, registry *config.TemplateRegistry) []preview {
 	switch section {
+	case SectionRename:
+		status := "Disabled"
+		if state.Rename.PreserveExistingTags {
+			status = "Enabled"
+		}
+		return []preview{
+			{icons["check"], "Preserve Existing Tags", status},
+		}
+
 	case SectionLogging:
 		status := "Disabled"
 		if state.Logging.Enabled {

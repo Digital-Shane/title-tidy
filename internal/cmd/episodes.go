@@ -86,7 +86,14 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 			fetchMeta.Core.EpisodeNum,
 			meta,
 		)
-		m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
+		ext := local.ExtractExtension(ni.Node.Name())
+		sourceBase := ni.Node.Name()
+		if ext != "" {
+			sourceBase = sourceBase[:len(sourceBase)-len(ext)]
+		}
+		generated := cfg.ApplyEpisodeTemplate(ctx)
+		generated = core.PreserveExistingBracketTags(generated, sourceBase, cfg.PreserveExistingTags)
+		m.NewName = generated + ext
 
 		if linkPath != "" {
 			fileName := m.NewName

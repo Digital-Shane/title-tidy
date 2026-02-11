@@ -39,12 +39,13 @@ type FormatContext struct {
 
 // FormatConfig holds the format templates for different media types
 type FormatConfig struct {
-	ShowFolder       string `json:"show_folder"`
-	SeasonFolder     string `json:"season_folder"`
-	Episode          string `json:"episode"`
-	Movie            string `json:"movie"`
-	LogRetentionDays int    `json:"log_retention_days"`
-	EnableLogging    bool   `json:"enable_logging"`
+	ShowFolder           string `json:"show_folder"`
+	SeasonFolder         string `json:"season_folder"`
+	Episode              string `json:"episode"`
+	Movie                string `json:"movie"`
+	PreserveExistingTags bool   `json:"preserve_existing_tags"`
+	LogRetentionDays     int    `json:"log_retention_days"`
+	EnableLogging        bool   `json:"enable_logging"`
 
 	// TMDB Integration settings
 	TMDBAPIKey       string `json:"tmdb_api_key"`
@@ -62,19 +63,20 @@ type FormatConfig struct {
 // DefaultConfig returns the default format configuration
 func DefaultConfig() *FormatConfig {
 	return &FormatConfig{
-		ShowFolder:       "{title} ({year})",
-		SeasonFolder:     "Season {season}",
-		Episode:          "S{season}E{episode}",
-		Movie:            "{title} ({year})",
-		LogRetentionDays: 30,
-		EnableLogging:    true,
-		TMDBAPIKey:       "",
-		EnableTMDBLookup: false,
-		TMDBLanguage:     "en-US",
-		TMDBWorkerCount:  10,
-		OMDBAPIKey:       "",
-		EnableOMDBLookup: false,
-		resolver:         NewTemplateResolver(),
+		ShowFolder:           "{title} ({year})",
+		SeasonFolder:         "Season {season}",
+		Episode:              "S{season}E{episode}",
+		Movie:                "{title} ({year})",
+		PreserveExistingTags: false,
+		LogRetentionDays:     30,
+		EnableLogging:        true,
+		TMDBAPIKey:           "",
+		EnableTMDBLookup:     false,
+		TMDBLanguage:         "en-US",
+		TMDBWorkerCount:      10,
+		OMDBAPIKey:           "",
+		EnableOMDBLookup:     false,
+		resolver:             NewTemplateResolver(),
 	}
 }
 

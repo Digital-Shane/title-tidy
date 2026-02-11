@@ -129,6 +129,14 @@ Configure operation history tracking for the undo feature:
 
 When logging is enabled, all rename operations are saved to `~/.title-tidy/logs/` allowing you to undo recent changes. Old logs are automatically cleaned up based on your retention settings.
 
+#### Rename Settings
+
+Control rename behavior for source tags across media types:
+
+* **Preserve existing tags**: Keep bracketed tags already present in source names (for example `[Uncut]` or `[Theatrical Cut]`) when generating the new name
+  * Default: disabled
+  * Useful when alternate versions should stay distinct after rename
+
 #### TMDB Integration
 
 Enhance your media naming with rich metadata from The Movie Database:

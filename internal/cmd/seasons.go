@@ -69,7 +69,8 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			}
 
 			ctx := createFormatContext(cfg, seasonMeta.Core.Title, "", seasonMeta.Core.Year, seasonMeta.Core.SeasonNum, 0, meta)
-			m.NewName = cfg.ApplySeasonFolderTemplate(ctx)
+			generated := cfg.ApplySeasonFolderTemplate(ctx)
+			m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
 
 			if linkPath != "" {
 				dirName := m.NewName
@@ -120,7 +121,14 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			}
 
 			ctx := createFormatContext(cfg, showName, "", year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum, meta)
-			m.NewName = cfg.ApplyEpisodeTemplate(ctx) + local.ExtractExtension(ni.Node.Name())
+			ext := local.ExtractExtension(ni.Node.Name())
+			sourceBase := ni.Node.Name()
+			if ext != "" {
+				sourceBase = sourceBase[:len(sourceBase)-len(ext)]
+			}
+			generated := cfg.ApplyEpisodeTemplate(ctx)
+			generated = core.PreserveExistingBracketTags(generated, sourceBase, cfg.PreserveExistingTags)
+			m.NewName = generated + ext
 
 			if linkPath != "" {
 				fileName := m.NewName

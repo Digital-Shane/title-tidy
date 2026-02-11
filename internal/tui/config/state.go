@@ -14,9 +14,14 @@ const (
 	SectionSeasonFolder
 	SectionEpisode
 	SectionMovie
+	SectionRename
 	SectionLogging
 	SectionProviders
 )
+
+type RenameState struct {
+	PreserveExistingTags bool
+}
 
 // TemplateSections encapsulates all template editors with dedicated state.
 type TemplateSections struct {
@@ -144,6 +149,7 @@ func (s ProviderValidationStatus) String() string {
 // ConfigState aggregates all section-specific state objects.
 type ConfigState struct {
 	Templates TemplateSections
+	Rename    RenameState
 	Logging   LoggingState
 	Providers ProviderState
 }

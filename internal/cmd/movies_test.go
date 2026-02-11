@@ -223,3 +223,119 @@ func TestSubtitleBaseNameExtraction(t *testing.T) {
 		})
 	}
 }
+
+func TestPreserveExistingBracketTags(t *testing.T) {
+	tests := []struct {
+		name       string
+		baseName   string
+		sourceName string
+		preserve   bool
+		want       string
+	}{
+		{
+			name:       "disabled",
+			baseName:   "Movie (1999) [imdbid-tt0133093]",
+			sourceName: "Movie - [Uncut].mkv",
+			preserve:   false,
+			want:       "Movie (1999) [imdbid-tt0133093]",
+		},
+		{
+			name:       "preserves_single_tag",
+			baseName:   "Movie (1999) [imdbid-tt0133093]",
+			sourceName: "Movie - [Uncut].mkv",
+			preserve:   true,
+			want:       "Movie (1999) [imdbid-tt0133093][Uncut]",
+		},
+		{
+			name:       "avoids_duplicate_case_insensitive",
+			baseName:   "Movie (1999) [uncut][imdbid-tt0133093]",
+			sourceName: "Movie - [Uncut].mkv",
+			preserve:   true,
+			want:       "Movie (1999) [uncut][imdbid-tt0133093]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceBase := tt.sourceName
+			if ext := local.ExtractExtension(sourceBase); ext != "" {
+				sourceBase = sourceBase[:len(sourceBase)-len(ext)]
+			}
+			got := core.PreserveExistingBracketTags(tt.baseName, sourceBase, tt.preserve)
+			if got != tt.want {
+				t.Errorf("PreserveExistingBracketTags(%q, %q, %v) = %q, want %q", tt.baseName, sourceBase, tt.preserve, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAnnotateMoviesTreePreservesExistingTagsWhenEnabled(t *testing.T) {
+	prevNoDir := noDir
+	noDir = false
+	t.Cleanup(func() { noDir = prevNoDir })
+
+	cfg := config.DefaultConfig()
+	cfg.Movie = "{title} ({year}) - [{video_codec}][{video_resolution}][imdbid-{imdb_id}]"
+	cfg.PreserveExistingTags = true
+
+	root := treeview.NewNode("elm-street-root", "A Nightmare on Elm Street (1984)", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("A Nightmare on Elm Street (1984)", true),
+		Path:     "A Nightmare on Elm Street (1984)",
+		Extra:    map[string]any{},
+	})
+
+	uncutNode := treeview.NewNode("elm-street-uncut", "A Nightmare on Elm Street - [Uncut].mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("A Nightmare on Elm Street - [Uncut].mkv", false),
+		Path:     "A Nightmare on Elm Street (1984)/A Nightmare on Elm Street - [Uncut].mkv",
+		Extra:    map[string]any{},
+	})
+	theatricalNode := treeview.NewNode("elm-street-theatrical", "A Nightmare on Elm Street - [Theatrical Cut].mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("A Nightmare on Elm Street - [Theatrical Cut].mkv", false),
+		Path:     "A Nightmare on Elm Street (1984)/A Nightmare on Elm Street - [Theatrical Cut].mkv",
+		Extra:    map[string]any{},
+	})
+	root.SetChildren([]*treeview.Node[treeview.FileInfo]{uncutNode, theatricalNode})
+
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{root},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	metadata := &provider.Metadata{
+		Core: provider.CoreMetadata{
+			Title:     "A Nightmare on Elm Street",
+			Year:      "1984",
+			MediaType: provider.MediaTypeMovie,
+		},
+		IDs: map[string]string{"imdb_id": "tt0087800"},
+		Extended: map[string]interface{}{
+			"video_codec":      "h265",
+			"video_resolution": "2160p",
+		},
+	}
+
+	metadataKey := provider.GenerateMetadataKey("movie", "A Nightmare on Elm Street", "1984", 0, 0)
+	annotateMoviesTree(tree, cfg, map[string]*provider.Metadata{
+		metadataKey: metadata,
+	})
+
+	gotByName := map[string]string{}
+	for ni := range tree.All(context.Background()) {
+		if ni.Node.Data().IsDir() {
+			continue
+		}
+		meta := core.GetMeta(ni.Node)
+		if meta == nil {
+			continue
+		}
+		gotByName[ni.Node.Name()] = meta.NewName
+	}
+
+	if got := gotByName["A Nightmare on Elm Street - [Uncut].mkv"]; got != "A Nightmare on Elm Street (1984) - [h265][2160p][imdbid-tt0087800][Uncut].mkv" {
+		t.Errorf("rename for uncut = %q, want %q", got, "A Nightmare on Elm Street (1984) - [h265][2160p][imdbid-tt0087800][Uncut].mkv")
+	}
+
+	if got := gotByName["A Nightmare on Elm Street - [Theatrical Cut].mkv"]; got != "A Nightmare on Elm Street (1984) - [h265][2160p][imdbid-tt0087800][Theatrical Cut].mkv" {
+		t.Errorf("rename for theatrical = %q, want %q", got, "A Nightmare on Elm Street (1984) - [h265][2160p][imdbid-tt0087800][Theatrical Cut].mkv")
+	}
+}
