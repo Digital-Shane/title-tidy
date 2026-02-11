@@ -129,6 +129,14 @@ Configure operation history tracking for the undo feature:
 
 When logging is enabled, all rename operations are saved to `~/.title-tidy/logs/` allowing you to undo recent changes. Old logs are automatically cleaned up based on your retention settings.
 
+#### Rename Settings
+
+Control movie rename behavior for multi-version files:
+
+* **Preserve existing tags**: Keep bracketed tags already present in movie filenames (for example `[Uncut]` or `[Theatrical Cut]`) when generating the new name
+  * Default: disabled
+  * Useful for Jellyfin/Plex multi-version libraries where multiple cuts of the same movie should stay distinct
+
 #### TMDB Integration
 
 Enhance your media naming with rich metadata from The Movie Database:
@@ -251,6 +259,9 @@ title-tidy movies
 Movies receive special handling. Standalone movie files automatically get their own directories, while movies already in
 folders have both the folder and file names cleaned up. Subtitles remain properly paired with their movies, maintaining
 language codes.
+
+If you enable **Preserve existing tags** in `title-tidy config`, bracketed tags from source movie filenames are kept in the
+renamed output to avoid collisions between alternate versions.
 
 ![movies demo](https://vhs.charm.sh/vhs-3xo1AUhao1iUtafmkNHRdz.gif)
 

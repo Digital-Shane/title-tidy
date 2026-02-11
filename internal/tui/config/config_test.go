@@ -130,6 +130,18 @@ func TestBuildPreviewsLogging(t *testing.T) {
 	}
 }
 
+func TestBuildPreviewsRename(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{PreserveExistingTags: true}, theme.Default())
+	previews := buildPreviews(SectionRename, &state, theme.Default().IconSet(), nil)
+	got := map[string]string{}
+	for _, p := range previews {
+		got[p.label] = p.preview
+	}
+	if got["Preserve Existing Tags"] != "Enabled" {
+		t.Errorf("Preserve Existing Tags preview = %q, want Enabled", got["Preserve Existing Tags"])
+	}
+}
+
 func TestBuildPreviewsTemplateRegistry(t *testing.T) {
 	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
 	state.Templates.Show.Input.SetValue("{title}::{genres}")

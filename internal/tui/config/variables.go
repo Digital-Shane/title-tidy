@@ -16,6 +16,10 @@ type variable struct {
 
 func buildVariables(section Section, state *ConfigState, registry *config.TemplateRegistry) []variable {
 	switch section {
+	case SectionRename:
+		return []variable{
+			{"Space/Enter", "Toggle existing tag preservation", "Keeps bracket tags like [Uncut] from source movie filenames"},
+		}
 	case SectionLogging:
 		return []variable{
 			{"Space/Enter", "Toggle logging on/off", ""},

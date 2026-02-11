@@ -29,6 +29,11 @@ cp "$VIDEO_SRC" "$OUT/The Dark Knight (2008)/The.Dark.Knight.2008.1080p.mkv"
 cp "$VIDEO_SRC" "$OUT/Pulp.Fiction.1994.mkv"
 touch "$OUT/Pulp.Fiction.1994.en.srt"
 
+# Movie 6: A Nightmare on Elm Street - Test to preserve tags if enabled
+mkdir -p "$OUT/A Nightmare on Elm Street (1984)"
+cp "$VIDEO_SRC" "$OUT/A Nightmare on Elm Street (1984)/A Nightmare on Elm Street - [Uncut].mkv"
+cp "$VIDEO_SRC" "$OUT/A Nightmare on Elm Street (1984)/A Nightmare on Elm Street - [Theatrical Cut].mkv"
+
 rm -f "$VIDEO_SRC"
 
 echo "Demo dataset for 'movies' created at $OUT"

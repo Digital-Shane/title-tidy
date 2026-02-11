@@ -22,18 +22,19 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	want := &FormatConfig{
-		ShowFolder:       "{title} ({year})",
-		SeasonFolder:     "Season {season}",
-		Episode:          "S{season}E{episode}",
-		Movie:            "{title} ({year})",
-		LogRetentionDays: 30,
-		EnableLogging:    true,
-		TMDBAPIKey:       "",
-		EnableTMDBLookup: false,
-		TMDBLanguage:     "en-US",
-		TMDBWorkerCount:  10,
-		OMDBAPIKey:       "",
-		EnableOMDBLookup: false,
+		ShowFolder:           "{title} ({year})",
+		SeasonFolder:         "Season {season}",
+		Episode:              "S{season}E{episode}",
+		Movie:                "{title} ({year})",
+		PreserveExistingTags: false,
+		LogRetentionDays:     30,
+		EnableLogging:        true,
+		TMDBAPIKey:           "",
+		EnableTMDBLookup:     false,
+		TMDBLanguage:         "en-US",
+		TMDBWorkerCount:      10,
+		OMDBAPIKey:           "",
+		EnableOMDBLookup:     false,
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -107,6 +108,7 @@ func TestLoad_ValidFile(t *testing.T) {
 		"season_folder": "custom Season {season}",
 		"episode": "custom E{episode}",
 		"movie": "custom {title}",
+		"preserve_existing_tags": true,
 		"log_retention_days": 60,
 		"enable_logging": false
 	}`)
@@ -121,18 +123,19 @@ func TestLoad_ValidFile(t *testing.T) {
 	}
 
 	want := &FormatConfig{
-		ShowFolder:       "custom {title}",
-		SeasonFolder:     "custom Season {season}",
-		Episode:          "custom E{episode}",
-		Movie:            "custom {title}",
-		LogRetentionDays: 60,
-		EnableLogging:    false,
-		TMDBAPIKey:       "",
-		EnableTMDBLookup: false,
-		TMDBLanguage:     "en-US", // Filled in by Load() with default
-		TMDBWorkerCount:  10,      // Filled in by Load() with default
-		OMDBAPIKey:       "",
-		EnableOMDBLookup: false,
+		ShowFolder:           "custom {title}",
+		SeasonFolder:         "custom Season {season}",
+		Episode:              "custom E{episode}",
+		Movie:                "custom {title}",
+		PreserveExistingTags: true,
+		LogRetentionDays:     60,
+		EnableLogging:        false,
+		TMDBAPIKey:           "",
+		EnableTMDBLookup:     false,
+		TMDBLanguage:         "en-US", // Filled in by Load() with default
+		TMDBWorkerCount:      10,      // Filled in by Load() with default
+		OMDBAPIKey:           "",
+		EnableOMDBLookup:     false,
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {

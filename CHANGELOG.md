@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.16.0] - 2026-02-10
+### Added
+* Ability to preserve existing media tags to support things like alternative resolutions and multiple versions
+  * Must be enabled in config tui.
+  * Jellyfin Doc: https://jellyfin.org/docs/general/server/media/movies/#multiple-versions
+
+
 ## [v1.15.1] - 2025-12-19
 ### Fixed
 * Episode extraction to prefer explicit SxxExx/1x02 patterns so audio channel tags no longer override valid info.

@@ -86,6 +86,7 @@ func (m *Model) initSections() {
 		newTemplateSection(&m.state.Templates.Season, m.theme),
 		newTemplateSection(&m.state.Templates.Episode, m.theme),
 		newTemplateSection(&m.state.Templates.Movie, m.theme),
+		newRenameSection(&m.state.Rename, m.theme),
 		newLoggingSection(&m.state.Logging, m.theme),
 	}
 	provider := newProviderSection(&m.state.Providers, m.theme)
@@ -333,7 +334,7 @@ func (m *Model) View() string {
 }
 
 func (m *Model) renderTabs() string {
-	labels := []string{"Show Folder", "Season Folder", "Episode", "Movie", "Logging", "Providers"}
+	labels := []string{"Show Folder", "Season Folder", "Episode", "Movie", "Rename", "Logging", "Providers"}
 	base := lipgloss.NewStyle().Padding(0, 2)
 	active := base.Bold(true).Foreground(m.theme.Colors().Primary)
 
@@ -443,7 +444,7 @@ func (m *Model) renderPreview(previews []preview, width int) string {
 		}
 		lines = append(lines, line)
 	}
-	if m.activeSection() != SectionProviders && m.activeSection() != SectionLogging {
+	if m.activeSection() != SectionProviders && m.activeSection() != SectionLogging && m.activeSection() != SectionRename {
 		if !m.state.Providers.TMDB.Enabled && !m.state.Providers.OMDB.Enabled {
 			hintStyle := lipgloss.NewStyle().Foreground(m.theme.Colors().Accent).Italic(true)
 			lines = append(lines, "", hintStyle.Render("Enable TMDB or OMDb for richer variables"))
@@ -485,6 +486,7 @@ func (m *Model) save() {
 	m.config.SeasonFolder = stripNullChars(m.state.Templates.Season.Input.Value())
 	m.config.Episode = stripNullChars(m.state.Templates.Episode.Input.Value())
 	m.config.Movie = stripNullChars(m.state.Templates.Movie.Input.Value())
+	m.config.PreserveExistingTags = m.state.Rename.PreserveExistingTags
 
 	m.config.EnableLogging = m.state.Logging.Enabled
 	retention := stripNullChars(m.state.Logging.Retention.Value())
@@ -530,6 +532,7 @@ func (m *Model) reset() {
 	m.state.Templates.Episode.Input.CursorEnd()
 	m.state.Templates.Movie.Input.SetValue(m.original.Movie)
 	m.state.Templates.Movie.Input.CursorEnd()
+	m.state.Rename.PreserveExistingTags = m.original.PreserveExistingTags
 
 	m.state.Logging.Enabled = m.original.EnableLogging
 	m.state.Logging.Retention.SetValue(fmt.Sprintf("%d", m.original.LogRetentionDays))
@@ -629,19 +632,20 @@ func (m *Model) refreshVariablesPanel() {
 
 func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
 	return &config.FormatConfig{
-		ShowFolder:       cfg.ShowFolder,
-		SeasonFolder:     cfg.SeasonFolder,
-		Episode:          cfg.Episode,
-		Movie:            cfg.Movie,
-		LogRetentionDays: cfg.LogRetentionDays,
-		EnableLogging:    cfg.EnableLogging,
-		TMDBAPIKey:       cfg.TMDBAPIKey,
-		EnableTMDBLookup: cfg.EnableTMDBLookup,
-		TMDBLanguage:     cfg.TMDBLanguage,
-		TMDBWorkerCount:  cfg.TMDBWorkerCount,
-		OMDBAPIKey:       cfg.OMDBAPIKey,
-		EnableOMDBLookup: cfg.EnableOMDBLookup,
-		EnableFFProbe:    cfg.EnableFFProbe,
+		ShowFolder:           cfg.ShowFolder,
+		SeasonFolder:         cfg.SeasonFolder,
+		Episode:              cfg.Episode,
+		Movie:                cfg.Movie,
+		PreserveExistingTags: cfg.PreserveExistingTags,
+		LogRetentionDays:     cfg.LogRetentionDays,
+		EnableLogging:        cfg.EnableLogging,
+		TMDBAPIKey:           cfg.TMDBAPIKey,
+		EnableTMDBLookup:     cfg.EnableTMDBLookup,
+		TMDBLanguage:         cfg.TMDBLanguage,
+		TMDBWorkerCount:      cfg.TMDBWorkerCount,
+		OMDBAPIKey:           cfg.OMDBAPIKey,
+		EnableOMDBLookup:     cfg.EnableOMDBLookup,
+		EnableFFProbe:        cfg.EnableFFProbe,
 	}
 }
 
@@ -699,6 +703,9 @@ func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme) ConfigState 
 
 	return ConfigState{
 		Templates: tmpl,
+		Rename: RenameState{
+			PreserveExistingTags: cfg.PreserveExistingTags,
+		},
 		Logging: LoggingState{
 			Enabled:   cfg.EnableLogging,
 			Focus:     LoggingFieldToggle,
