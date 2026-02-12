@@ -8,6 +8,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
+	"github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
 	"github.com/charmbracelet/bubbletea"
 )
 
@@ -26,6 +27,15 @@ type omdbValidationMsg struct {
 }
 
 type omdbValidateCmd struct {
+	apiKey string
+}
+
+type tvdbValidationMsg struct {
+	apiKey string
+	valid  bool
+}
+
+type tvdbValidateCmd struct {
 	apiKey string
 }
 
@@ -95,5 +105,35 @@ func validateOMDBAPIKey(apiKey string) tea.Cmd {
 func debouncedOMDBValidate(apiKey string) tea.Cmd {
 	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
 		return omdbValidateCmd{apiKey: apiKey}
+	})
+}
+
+func validateTVDBAPIKey(apiKey string) tea.Cmd {
+	return func() tea.Msg {
+		if apiKey == "" {
+			return tvdbValidationMsg{apiKey: "", valid: false}
+		}
+
+		prov := tvdb.New()
+		if err := prov.Configure(map[string]interface{}{"api_key": apiKey}); err != nil {
+			return tvdbValidationMsg{apiKey: apiKey, valid: false}
+		}
+
+		req := provider.FetchRequest{
+			MediaType: provider.MediaTypeMovie,
+			Name:      "The Matrix",
+			Year:      "1999",
+		}
+		meta, err := prov.Fetch(context.Background(), req)
+		if err != nil || meta == nil {
+			return tvdbValidationMsg{apiKey: apiKey, valid: false}
+		}
+		return tvdbValidationMsg{apiKey: apiKey, valid: true}
+	}
+}
+
+func debouncedTVDBValidate(apiKey string) tea.Cmd {
+	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
+		return tvdbValidateCmd{apiKey: apiKey}
 	})
 }

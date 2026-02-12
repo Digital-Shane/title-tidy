@@ -13,6 +13,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	omdbProv "github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
+	tvdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
 	"github.com/Digital-Shane/treeview"
 )
 
@@ -54,6 +55,8 @@ type FormatConfig struct {
 	TMDBWorkerCount  int    `json:"tmdb_worker_count"`
 	OMDBAPIKey       string `json:"omdb_api_key"`
 	EnableOMDBLookup bool   `json:"enable_omdb_lookup"`
+	TVDBAPIKey       string `json:"tvdb_api_key"`
+	EnableTVDBLookup bool   `json:"enable_tvdb_lookup"`
 	EnableFFProbe    bool   `json:"enable_ffprobe"`
 
 	// Template resolver for dynamic variable resolution
@@ -76,6 +79,8 @@ func DefaultConfig() *FormatConfig {
 		TMDBWorkerCount:      10,
 		OMDBAPIKey:           "",
 		EnableOMDBLookup:     false,
+		TVDBAPIKey:           "",
+		EnableTVDBLookup:     false,
 		resolver:             NewTemplateResolver(),
 	}
 }
@@ -204,6 +209,7 @@ func gatherMetadataProviders() []provider.Provider {
 		local.New(),
 		tmdbProv.New(),
 		omdbProv.New(),
+		tvdbProv.New(),
 		ffprobeProv.New(),
 	}
 }

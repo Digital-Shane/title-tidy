@@ -30,6 +30,7 @@ type MetadataResult struct {
 	Meta       *provider.Metadata
 	Errs       []error
 	TMDBErr    error
+	TVDBErr    error
 	OMDBErr    error
 	FFProbeErr error
 }
@@ -215,6 +216,7 @@ func FetchTMDBMetadata(ctx context.Context, prov provider.Provider, cache provid
 		}
 
 		meta, err := provider.FetchMetadataWithDependencies(
+			ctx,
 			prov,
 			item.Name,
 			item.Year,
@@ -263,6 +265,32 @@ func FetchOMDBMetadata(ctx context.Context, prov provider.Provider, item Metadat
 	}
 
 	meta, err := provider.FetchMetadataWithDependencies(
+		ctx,
+		prov,
+		item.Name,
+		item.Year,
+		item.Season,
+		item.Episode,
+		item.IsMovie,
+		cache,
+	)
+
+	return meta, err
+}
+
+func FetchTVDBMetadata(ctx context.Context, prov provider.Provider, item MetadataItem, cache provider.MetadataCache) (*provider.Metadata, error) {
+	if prov == nil {
+		return nil, nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	meta, err := provider.FetchMetadataWithDependencies(
+		ctx,
 		prov,
 		item.Name,
 		item.Year,

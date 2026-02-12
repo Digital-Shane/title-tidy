@@ -30,15 +30,16 @@ func GenerateMetadataKey(mediaType string, name, year string, season, episode in
 // FetchMetadataWithDependencies fetches metadata with proper dependency resolution.
 // For episodes/seasons, it ensures show metadata is fetched first.
 // Returns both metadata and error so callers can handle rate limiting properly.
-func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, season, episode int, isMovie bool, cache MetadataCache) (*Metadata, error) {
-	if tmdbProvider == nil || name == "" {
+func FetchMetadataWithDependencies(ctx context.Context, metadataProvider Provider, name, year string, season, episode int, isMovie bool, cache MetadataCache) (*Metadata, error) {
+	if metadataProvider == nil || name == "" {
 		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	var meta *Metadata
 	var err error
-	ctx := context.Background()
-
 	getFromCache := func(key string) *Metadata {
 		if cache == nil {
 			return nil
@@ -61,7 +62,7 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 			Name:      name,
 			Year:      year,
 		}
-		meta, err = tmdbProvider.Fetch(ctx, request)
+		meta, err = metadataProvider.Fetch(ctx, request)
 	} else if season > 0 && episode > 0 {
 		// For episodes, first get show metadata
 		showKey := GenerateMetadataKey("show", name, year, 0, 0)
@@ -73,7 +74,7 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 				MediaType: MediaTypeShow,
 				Name:      name,
 			}
-			showMeta, err = tmdbProvider.Fetch(ctx, request)
+			showMeta, err = metadataProvider.Fetch(ctx, request)
 			if err != nil {
 				return nil, err // Return error (including rate limiting) immediately
 			}
@@ -102,7 +103,7 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 				Season:    season,
 				Episode:   episode,
 			}
-			meta, err = tmdbProvider.Fetch(ctx, request)
+			meta, err = metadataProvider.Fetch(ctx, request)
 		}
 	} else if season > 0 {
 		// For seasons, first get show metadata
@@ -115,7 +116,7 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 				MediaType: MediaTypeShow,
 				Name:      name,
 			}
-			showMeta, err = tmdbProvider.Fetch(ctx, request)
+			showMeta, err = metadataProvider.Fetch(ctx, request)
 			if err != nil {
 				return nil, err // Return error (including rate limiting) immediately
 			}
@@ -142,7 +143,7 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 				Year:      showYear,
 				Season:    season,
 			}
-			meta, err = tmdbProvider.Fetch(ctx, request)
+			meta, err = metadataProvider.Fetch(ctx, request)
 		}
 	} else {
 		// TV Show
@@ -150,7 +151,7 @@ func FetchMetadataWithDependencies(tmdbProvider Provider, name, year string, sea
 			MediaType: MediaTypeShow,
 			Name:      name,
 		}
-		meta, err = tmdbProvider.Fetch(ctx, request)
+		meta, err = metadataProvider.Fetch(ctx, request)
 	}
 
 	return meta, err

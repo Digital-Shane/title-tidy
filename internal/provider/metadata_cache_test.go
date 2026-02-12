@@ -106,7 +106,7 @@ func TestFetchMetadataWithDependenciesEarlyExit(t *testing.T) {
 
 	cache := newTestMetadataCache()
 
-	got, err := FetchMetadataWithDependencies(nil, "", "2020", 1, 1, false, cache)
+	got, err := FetchMetadataWithDependencies(context.Background(), nil, "", "2020", 1, 1, false, cache)
 	if err != nil {
 		t.Fatalf("FetchMetadataWithDependencies(nil) returned error %v, want nil", err)
 	}
@@ -144,7 +144,7 @@ func TestFetchMetadataWithDependenciesEpisode(t *testing.T) {
 		},
 	}
 
-	got, err := FetchMetadataWithDependencies(stub, "Test Show", "2020", 1, 5, false, cache)
+	got, err := FetchMetadataWithDependencies(context.Background(), stub, "Test Show", "2020", 1, 5, false, cache)
 	if err != nil {
 		t.Fatalf("FetchMetadataWithDependencies returned error %v, want nil", err)
 	}

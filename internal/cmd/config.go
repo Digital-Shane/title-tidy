@@ -56,6 +56,15 @@ func runConfigCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if cfg.EnableTVDBLookup && cfg.TVDBAPIKey != "" {
+		tvdbConfig := map[string]interface{}{
+			"api_key": cfg.TVDBAPIKey,
+		}
+		if err := provider.GlobalRegistry.Configure("tvdb", tvdbConfig); err == nil {
+			provider.GlobalRegistry.Enable("tvdb")
+		}
+	}
+
 	if cfg.EnableFFProbe {
 		if err := provider.GlobalRegistry.Enable("ffprobe"); err != nil {
 			fmt.Fprintf(cmd.OutOrStdout(), "Warning: failed to enable ffprobe provider: %v\n", err)

@@ -139,7 +139,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case tmdbValidateCmd, tmdbValidationMsg, omdbValidateCmd, omdbValidationMsg:
+	case tmdbValidateCmd, tmdbValidationMsg, tvdbValidateCmd, tvdbValidationMsg, omdbValidateCmd, omdbValidationMsg:
 		if cmd := m.handleProviderMessage(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -224,6 +224,12 @@ func (m *Model) handleProviderMessage(msg tea.Msg) tea.Cmd {
 		return cmd
 	case tmdbValidationMsg:
 		_, cmd := m.providerSection.handleTMDBValidationMsg(msg)
+		return cmd
+	case tvdbValidateCmd:
+		_, cmd := m.providerSection.handleTVDBValidateCmd(msg)
+		return cmd
+	case tvdbValidationMsg:
+		_, cmd := m.providerSection.handleTVDBValidationMsg(msg)
 		return cmd
 	case omdbValidateCmd:
 		_, cmd := m.providerSection.handleOMDBValidateCmd(msg)
@@ -445,9 +451,9 @@ func (m *Model) renderPreview(previews []preview, width int) string {
 		lines = append(lines, line)
 	}
 	if m.activeSection() != SectionProviders && m.activeSection() != SectionLogging && m.activeSection() != SectionRename {
-		if !m.state.Providers.TMDB.Enabled && !m.state.Providers.OMDB.Enabled {
+		if !m.state.Providers.TMDB.Enabled && !m.state.Providers.TVDB.Enabled && !m.state.Providers.OMDB.Enabled {
 			hintStyle := lipgloss.NewStyle().Foreground(m.theme.Colors().Accent).Italic(true)
-			lines = append(lines, "", hintStyle.Render("Enable TMDB or OMDb for richer variables"))
+			lines = append(lines, "", hintStyle.Render("Enable TMDB, TVDB, or OMDb for richer variables"))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -499,6 +505,8 @@ func (m *Model) save() {
 	m.config.EnableTMDBLookup = m.state.Providers.TMDB.Enabled
 	m.config.TMDBAPIKey = stripNullChars(m.state.Providers.TMDB.APIKey.Value())
 	m.config.TMDBLanguage = stripNullChars(m.state.Providers.TMDB.Language.Value())
+	m.config.EnableTVDBLookup = m.state.Providers.TVDB.Enabled
+	m.config.TVDBAPIKey = stripNullChars(m.state.Providers.TVDB.APIKey.Value())
 	m.config.EnableOMDBLookup = m.state.Providers.OMDB.Enabled
 	m.config.OMDBAPIKey = stripNullChars(m.state.Providers.OMDB.APIKey.Value())
 	m.config.EnableFFProbe = m.state.Providers.FFProbeEnabled
@@ -544,6 +552,11 @@ func (m *Model) reset() {
 	m.state.Providers.TMDB.Language.SetValue(m.original.TMDBLanguage)
 	m.state.Providers.TMDB.Language.CursorEnd()
 	m.state.Providers.TMDB.Validation.Reset()
+
+	m.state.Providers.TVDB.Enabled = m.original.EnableTVDBLookup
+	m.state.Providers.TVDB.APIKey.SetValue(m.original.TVDBAPIKey)
+	m.state.Providers.TVDB.APIKey.CursorEnd()
+	m.state.Providers.TVDB.Validation.Reset()
 
 	m.state.Providers.OMDB.Enabled = m.original.EnableOMDBLookup
 	m.state.Providers.OMDB.APIKey.SetValue(m.original.OMDBAPIKey)
@@ -643,6 +656,8 @@ func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
 		EnableTMDBLookup:     cfg.EnableTMDBLookup,
 		TMDBLanguage:         cfg.TMDBLanguage,
 		TMDBWorkerCount:      cfg.TMDBWorkerCount,
+		TVDBAPIKey:           cfg.TVDBAPIKey,
+		EnableTVDBLookup:     cfg.EnableTVDBLookup,
 		OMDBAPIKey:           cfg.OMDBAPIKey,
 		EnableOMDBLookup:     cfg.EnableOMDBLookup,
 		EnableFFProbe:        cfg.EnableFFProbe,
@@ -696,6 +711,11 @@ func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme) ConfigState 
 	tmdbLang.CursorEnd()
 	tmdbLang.CharLimit = 5
 
+	tvdbKey := textinput.New()
+	configureInput(&tvdbKey, th)
+	tvdbKey.SetValue(cfg.TVDBAPIKey)
+	tvdbKey.CursorEnd()
+
 	omdbKey := textinput.New()
 	configureInput(&omdbKey, th)
 	omdbKey.SetValue(cfg.OMDBAPIKey)
@@ -719,6 +739,10 @@ func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme) ConfigState 
 				Enabled:  cfg.EnableTMDBLookup,
 				APIKey:   tmdbKey,
 				Language: tmdbLang,
+			},
+			TVDB: ProviderServiceState{
+				Enabled: cfg.EnableTVDBLookup,
+				APIKey:  tvdbKey,
 			},
 			OMDB: ProviderServiceState{
 				Enabled: cfg.EnableOMDBLookup,

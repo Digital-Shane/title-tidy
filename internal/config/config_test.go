@@ -35,6 +35,8 @@ func TestDefaultConfig(t *testing.T) {
 		TMDBWorkerCount:      10,
 		OMDBAPIKey:           "",
 		EnableOMDBLookup:     false,
+		TVDBAPIKey:           "",
+		EnableTVDBLookup:     false,
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -136,6 +138,8 @@ func TestLoad_ValidFile(t *testing.T) {
 		TMDBWorkerCount:      10,      // Filled in by Load() with default
 		OMDBAPIKey:           "",
 		EnableOMDBLookup:     false,
+		TVDBAPIKey:           "",
+		EnableTVDBLookup:     false,
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -323,6 +327,8 @@ func TestLoad(t *testing.T) {
 			TMDBWorkerCount:  10,      // Default value filled in by Load()
 			OMDBAPIKey:       "",
 			EnableOMDBLookup: false,
+			TVDBAPIKey:       "",
+			EnableTVDBLookup: false,
 		}
 
 		if diff := cmp.Diff(expectedConfig, cfg, cmpOpts()); diff != "" {
@@ -368,6 +374,8 @@ func TestLoad(t *testing.T) {
 			TMDBWorkerCount:  10,      // default
 			OMDBAPIKey:       "",
 			EnableOMDBLookup: false,
+			TVDBAPIKey:       "",
+			EnableTVDBLookup: false,
 		}
 
 		if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {

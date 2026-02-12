@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.17.0] - 2026-02-12
+### Added
+* TVDB provider as an optional metadata source alongside TMDB and OMDB.
+  * Includes config TUI support for API key management and provider enablement.
+### Updated
+* Metadata engine/provider wiring to include TVDB for movies, shows, seasons, and episodes.
+* README documentation to include TVDB integration and template variables.
+### Fixed
+* Metadata provider dependency fetches now respect caller context/cancellation.
+* TVDB search no longer falls back to mismatched media types when typed results are missing.
+
 ## [v1.16.0] - 2026-02-10
 ### Added
 * Ability to preserve existing media tags to support things like alternative resolutions and multiple versions.
