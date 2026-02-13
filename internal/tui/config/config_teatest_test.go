@@ -96,17 +96,19 @@ func TestConfigTUISectionNavigation(t *testing.T) {
 
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	tabs := []string{"[ Season Folder ]", "[ Episode ]", "[ Movie ]", "[ Rename ]", "[ Logging ]", "[ Providers ]"}
+	tabs := []string{"[ Season Folder ]", "[ Episode ]", "[ Movie ]", "[ Rename ]", "[ Logging ]"}
 	for _, label := range tabs {
 		press(tm, tea.KeyTab)
 		waitForOutput(t, tm, label)
 	}
+	press(tm, tea.KeyTab)
+	waitForOutput(t, tm, "Provider Controls")
 
 	press(tm, tea.KeyTab)
 	waitForOutput(t, tm, "[ Show Folder ]")
 
 	press(tm, tea.KeyShiftTab)
-	waitForOutput(t, tm, "[ Providers ]")
+	waitForOutput(t, tm, "Provider Controls")
 
 	press(tm, tea.KeyCtrlC)
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))

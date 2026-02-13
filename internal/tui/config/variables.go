@@ -32,6 +32,7 @@ func buildVariables(section Section, state *ConfigState, registry *config.Templa
 			{"↑/↓ arrows", "Navigate settings in the active column", ""},
 			{"Space/Enter", "Toggle highlighted setting", ""},
 			{"OMDb API Key", "Create at omdbapi.com/apikey.aspx", "8+ characters"},
+			{"TVDB API Key", "Generate from thetvdb.com account dashboard", "API key string"},
 			{"TMDB API Key", "Generate from the TMDB web console", "32 hex characters"},
 			{"TMDB Language", "Preferred metadata language code", "en-US, fr-FR, etc."},
 			{"ffprobe", "Enable codec metadata extraction", "Adds audio/video codec and resolution variables"},
@@ -97,6 +98,10 @@ func providerEnabledForVariable(reg *config.TemplateRegistry, variableName strin
 			if state.Providers.OMDB.Enabled {
 				return true
 			}
+		case "tvdb":
+			if state.Providers.TVDB.Enabled {
+				return true
+			}
 		case "ffprobe":
 			if state.Providers.FFProbeEnabled {
 				return true
@@ -123,13 +128,17 @@ func variableProviderPriority(reg *config.TemplateRegistry, name string) int {
 			if priority > 1 {
 				priority = 1
 			}
-		case "omdb":
+		case "tvdb":
 			if priority > 2 {
 				priority = 2
 			}
-		case "ffprobe":
+		case "omdb":
 			if priority > 3 {
 				priority = 3
+			}
+		case "ffprobe":
+			if priority > 4 {
+				priority = 4
 			}
 		default:
 			if priority > 4 {

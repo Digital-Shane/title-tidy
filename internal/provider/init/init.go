@@ -9,6 +9,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
+	"github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
 )
 
 // LoadBuiltinProviders loads all built-in providers into the global registry
@@ -33,6 +34,11 @@ func LoadBuiltinProviders() error {
 	omdbProvider := omdb.New()
 	if err := provider.GlobalRegistry.Register("omdb", omdbProvider, 90); err != nil {
 		return fmt.Errorf("failed to register OMDb provider: %w", err)
+	}
+
+	tvdbProvider := tvdb.New()
+	if err := provider.GlobalRegistry.Register("tvdb", tvdbProvider, 95); err != nil {
+		return fmt.Errorf("failed to register TVDB provider: %w", err)
 	}
 
 	// Register ffprobe provider

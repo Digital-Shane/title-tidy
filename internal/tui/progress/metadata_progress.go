@@ -91,6 +91,7 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 	prog.Width = 50
 
 	tmdbEnabled := cfg.EnableTMDBLookup && cfg.TMDBAPIKey != ""
+	tvdbEnabled := cfg.EnableTVDBLookup && cfg.TVDBAPIKey != ""
 	omdbEnabled := cfg.EnableOMDBLookup && cfg.OMDBAPIKey != ""
 	ffprobeEnabled := cfg.EnableFFProbe
 
@@ -102,6 +103,10 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 				Enabled:  tmdbEnabled,
 				APIKey:   cfg.TMDBAPIKey,
 				Language: cfg.TMDBLanguage,
+			},
+			TVDB: core.TVDBProviderConfig{
+				Enabled: tvdbEnabled,
+				APIKey:  cfg.TVDBAPIKey,
 			},
 			OMDB: core.OMDBProviderConfig{
 				Enabled: omdbEnabled,
@@ -338,7 +343,11 @@ func (m *MetadataProgressModel) retryFailureCmd(failure core.MetadataFailure, qu
 	provider := failure.Provider
 	key := failure.Item.Key
 	return func() tea.Msg {
-		updated, err := m.engine.RetryProvider(context.Background(), key, provider, query)
+		retryCtx := m.ctx
+		if retryCtx == nil || retryCtx.Err() != nil {
+			retryCtx = context.Background()
+		}
+		updated, err := m.engine.RetryProvider(retryCtx, key, provider, query)
 		return metadataRetryFinishedMsg{provider: provider, key: key, failure: updated, err: err}
 	}
 }

@@ -61,6 +61,15 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 				omdbAPI = "Configured"
 			}
 		}
+		tvdbStatus := "Disabled"
+		tvdbAPI := "Not configured"
+		if state.Providers.TVDB.Enabled {
+			tvdbStatus = "Enabled"
+			tvdbAPI = validationLabel(state.Providers.TVDB.Validation)
+			if tvdbAPI == "" {
+				tvdbAPI = "Configured"
+			}
+		}
 		ffprobeStatus := "Disabled"
 		if state.Providers.FFProbeEnabled {
 			ffprobeStatus = "Enabled"
@@ -72,6 +81,8 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 			{icons["chip"], "ffprobe", ffprobeStatus},
 			{icons["film"], "OMDb Lookup", omdbStatus},
 			{icons["key"], "OMDb API", omdbAPI},
+			{icons["film"], "TVDB Lookup", tvdbStatus},
+			{icons["key"], "TVDB API", tvdbAPI},
 			{icons["film"], "TMDB Lookup", tmdbStatus},
 			{icons["key"], "TMDB API", tmdbAPI},
 			{icons["globe"], "Language", tmdbLang},

@@ -109,6 +109,14 @@ Customize how your media files and folders are named:
 * `{imdb_id}` - Canonical IMDB identifier for the title
 * `{networks}` - TV network or distributor information for shows
 
+**TVDB Metadata Variables (when TVDB is enabled):**
+* `{title}` - Show or movie title
+* `{episode_title}` - Episode title from TVDB
+* `{rating}` - TVDB score for movies, shows, and episodes
+* `{genres}` - Comma-separated genre list from TVDB
+* `{imdb_id}` - IMDB identifier resolved through TVDB remote IDs
+* `{networks}` - TV network information for shows
+
 **ffprobe Metadata Variables (when ffprobe is enabled):**
 * `{video_codec}` - Video codec used in the media container file (episodes and movies only)
 * `{video_resolution}` - Video resolution reported by ffprobe (episodes and movies only)
@@ -157,6 +165,15 @@ Unlock IMDB-powered metadata by connecting to the Open Movie Database:
 * **API Key**: Your OMDB API key (request one free at [omdbapi.com](https://www.omdbapi.com/apikey.aspx))
 
 With OMDB enabled, Title Tidy enriches your media with IMDB ratings, genre lists, network information for TV shows, episode titles, and canonical IMDB identifiers. OMDB provides less metadata then TMDB, but is more privacy conscious. 
+
+#### TVDB Integration
+
+Connect to TheTVDB for show- and episode-focused metadata:
+
+* **Enable TVDB lookup**: Toggle metadata fetching from TVDB across movies, shows, seasons, and episodes
+* **API Key**: Your TVDB API key (generate one from your account dashboard at [thetvdb.com](https://thetvdb.com/))
+
+With TVDB enabled, Title Tidy can enrich names with episode titles, ratings, genres, network information, and IMDB identifiers sourced from TVDB records.
 
 #### ffprobe Integration
 

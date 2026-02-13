@@ -76,6 +76,7 @@ type ProviderState struct {
 
 	FFProbeEnabled bool
 	TMDB           ProviderServiceState
+	TVDB           ProviderServiceState
 	OMDB           ProviderServiceState
 }
 
@@ -90,6 +91,8 @@ const (
 	ProviderFieldTMDBToggle
 	ProviderFieldTMDBKey
 	ProviderFieldTMDBLanguage
+	ProviderFieldTVDBToggle
+	ProviderFieldTVDBKey
 )
 
 // ProviderServiceState describes the configuration for a single provider.

@@ -13,6 +13,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
+	"github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
 	"github.com/Digital-Shane/treeview"
 	"github.com/mhmtszr/concurrent-swiss-map"
 )
@@ -25,6 +26,7 @@ type MetadataEngine struct {
 	tree        *treeview.Tree[treeview.FileInfo]
 
 	tmdbProvider    provider.Provider
+	tvdbProvider    provider.Provider
 	omdbProvider    provider.Provider
 	ffprobeProvider provider.Provider
 
@@ -70,6 +72,7 @@ type MetadataProviderType string
 
 const (
 	MetadataProviderTMDB MetadataProviderType = "tmdb"
+	MetadataProviderTVDB MetadataProviderType = "tvdb"
 	MetadataProviderOMDB MetadataProviderType = "omdb"
 )
 
@@ -94,6 +97,7 @@ type MetadataEngineConfig struct {
 // MetadataProvidersConfig contains per-provider configuration.
 type MetadataProvidersConfig struct {
 	TMDB    TMDBProviderConfig
+	TVDB    TVDBProviderConfig
 	OMDB    OMDBProviderConfig
 	FFProbe FFProbeProviderConfig
 }
@@ -109,6 +113,12 @@ type TMDBProviderConfig struct {
 
 // OMDBProviderConfig describes OMDb provider configuration.
 type OMDBProviderConfig struct {
+	Enabled  bool
+	APIKey   string
+	Provider provider.Provider
+}
+
+type TVDBProviderConfig struct {
 	Enabled  bool
 	APIKey   string
 	Provider provider.Provider
@@ -183,6 +193,19 @@ func (e *MetadataEngine) initProviders(cfg MetadataProvidersConfig) {
 		}
 	}
 
+	if cfg.TVDB.Enabled {
+		prov := cfg.TVDB.Provider
+		if prov == nil {
+			prov = tvdb.New()
+		}
+		if cfg.TVDB.APIKey != "" {
+			if err := prov.Configure(map[string]interface{}{"api_key": cfg.TVDB.APIKey}); err == nil {
+				e.tvdbProvider = prov
+				e.activeProviders = append(e.activeProviders, providerNameOrDefault(prov, "TVDB"))
+			}
+		}
+	}
+
 	if cfg.FFProbe.Enabled {
 		prov := cfg.FFProbe.Provider
 		if prov == nil {
@@ -251,7 +274,7 @@ func (e *MetadataEngine) run(ctx context.Context, events chan<- MetadataEvent) {
 		return
 	}
 
-	if e.tmdbProvider == nil && e.omdbProvider == nil && e.ffprobeProvider == nil {
+	if e.tmdbProvider == nil && e.tvdbProvider == nil && e.omdbProvider == nil && e.ffprobeProvider == nil {
 		e.summaryMu.Lock()
 		e.summary.Done = true
 		e.summaryMu.Unlock()
@@ -365,11 +388,17 @@ func (e *MetadataEngine) worker(ctx context.Context, wg *sync.WaitGroup, workCh 
 		}
 
 		tmdbMeta, tmdbErr := e.fetchTMDBMetadata(ctx, item)
+		tvdbMeta, tvdbErr := e.fetchTVDBMetadata(ctx, item)
 		omdbMeta, omdbErr := e.fetchOMDBMetadata(ctx, item)
 		ffprobeMeta, ffprobeErr := e.fetchFFProbeMetadata(ctx, item)
 
 		base := tmdbMeta
-		extra := make([]*provider.Metadata, 0, 2)
+		extra := make([]*provider.Metadata, 0, 3)
+		if base == nil && tvdbMeta != nil {
+			base = tvdbMeta
+		} else if tvdbMeta != nil {
+			extra = append(extra, tvdbMeta)
+		}
 		if base == nil && omdbMeta != nil {
 			base = omdbMeta
 		} else if omdbMeta != nil {
@@ -381,9 +410,12 @@ func (e *MetadataEngine) worker(ctx context.Context, wg *sync.WaitGroup, workCh 
 
 		combined := MergeMetadata(item, base, extra...)
 
-		errs := make([]error, 0, 3)
+		errs := make([]error, 0, 4)
 		if tmdbErr != nil {
 			errs = append(errs, tmdbErr)
+		}
+		if tvdbErr != nil {
+			errs = append(errs, tvdbErr)
 		}
 		if omdbErr != nil {
 			errs = append(errs, omdbErr)
@@ -398,6 +430,7 @@ func (e *MetadataEngine) worker(ctx context.Context, wg *sync.WaitGroup, workCh 
 			Meta:       combined,
 			Errs:       errs,
 			TMDBErr:    tmdbErr,
+			TVDBErr:    tvdbErr,
 			OMDBErr:    omdbErr,
 			FFProbeErr: ffprobeErr,
 		}:
@@ -456,6 +489,7 @@ func (e *MetadataEngine) updateProviderFailures(res MetadataResult) int {
 	defer e.failuresMu.Unlock()
 
 	e.updateFailureLocked(res.Item, MetadataProviderTMDB, res.Item.Name, res.TMDBErr)
+	e.updateFailureLocked(res.Item, MetadataProviderTVDB, res.Item.Name, res.TVDBErr)
 	e.updateFailureLocked(res.Item, MetadataProviderOMDB, res.Item.Name, res.OMDBErr)
 
 	return len(e.failures)
@@ -513,6 +547,11 @@ func (e *MetadataEngine) RetryProvider(ctx context.Context, key string, provider
 			return nil, fmt.Errorf("tmdb provider not configured")
 		}
 		meta, fetchErr = FetchTMDBMetadata(ctx, e.tmdbProvider, e.metadataCache(), attemptItem)
+	case MetadataProviderTVDB:
+		if e.tvdbProvider == nil {
+			return nil, fmt.Errorf("tvdb provider not configured")
+		}
+		meta, fetchErr = FetchTVDBMetadata(ctx, e.tvdbProvider, attemptItem, e.metadataCache())
 	case MetadataProviderOMDB:
 		if e.omdbProvider == nil {
 			return nil, fmt.Errorf("omdb provider not configured")
@@ -651,6 +690,18 @@ func (e *MetadataEngine) applyManualMetadata(item MetadataItem, providerType Met
 		if combined != nil {
 			e.metadata.Store(item.Key, combined)
 		}
+	case MetadataProviderTVDB:
+		if existing != nil {
+			combined := MergeMetadata(item, existing, meta)
+			if combined != nil {
+				e.metadata.Store(item.Key, combined)
+			}
+			return
+		}
+		combined := MergeMetadata(item, meta)
+		if combined != nil {
+			e.metadata.Store(item.Key, combined)
+		}
 	default:
 		if existing != nil {
 			combined := MergeMetadata(item, existing, meta)
@@ -711,6 +762,13 @@ func (e *MetadataEngine) fetchOMDBMetadata(ctx context.Context, item MetadataIte
 		return nil, nil
 	}
 	return FetchOMDBMetadata(ctx, e.omdbProvider, item, e.metadataCache())
+}
+
+func (e *MetadataEngine) fetchTVDBMetadata(ctx context.Context, item MetadataItem) (*provider.Metadata, error) {
+	if e.tvdbProvider == nil {
+		return nil, nil
+	}
+	return FetchTVDBMetadata(ctx, e.tvdbProvider, item, e.metadataCache())
 }
 
 func (e *MetadataEngine) fetchFFProbeMetadata(ctx context.Context, item MetadataItem) (*provider.Metadata, error) {
