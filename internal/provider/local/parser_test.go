@@ -167,6 +167,14 @@ func TestEpisodeParser(t *testing.T) {
 			wantCanParse: true,
 		},
 		{
+			name:         "DottedZeroSpecial",
+			filename:     "Breaking.Bad.0.00.mkv",
+			wantSeason:   0,
+			wantEpisode:  0,
+			wantShow:     "Breaking Bad",
+			wantCanParse: true,
+		},
+		{
 			name:         "NotAnEpisode",
 			filename:     "Inception.2010.1080p.mkv",
 			wantSeason:   0,
@@ -179,6 +187,14 @@ func TestEpisodeParser(t *testing.T) {
 			filename:     "E05.mkv",
 			wantSeason:   0,
 			wantEpisode:  5,
+			wantShow:     "",
+			wantCanParse: true,
+		},
+		{
+			name:         "SpecialZeroEpisode",
+			filename:     "S00E00 test.mkv",
+			wantSeason:   0,
+			wantEpisode:  0,
 			wantShow:     "",
 			wantCanParse: true,
 		},
@@ -247,6 +263,13 @@ func TestSeasonEpisodeFromContext(t *testing.T) {
 			wantFound:   true,
 		},
 		{
+			name:        "DottedZeroSpecial",
+			filename:    "Breaking.Bad.0.00.mkv",
+			wantSeason:  0,
+			wantEpisode: 0,
+			wantFound:   true,
+		},
+		{
 			name:        "EpisodeWithParentSeason",
 			filename:    "E05.mkv",
 			parentName:  "Season 02",
@@ -259,6 +282,14 @@ func TestSeasonEpisodeFromContext(t *testing.T) {
 			filename:    "Episode 7.mp4",
 			wantSeason:  0,
 			wantEpisode: 7,
+			wantFound:   true,
+		},
+		{
+			name:        "EpisodeWithParentSeasonZero",
+			filename:    "Episode 5.mkv",
+			parentName:  "Season 0",
+			wantSeason:  0,
+			wantEpisode: 5,
 			wantFound:   true,
 		},
 		{
@@ -424,6 +455,49 @@ func TestResolveShowInfo(t *testing.T) {
 			}
 			if year != tt.wantYear {
 				t.Errorf("ResolveShowInfo(%q) year = %v, want %v", node.Name(), year, tt.wantYear)
+			}
+		})
+	}
+}
+
+func TestResolveShowInfoSupplementsMissingYearFromParents(t *testing.T) {
+	tests := []struct {
+		name      string
+		filename  string
+		wantTitle string
+		wantYear  string
+	}{
+		{
+			name:      "EpisodeFilenameWithShowName",
+			filename:  "Breaking.Bad.S01E01.mkv",
+			wantTitle: "Breaking Bad",
+			wantYear:  "2008",
+		},
+		{
+			name:      "SubtitleFilenameWithShowName",
+			filename:  "Breaking.Bad.S03E01.en-US.srt",
+			wantTitle: "Breaking Bad",
+			wantYear:  "2008",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			show := newTestNode("Breaking Bad (2008)", true)
+			season := newTestNode("Season 01", true)
+			episode := newTestNode(tt.filename, false)
+
+			season.AddChild(episode)
+			show.AddChild(season)
+
+			ctx := NewParseContext(episode.Name(), episode)
+			title, year := ResolveShowInfo(ctx)
+
+			if title != tt.wantTitle {
+				t.Errorf("ResolveShowInfo(%q) title = %v, want %v", episode.Name(), title, tt.wantTitle)
+			}
+			if year != tt.wantYear {
+				t.Errorf("ResolveShowInfo(%q) year = %v, want %v", episode.Name(), year, tt.wantYear)
 			}
 		})
 	}

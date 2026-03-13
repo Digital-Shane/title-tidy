@@ -69,7 +69,7 @@ title-tidy config
 
 Title Tidy allows you to completely customize how your media files are named using configurable templates, metadata enrichment from multiple providers, and logging settings. Your configuration is saved to `~/.title-tidy/config.json` and will be used for all future renames.
 
-![config demo](https://vhs.charm.sh/vhs-2qcRVzJI8fANyCOWQXO7wi.gif)
+![config demo](https://vhs.charm.sh/vhs-6pVsTgKnkaZF4YbpnDUJe2.gif)
 
 This opens an interactive interface with multiple configuration sections:
 

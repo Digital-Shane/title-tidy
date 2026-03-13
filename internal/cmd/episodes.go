@@ -47,10 +47,6 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 			continue
 		}
 
-		if fetchMeta.Core.SeasonNum == 0 || fetchMeta.Core.EpisodeNum == 0 {
-			continue
-		}
-
 		var meta *provider.Metadata
 		if metadata != nil {
 			key := provider.GenerateMetadataKey(

@@ -93,10 +93,6 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				continue
 			}
 
-			if seasonMeta.Core.SeasonNum == 0 {
-				continue
-			}
-
 			showName := seasonMeta.Core.Title
 			year := seasonMeta.Core.Year
 
@@ -139,10 +135,6 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 
 			showName := episodeMeta.Core.Title
 			year := episodeMeta.Core.Year
-			if episodeMeta.Core.SeasonNum == 0 || episodeMeta.Core.EpisodeNum == 0 {
-				continue
-			}
-
 			// Store the parent show's name for comparison
 			var parentShowName string
 			var parentShowYear string

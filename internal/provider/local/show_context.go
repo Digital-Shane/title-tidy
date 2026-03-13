@@ -1,13 +1,28 @@
 package local
 
+import "strings"
+
 // ResolveShowInfo attempts to determine the show title and year from the parse context.
 // It first inspects the current name, then walks up the parent hierarchy for clues.
 func ResolveShowInfo(ctx ParseContext) (string, string) {
 	if show, year, ok := showInfoFromName(ctx); ok {
+		if year == "" {
+			if parentShow, parentYear := showInfoFromParents(ctx, 3); parentYear != "" && sameShowTitle(show, parentShow) {
+				return show, parentYear
+			}
+		}
 		return show, year
 	}
 
 	return showInfoFromParents(ctx, 3)
+}
+
+func sameShowTitle(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+
+	return strings.EqualFold(a, b)
 }
 
 func showInfoFromName(ctx ParseContext) (string, string, bool) {

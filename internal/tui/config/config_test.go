@@ -179,6 +179,49 @@ func TestBuildPreviewsTemplateRegistry(t *testing.T) {
 	}
 }
 
+func TestBuildPreviewsTemplateRegistryWithEscapedBraces(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
+	state.Templates.Show.Input.SetValue(`{title} \{imdb-{imdb_id}\}`)
+
+	reg := config.NewTemplateRegistry()
+	previews := buildPreviews(SectionShowFolder, &state, theme.Default().IconSet(), reg)
+	got := map[string]string{}
+	for _, p := range previews {
+		got[p.label] = p.preview
+	}
+
+	if got["Show"] != "Breaking Bad {imdb-tt0903747}" {
+		t.Errorf("Show preview = %q, want %q", got["Show"], "Breaking Bad {imdb-tt0903747}")
+	}
+}
+
+func TestFilterInvalidFilenameRunesAllowsBackslash(t *testing.T) {
+	got := string(filterInvalidFilenameRunes([]rune(`\{imdb-\}`)))
+	if got != `\{imdb-\}` {
+		t.Fatalf("filterInvalidFilenameRunes() = %q, want %q", got, `\{imdb-\}`)
+	}
+}
+
+func TestSanitizeTemplateValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "keeps_brace_escapes", input: `{title} \{imdb-{imdb_id}\}`, want: `{title} \{imdb-{imdb_id}\}`},
+		{name: "drops_stray_backslashes", input: `foo\bar\{baz\}\\x`, want: `foobar\{baz\}x`},
+		{name: "keeps_trailing_backslash_while_typing", input: `{title}\`, want: `{title}\`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeTemplateValue(tt.input); got != tt.want {
+				t.Fatalf("sanitizeTemplateValue(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMaskAPIKeyVisible(t *testing.T) {
 	cases := []struct {
 		name           string

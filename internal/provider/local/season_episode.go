@@ -20,7 +20,7 @@ func seasonEpisodeFromString(input string) (int, int, bool) {
 	if m := dottedSeasonEpisodeRe.FindStringSubmatch(input); len(m) >= 3 {
 		season, err1 := strconv.Atoi(m[1])
 		episode, err2 := strconv.Atoi(m[2])
-		if err1 == nil && err2 == nil && season > 0 && season <= 100 && episode > 0 && episode <= 300 {
+		if err1 == nil && err2 == nil && season >= 0 && season <= 100 && episode >= 0 && episode <= 300 {
 			return season, episode, true
 		}
 	}
