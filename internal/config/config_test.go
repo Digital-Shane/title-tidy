@@ -490,6 +490,13 @@ func TestApplyShowFolderTemplate(t *testing.T) {
 			year:     "",
 			want:     "",
 		},
+		{
+			name:     "escaped_literal_braces",
+			template: "\\{{title}\\}",
+			show:     "Breaking Bad",
+			year:     "2008",
+			want:     "{Breaking Bad}",
+		},
 	}
 
 	for _, tt := range tests {
@@ -504,6 +511,23 @@ func TestApplyShowFolderTemplate(t *testing.T) {
 				t.Errorf("ApplyShowFolderTemplate(%q, %q) = %q, want %q", tt.show, tt.year, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestApplyShowFolderTemplateEscapedBracesWithMetadata(t *testing.T) {
+	cfg := &FormatConfig{ShowFolder: "{title} ({year}) \\{imdb-{imdb_id}\\}"}
+	ctx := &FormatContext{
+		ShowName: "Breaking Bad",
+		Year:     "2008",
+		Metadata: &provider.Metadata{
+			IDs: map[string]string{"imdb_id": "tt0903747"},
+		},
+	}
+
+	got := cfg.ApplyShowFolderTemplate(ctx)
+	want := "Breaking Bad (2008) {imdb-tt0903747}"
+	if got != want {
+		t.Fatalf("ApplyShowFolderTemplate() = %q, want %q", got, want)
 	}
 }
 

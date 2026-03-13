@@ -12,6 +12,7 @@ cp "$VIDEO_SRC" "$OUT/Better.Call.Saul.S03E01.mkv"
 cp "$VIDEO_SRC" "$OUT/better.call.saul.s03e02.mkv"
 cp "$VIDEO_SRC" "$OUT/Breaking.Bad.3x03.mkv"
 cp "$VIDEO_SRC" "$OUT/Breaking.Bad.3.04.mkv"
+cp "$VIDEO_SRC" "$OUT/Breaking.Bad.0.00.mkv"
 touch "$OUT/Better.Call.Saul.S03E01.en-US.srt"
 
 rm -f "$VIDEO_SRC"

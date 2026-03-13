@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.18.0] - 2026-03-13
+### Added
+* Ability to escape curly braces in config templates to retain them during rename.
+### Updated
+* Config demo to show new escapable curly braces.
+* Config demo gif in README.md
+### Fixed
+* Config demo failing to run correctly via the `just demo` action.
+* Fixed year inheritance for nodes that already include the show title in the name but rely on the parent for year.
+* Rename commands not considering "Season 0" episodes for rename.
+
 ## [v1.17.0] - 2026-02-12
 ### Added
 * TVDB provider as an optional metadata source alongside TMDB and OMDB.

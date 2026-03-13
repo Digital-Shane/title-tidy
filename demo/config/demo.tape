@@ -24,14 +24,12 @@ Show
 Type "title-tidy config"
 Sleep 1s
 Enter
-Sleep 250ms
-Tab
 Sleep 500ms
 Tab
 Sleep 500ms
-Left 30
-Sleep 250ms
-Type "{title} - "
+Tab
+Sleep 500ms
+Type " \\{year-{year}\\}"
 Sleep 1s
 Ctrl+S
 Sleep 1s

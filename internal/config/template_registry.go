@@ -11,6 +11,16 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 )
 
+const (
+	escapedLeftBraceToken  = "\x00title-tidy-left-brace\x00"
+	escapedRightBraceToken = "\x00title-tidy-right-brace\x00"
+)
+
+var (
+	templateEscapeReplacer  = strings.NewReplacer(`\{`, escapedLeftBraceToken, `\}`, escapedRightBraceToken)
+	templateRestoreReplacer = strings.NewReplacer(escapedLeftBraceToken, "{", escapedRightBraceToken, "}")
+)
+
 // TemplateRegistry manages template variables from all providers
 type TemplateRegistry struct {
 	mu        sync.RWMutex
@@ -207,10 +217,11 @@ func NewTemplateResolver() *TemplateResolver {
 
 // Resolve processes a template string, replacing variables with values
 func (r *TemplateResolver) Resolve(template string, ctx *FormatContext, metadata *provider.Metadata, providers map[string]provider.Provider) (string, error) {
-	result := template
+	escapedTemplate := escapeTemplateBraces(template)
+	result := escapedTemplate
 
 	// Find all variables in the template
-	matches := r.variablePattern.FindAllStringSubmatch(template, -1)
+	matches := r.variablePattern.FindAllStringSubmatch(escapedTemplate, -1)
 
 	for _, match := range matches {
 		if len(match) < 2 {
@@ -230,10 +241,20 @@ func (r *TemplateResolver) Resolve(template string, ctx *FormatContext, metadata
 		result = strings.ReplaceAll(result, varPlaceholder, value)
 	}
 
+	result = restoreTemplateBraces(result)
+
 	// Clean up the result
 	result = local.CleanName(result)
 
 	return result, nil
+}
+
+func escapeTemplateBraces(template string) string {
+	return templateEscapeReplacer.Replace(template)
+}
+
+func restoreTemplateBraces(template string) string {
+	return templateRestoreReplacer.Replace(template)
 }
 
 // resolveVariable resolves a single variable to its value
@@ -354,7 +375,7 @@ func (r *TemplateRegistry) ValidateTemplate(template string, mediaType provider.
 	defer r.mu.RUnlock()
 
 	// Find all variables in the template
-	matches := r.resolver.variablePattern.FindAllStringSubmatch(template, -1)
+	matches := r.resolver.variablePattern.FindAllStringSubmatch(escapeTemplateBraces(template), -1)
 
 	availableVars := r.GetVariablesForMediaType(mediaType)
 	availableMap := make(map[string]bool)

@@ -53,7 +53,7 @@ cp "$VIDEO_SRC" "$SHOW3_DIR/5/Episode 2.mkv" # context fallback S05E02
 SHOW4_RAW="Game.of.Thrones"
 SHOW4_DIR="$OUT/$SHOW4_RAW"
 mkdir -p "$SHOW4_DIR/Season 0"
-cp "$VIDEO_SRC" "$SHOW4_DIR/Season 0/S00E00.mkv"
+cp "$VIDEO_SRC" "$SHOW4_DIR/Season 0/S00E00 junk text.mkv"
 
 rm -f "$VIDEO_SRC"
 

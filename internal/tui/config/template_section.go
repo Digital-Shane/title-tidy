@@ -56,12 +56,14 @@ func (t *templateSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			t.state.Input, cmd = t.state.Input.Update(key)
+			t.state.Input.SetValue(sanitizeTemplateValue(t.state.Input.Value()))
 			return t, cmd
 		}
 	}
 
 	var cmd tea.Cmd
 	t.state.Input, cmd = t.state.Input.Update(msg)
+	t.state.Input.SetValue(sanitizeTemplateValue(t.state.Input.Value()))
 	return t, cmd
 }
 
@@ -88,4 +90,28 @@ func filterInvalidFilenameRunes(runes []rune) []rune {
 	return filtered
 }
 
-const invalidFilenameChars = "<>:\"/\\|?*"
+func sanitizeTemplateValue(value string) string {
+	runes := []rune(value)
+	result := make([]rune, 0, len(runes))
+
+	for i, r := range runes {
+		if r != '\\' {
+			result = append(result, r)
+			continue
+		}
+
+		if i == len(runes)-1 {
+			result = append(result, r)
+			continue
+		}
+
+		next := runes[i+1]
+		if next == '{' || next == '}' {
+			result = append(result, r)
+		}
+	}
+
+	return string(result)
+}
+
+const invalidFilenameChars = "<>:\"/|?*"

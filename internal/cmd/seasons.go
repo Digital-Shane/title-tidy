@@ -49,10 +49,6 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 				continue
 			}
 
-			if seasonMeta.Core.SeasonNum == 0 {
-				continue
-			}
-
 			seasonShowName = seasonMeta.Core.Title
 			seasonYear = seasonMeta.Core.Year
 
@@ -92,10 +88,6 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 
 			showName := episodeMeta.Core.Title
 			year := episodeMeta.Core.Year
-			if episodeMeta.Core.SeasonNum == 0 || episodeMeta.Core.EpisodeNum == 0 {
-				continue
-			}
-
 			// If show name wasn't found in episode, use the one from season folder
 			if showName == "" {
 				showName = seasonShowName

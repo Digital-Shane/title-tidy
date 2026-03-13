@@ -60,15 +60,58 @@ _publish_gif gif_path:
 #   ep|episodes  mv|movies  se|seasons  sw|shows  config  undo
 # Steps performed:
 # 1. go install . (ensure latest binary in PATH)
-# 2. Run matching demo/make.sh to generate demo data under demo/data
-# 3. Run title-tidy <canonical-mode> inside the generated dataset directory
-# 4. After the command exits, remove the generated demo/data directory
+# 2. Prepare the matching manual demo environment
+# 3. Run title-tidy <canonical-mode> in the prepared demo context
+# 4. After the command exits, clean up the temporary demo state
 demo target *flags:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	mode=$(just _validate_mode {{target}})
 	echo "Installing latest binary (go install .)"
 	go install .
+	cleanup() {
+		case "$mode" in
+			config)
+				echo "Restoring config demo state"
+				"$(pwd)/demo/config/restore-config.sh"
+				echo "Cleaning up demo dataset: $(pwd)/demo/shows/data"
+				rm -rf "$(pwd)/demo/shows/data"
+				;;
+			*)
+				if [ -n "${data_dir:-}" ]; then
+					echo "Cleaning up demo dataset: $data_dir"
+					rm -rf "$data_dir"
+				fi
+				;;
+		esac
+	}
+	trap cleanup EXIT
+	default_flags=(--no-nfo --no-img)
+
+	if [ "$mode" = "config" ]; then
+		echo "Preparing config demo environment"
+		"$(pwd)/demo/config/backup-config.sh"
+		"$(pwd)/demo/shows/make.sh"
+		data_dir="$(pwd)/demo/shows/data"
+			if [ ! -d "$data_dir" ]; then
+				echo "Expected data directory missing: $data_dir" >&2
+				exit 1
+			fi
+			if [ -n "{{flags}}" ]; then
+				flags=( {{flags}} )
+			else
+				flags=( "${default_flags[@]}" )
+			fi
+			echo "Entering config demo directory: $data_dir"
+			( cd "$data_dir" && \
+				echo "Running: title-tidy config" && \
+				title-tidy config && \
+				echo "Running: title-tidy shows ${flags[*]}" && \
+				title-tidy shows "${flags[@]}" )
+			echo "Demo $mode complete and cleaned."
+			exit 0
+	fi
+
 	demo_dir="$(pwd)/demo/$mode"
 	script_path="${demo_dir}/make.sh"
 	if [ ! -x "$script_path" ]; then
@@ -83,15 +126,12 @@ demo target *flags:
 		exit 1
 	fi
 	echo "Entering demo dataset directory: $data_dir"
-	default_flags=(--no-nfo --no-img)
 	if [ -n "{{flags}}" ]; then
 		flags=( {{flags}} )
 	else
 		flags=( "${default_flags[@]}" )
 	fi
 	( cd "$data_dir" && echo "Running: title-tidy $mode ${flags[*]}" && title-tidy "$mode" "${flags[@]}" )
-	echo "Cleaning up demo dataset: $data_dir"
-	rm -rf "$data_dir"
 	echo "Demo $mode complete and cleaned."
 
 # Generate a gif for a specific demo mode
