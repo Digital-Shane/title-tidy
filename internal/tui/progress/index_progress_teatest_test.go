@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/Digital-Shane/treeview/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -89,11 +89,10 @@ func TestIndexProgressTUICompletesAndReportsProgress(t *testing.T) {
 	}
 
 	fakeTree := &treeview.Tree[treeview.FileInfo]{}
-	withIndexProgressBuilder(t, func(_ context.Context, path string, _ bool, opts ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error) {
-		cfg := treeview.NewMasterConfig(opts)
-		cfg.ReportProgress(1, newFakeNode(path, true))
-		cfg.ReportProgress(2, newFakeNode(filepath.Join(path, "shows"), true))
-		cfg.ReportProgress(3, newFakeNode(filepath.Join(path, "movie.mkv"), false))
+	withIndexProgressBuilder(t, func(_ context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
+		params.Progress(1, newFakeNode(path, true))
+		params.Progress(2, newFakeNode(filepath.Join(path, "shows"), true))
+		params.Progress(3, newFakeNode(filepath.Join(path, "movie.mkv"), false))
 		return fakeTree, nil
 	})
 
@@ -133,10 +132,10 @@ func TestIndexProgressTUICompletesAndReportsProgress(t *testing.T) {
 func TestIndexProgressTUIQuitKeys(t *testing.T) {
 	tests := []struct {
 		name string
-		key  tea.KeyType
+		msg  tea.KeyPressMsg
 	}{
-		{name: "ctrl_c", key: tea.KeyCtrlC},
-		{name: "esc", key: tea.KeyEsc},
+		{name: "ctrl_c", msg: tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}},
+		{name: "esc", msg: tea.KeyPressMsg{Code: tea.KeyEsc}},
 	}
 
 	for _, tc := range tests {
@@ -152,19 +151,18 @@ func TestIndexProgressTUIQuitKeys(t *testing.T) {
 			releaseClose := func() { releaseOnce.Do(func() { close(release) }) }
 			t.Cleanup(releaseClose)
 
-			withIndexProgressBuilder(t, func(_ context.Context, path string, _ bool, opts ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error) {
-				cfg := treeview.NewMasterConfig(opts)
-				cfg.ReportProgress(1, newFakeNode(path, true))
+			withIndexProgressBuilder(t, func(_ context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
+				params.Progress(1, newFakeNode(path, true))
 				close(ready)
 				<-release
-				cfg.ReportProgress(2, newFakeNode(filepath.Join(path, "file.txt"), false))
+				params.Progress(2, newFakeNode(filepath.Join(path, "file.txt"), false))
 				return &treeview.Tree[treeview.FileInfo]{}, nil
 			})
 
 			model := NewIndexProgressModel(tempDir, IndexConfig{MaxDepth: 1}, theme.Default())
 			tm := newIndexProgressTestModel(t, model)
 			<-ready
-			tm.Send(tea.KeyMsg{Type: tc.key})
+			tm.Send(tc.msg)
 
 			tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 			finalModel := finalIndexProgressModel(t, tm)
@@ -190,12 +188,11 @@ func TestIndexProgressTUIWindowResize(t *testing.T) {
 	releaseClose := func() { releaseOnce.Do(func() { close(release) }) }
 	t.Cleanup(releaseClose)
 
-	withIndexProgressBuilder(t, func(_ context.Context, path string, _ bool, opts ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error) {
-		cfg := treeview.NewMasterConfig(opts)
-		cfg.ReportProgress(1, newFakeNode(path, true))
+	withIndexProgressBuilder(t, func(_ context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
+		params.Progress(1, newFakeNode(path, true))
 		close(ready)
 		<-release
-		cfg.ReportProgress(2, newFakeNode(filepath.Join(path, "file.txt"), false))
+		params.Progress(2, newFakeNode(filepath.Join(path, "file.txt"), false))
 		return &treeview.Tree[treeview.FileInfo]{}, nil
 	})
 
@@ -211,7 +208,7 @@ func TestIndexProgressTUIWindowResize(t *testing.T) {
 	if diff := cmp.Diff(100, finalModel.width); diff != "" {
 		t.Errorf("width diff (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(96, finalModel.progress.Width); diff != "" {
+	if diff := cmp.Diff(96, finalModel.progress.Width()); diff != "" {
 		t.Errorf("progress.Width diff (-want +got):\n%s", diff)
 	}
 }
@@ -220,9 +217,8 @@ func TestIndexProgressTUIErrorState(t *testing.T) {
 	tempDir := t.TempDir()
 	errBoom := errors.New("boom")
 
-	withIndexProgressBuilder(t, func(_ context.Context, path string, _ bool, opts ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error) {
-		cfg := treeview.NewMasterConfig(opts)
-		cfg.ReportProgress(1, newFakeNode(path, true))
+	withIndexProgressBuilder(t, func(_ context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
+		params.Progress(1, newFakeNode(path, true))
 		return nil, errBoom
 	})
 

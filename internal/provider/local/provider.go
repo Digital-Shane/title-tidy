@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 const (

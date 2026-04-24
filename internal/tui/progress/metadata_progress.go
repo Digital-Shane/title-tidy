@@ -11,11 +11,11 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 type metadataEventMsg struct {
@@ -38,9 +38,12 @@ func newMetadataSearchInput(th theme.Theme) textinput.Model {
 	ti.Placeholder = ""
 	ti.CharLimit = 256
 	colors := th.Colors()
-	ti.CursorStyle = lipgloss.NewStyle().Foreground(colors.Background).Background(colors.Accent)
-	ti.TextStyle = lipgloss.NewStyle().Foreground(colors.Primary)
-	ti.Width = 64
+	styles := ti.Styles()
+	styles.Cursor.Color = colors.Accent
+	styles.Focused.Text = lipgloss.NewStyle().Foreground(colors.Primary)
+	styles.Blurred.Text = lipgloss.NewStyle().Foreground(colors.Primary)
+	ti.SetStyles(styles)
+	ti.SetWidth(64)
 	ti.Blur()
 	return ti
 }
@@ -83,12 +86,14 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 	}
 
 	gradient := th.ProgressGradient()
-	if len(gradient) < 2 {
+	var prog progress.Model
+	if len(gradient) >= 2 {
+		prog = progress.New(progress.WithColors(lipgloss.Color(gradient[0]), lipgloss.Color(gradient[1])))
+	} else {
 		colors := th.Colors()
-		gradient = []string{string(colors.Primary), string(colors.Accent)}
+		prog = progress.New(progress.WithColors(colors.Primary, colors.Accent))
 	}
-	prog := progress.New(progress.WithGradient(gradient[0], gradient[1]))
-	prog.Width = 50
+	prog.SetWidth(50)
 
 	tmdbEnabled := cfg.EnableTMDBLookup && cfg.TMDBAPIKey != ""
 	tvdbEnabled := cfg.EnableTVDBLookup && cfg.TVDBAPIKey != ""
@@ -175,10 +180,10 @@ func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.progress.Width = msg.Width - 4
+		m.progress.SetWidth(msg.Width - 4)
 		m.updateInputWidth(msg.Width)
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.manualActive {
 			return m.handleManualKey(msg)
 		}
@@ -194,8 +199,8 @@ func (m *MetadataProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case metadataRetryFinishedMsg:
 		return m.handleRetryFinished(msg)
 	case progress.FrameMsg:
-		pm, cmd := m.progress.Update(msg)
-		m.progress = pm.(progress.Model)
+		var cmd tea.Cmd
+		m.progress, cmd = m.progress.Update(msg)
 		return m, cmd
 	}
 	return m, nil
@@ -296,20 +301,20 @@ func (m *MetadataProgressModel) handleRetryFinished(msg metadataRetryFinishedMsg
 	return m, nil
 }
 
-func (m *MetadataProgressModel) handleManualKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlC, tea.KeyEsc:
+func (m *MetadataProgressModel) handleManualKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "esc":
 		if m.cancel != nil {
 			m.cancel()
 		}
 		return m, tea.Quit
-	case tea.KeyUp:
+	case "up":
 		m.moveFailureSelection(-1)
 		return m, nil
-	case tea.KeyDown:
+	case "down":
 		m.moveFailureSelection(1)
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		if m.retrying || len(m.failures) == 0 {
 			return m, nil
 		}
@@ -318,14 +323,11 @@ func (m *MetadataProgressModel) handleManualKey(msg tea.KeyMsg) (tea.Model, tea.
 		m.retrying = true
 		m.manualStatus = fmt.Sprintf("Retrying %s…", strings.ToUpper(string(failure.Provider)))
 		return m, m.retryFailureCmd(failure, query)
-	case tea.KeyCtrlS:
+	case "ctrl+s":
 		m.manualSkipped = true
 		m.manualActive = false
 		m.done = true
 		return m, tea.Quit
-	}
-
-	switch msg.String() {
 	case "shift+tab":
 		m.moveFailureSelection(-1)
 		return m, nil
@@ -403,7 +405,7 @@ func (m *MetadataProgressModel) updateInputWidth(width int) {
 	if inputWidth < 20 {
 		inputWidth = 20
 	}
-	m.input.Width = inputWidth
+	m.input.SetWidth(inputWidth)
 }
 
 func (m *MetadataProgressModel) describeFailure(f core.MetadataFailure) string {
@@ -425,17 +427,17 @@ func (m *MetadataProgressModel) describeFailure(f core.MetadataFailure) string {
 }
 
 // View renders the progress UI.
-func (m *MetadataProgressModel) View() string {
+func (m *MetadataProgressModel) View() tea.View {
 	if m.fatalErr != nil && !errors.Is(m.fatalErr, context.Canceled) {
-		return fmt.Sprintf("Error: %v\n", m.fatalErr)
+		return tea.NewView(fmt.Sprintf("Error: %v\n", m.fatalErr))
 	}
 
 	if m.manualActive && len(m.failures) > 0 {
-		return m.renderManualResolutionView()
+		return tea.NewView(m.renderManualResolutionView())
 	}
 
 	if m.summary.TotalItems == 0 {
-		return "No items require metadata fetching.\n"
+		return tea.NewView("No items require metadata fetching.\n")
 	}
 
 	percent := 0
@@ -493,7 +495,9 @@ func (m *MetadataProgressModel) View() string {
 	status := m.theme.StatusBarStyle().Width(m.width).Render(statusText)
 	sections = append(sections, status)
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, sections...))
+	v.AltScreen = true
+	return v
 }
 
 func (m *MetadataProgressModel) renderManualResolutionView() string {

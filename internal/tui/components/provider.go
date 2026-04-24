@@ -7,8 +7,8 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // ---- predicate helpers ----

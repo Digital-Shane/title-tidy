@@ -2,7 +2,7 @@ package local
 
 import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // Parser defines the interface for media parsers

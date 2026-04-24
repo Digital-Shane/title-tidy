@@ -3,11 +3,11 @@ package cmd
 import (
 	"fmt"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	providerInit "github.com/Digital-Shane/title-tidy/internal/provider/init"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
-	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -87,7 +87,7 @@ func runConfigCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize config UI: %w", err)
 	}
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("failed to run config UI: %w", err)
 	}

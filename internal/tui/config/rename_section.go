@@ -3,8 +3,8 @@ package config
 import (
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type renameSection struct {
@@ -30,9 +30,9 @@ func (r *renameSection) Blur() {}
 func (r *renameSection) Resize(width int) {}
 
 func (r *renameSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.Type {
-		case tea.KeyEnter, tea.KeySpace:
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "enter", "space":
 			r.state.PreserveExistingTags = !r.state.PreserveExistingTags
 		}
 	}
@@ -40,7 +40,7 @@ func (r *renameSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, nil
 }
 
-func (r *renameSection) View() string {
+func (r *renameSection) View() tea.View {
 	colors := r.theme.Colors()
 
 	toggleIcon := "[ ]"
@@ -55,11 +55,11 @@ func (r *renameSection) View() string {
 
 	help := lipgloss.NewStyle().Foreground(colors.Muted)
 
-	return lipgloss.JoinVertical(
+	return tea.NewView(lipgloss.JoinVertical(
 		lipgloss.Left,
 		r.theme.PanelTitleStyle().Render("Rename Behavior"),
 		toggleStyle.Render(toggleIcon+" Preserve Existing Tags"),
 		help.Render("Keep existing bracketed tags from source filenames (for example [Uncut]) when generating new movie names."),
 		help.Render("Use Space or Enter to toggle."),
-	)
+	))
 }

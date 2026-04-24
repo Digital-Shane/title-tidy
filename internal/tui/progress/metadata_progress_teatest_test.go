@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/Digital-Shane/treeview/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -115,7 +115,7 @@ func (p *metadataFakeProvider) Capabilities() provider.ProviderCapabilities {
 
 func (p *metadataFakeProvider) SupportedVariables() []provider.TemplateVariable { return nil }
 
-func (p *metadataFakeProvider) Configure(map[string]interface{}) error { return nil }
+func (p *metadataFakeProvider) Configure(map[string]any) error { return nil }
 
 func (p *metadataFakeProvider) ConfigSchema() provider.ConfigSchema { return provider.ConfigSchema{} }
 
@@ -240,10 +240,10 @@ func TestMetadataProgressCompletesAndStoresResults(t *testing.T) {
 func TestMetadataProgressQuitKeys(t *testing.T) {
 	tests := []struct {
 		name string
-		key  tea.KeyType
+		msg  tea.KeyPressMsg
 	}{
-		{name: "ctrl_c", key: tea.KeyCtrlC},
-		{name: "esc", key: tea.KeyEsc},
+		{name: "ctrl_c", msg: tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}},
+		{name: "esc", msg: tea.KeyPressMsg{Code: tea.KeyEsc}},
 	}
 
 	for _, tc := range tests {
@@ -268,7 +268,7 @@ func TestMetadataProgressQuitKeys(t *testing.T) {
 
 			tm := newMetadataProgressTestModel(t, model)
 			<-ready
-			tm.Send(tea.KeyMsg{Type: tc.key})
+			tm.Send(tc.msg)
 			releaseClose()
 
 			tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
@@ -332,7 +332,7 @@ func TestMetadataProgressWindowResize(t *testing.T) {
 	if diff := cmp.Diff(40, finalModel.height); diff != "" {
 		t.Errorf("height mismatch (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(116, finalModel.progress.Width); diff != "" {
+	if diff := cmp.Diff(116, finalModel.progress.Width()); diff != "" {
 		t.Errorf("progress width mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -397,9 +397,9 @@ func TestMetadataProgressManualRetryResolvesFailure(t *testing.T) {
 		return bytes.Contains(b, []byte("Resolve Metadata Search"))
 	}, teatest.WithDuration(2*time.Second))
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlU})
+	tm.Send(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	tm.Type("Manual k Success")
-	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 	finalModel := finalMetadataProgressModel(t, tm)
@@ -448,7 +448,7 @@ func TestMetadataProgressManualSkipAllowsContinue(t *testing.T) {
 		return bytes.Contains(b, []byte("Resolve Metadata Search"))
 	}, teatest.WithDuration(2*time.Second))
 
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlS})
+	tm.Send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 	finalModel := finalMetadataProgressModel(t, tm)

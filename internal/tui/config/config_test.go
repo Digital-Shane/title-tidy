@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/charmbracelet/bubbletea"
 	"github.com/google/go-cmp/cmp"
 )
 

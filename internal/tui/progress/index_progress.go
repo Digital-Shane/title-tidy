@@ -3,19 +3,20 @@ package progress
 import (
 	"context"
 	"fmt"
-	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
+
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
-// IndexProgressModel is a dedicated Bubble Tea model that displays a full‑screen
+// IndexProgressModel is a dedicated Bubble Tea model that displays a full-screen
 // progress UI while the filesystem is being indexed into a tree. Once complete
 // the caller can extract the constructed tree and transition to the main UI.
 type IndexProgressModel struct {
@@ -59,22 +60,51 @@ type IndexConfig struct {
 	Filter      func(treeview.FileInfo) bool
 }
 
-type treeBuilderFunc func(context.Context, string, bool, ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error)
+// indexBuildParams are the resolved knobs that IndexProgressModel hands to a
+// treeBuilderFunc. Exposing a struct instead of treeview.Option values keeps
+// treeview's internal config private (v2 sealed those APIs) while still letting
+// tests substitute a fake builder that can observe the filter and progress
+// callback directly.
+type indexBuildParams struct {
+	MaxDepth     int
+	TraversalCap int
+	Filter       func(treeview.FileInfo) bool
+	Progress     func(n int, node *treeview.Node[treeview.FileInfo])
+}
 
-var indexProgressTreeBuilder treeBuilderFunc = treeview.NewTreeFromFileSystem
+type treeBuilderFunc func(ctx context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error)
+
+var indexProgressTreeBuilder treeBuilderFunc = defaultIndexProgressBuilder
+
+func defaultIndexProgressBuilder(ctx context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
+	opts := []treeview.Option[treeview.FileInfo]{
+		treeview.WithMaxDepth[treeview.FileInfo](params.MaxDepth),
+		treeview.WithTraversalCap[treeview.FileInfo](params.TraversalCap),
+	}
+	if params.Filter != nil {
+		opts = append(opts, treeview.WithFilterFunc(params.Filter))
+	}
+	if params.Progress != nil {
+		opts = append(opts, treeview.WithProgressCallback[treeview.FileInfo](params.Progress))
+	}
+	return treeview.NewTreeFromFileSystem(ctx, path, false, opts...)
+}
 
 // NewIndexProgressModel creates a model and pre computes root entry count.
-
 func NewIndexProgressModel(path string, cfg IndexConfig, th theme.Theme) *IndexProgressModel {
 	entries, _ := os.ReadDir(path)
 	total := max(len(entries), 1)
 	gradient := th.ProgressGradient()
-	if len(gradient) < 2 {
+
+	var p progress.Model
+	if len(gradient) >= 2 {
+		p = progress.New(progress.WithColors(lipgloss.Color(gradient[0]), lipgloss.Color(gradient[1])))
+	} else {
 		colors := th.Colors()
-		gradient = []string{string(colors.Primary), string(colors.Accent)}
+		p = progress.New(progress.WithColors(colors.Primary, colors.Accent))
 	}
-	p := progress.New(progress.WithGradient(gradient[0], gradient[1]))
-	p.Width = 50
+	p.SetWidth(50)
+
 	rootPath, _ := filepath.Abs(path)
 	return &IndexProgressModel{
 		path:       path,
@@ -99,45 +129,48 @@ func (m *IndexProgressModel) Init() tea.Cmd {
 func (m *IndexProgressModel) waitForMsg() tea.Cmd { return func() tea.Msg { return <-m.msgCh } }
 
 func (m *IndexProgressModel) buildTreeAsync() {
-	// Build with progress callback; count roots only for progress accuracy
-	t, err := indexProgressTreeBuilder(context.Background(), m.path, false,
-		treeview.WithMaxDepth[treeview.FileInfo](m.cfg.MaxDepth),
-		treeview.WithTraversalCap[treeview.FileInfo](2000000),
-		treeview.WithFilterFunc(func(fi treeview.FileInfo) bool {
-			if m.cfg.Filter != nil {
-				return m.cfg.Filter(fi)
-			}
-			// Default fallback filter: skip macOS artifacts
-			if fi.Name() == ".DS_Store" || strings.HasPrefix(fi.Name(), "._") {
-				return false
-			}
-			if m.cfg.IncludeDirs {
-				return fi.IsDir() || fi.FileInfo.Mode().IsRegular()
-			}
-			return fi.FileInfo.Mode().IsRegular()
-		}),
-		treeview.WithProgressCallback[treeview.FileInfo](func(_ int, n *treeview.Node[treeview.FileInfo]) {
-			parent := filepath.Dir(n.Data().Path)
-			if parent == m.rootPath {
-				name := n.Data().Name()
-				if _, ok := m.seen[name]; !ok {
-					m.seen[name] = struct{}{}
-					m.processedRoots++
-				}
-			}
-			if !n.Data().IsDir() {
-				m.filesIndexed++
-			}
-			select {
-			case m.msgCh <- indexProgressMsg{}:
-			default:
-			}
-		}),
-	)
+	filter := m.cfg.Filter
+	if filter == nil {
+		filter = m.defaultFilter
+	}
+	t, err := indexProgressTreeBuilder(context.Background(), m.path, indexBuildParams{
+		MaxDepth:     m.cfg.MaxDepth,
+		TraversalCap: 2000000,
+		Filter:       filter,
+		Progress:     m.onProgress,
+	})
 	m.tree = t
 	m.err = err
 	m.indexingDone = true
 	m.msgCh <- indexCompleteMsg{}
+}
+
+func (m *IndexProgressModel) defaultFilter(fi treeview.FileInfo) bool {
+	if fi.Name() == ".DS_Store" || strings.HasPrefix(fi.Name(), "._") {
+		return false
+	}
+	if m.cfg.IncludeDirs {
+		return fi.IsDir() || fi.FileInfo.Mode().IsRegular()
+	}
+	return fi.FileInfo.Mode().IsRegular()
+}
+
+func (m *IndexProgressModel) onProgress(_ int, n *treeview.Node[treeview.FileInfo]) {
+	parent := filepath.Dir(n.Data().Path)
+	if parent == m.rootPath {
+		name := n.Data().Name()
+		if _, ok := m.seen[name]; !ok {
+			m.seen[name] = struct{}{}
+			m.processedRoots++
+		}
+	}
+	if !n.Data().IsDir() {
+		m.filesIndexed++
+	}
+	select {
+	case m.msgCh <- indexProgressMsg{}:
+	default:
+	}
 }
 
 // Update processes Bubble Tea messages.
@@ -145,9 +178,9 @@ func (m *IndexProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.progress.Width = msg.Width - 4
+		m.progress.SetWidth(msg.Width - 4)
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "esc" {
 			return m, tea.Quit
 		}
@@ -159,17 +192,17 @@ func (m *IndexProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case indexCompleteMsg:
 		return m, tea.Quit
 	case progress.FrameMsg:
-		progressModel, cmd := m.progress.Update(msg)
-		m.progress = progressModel.(progress.Model)
+		var cmd tea.Cmd
+		m.progress, cmd = m.progress.Update(msg)
 		return m, cmd
 	}
 	return m, nil
 }
 
 // View renders the progress UI.
-func (m *IndexProgressModel) View() string {
+func (m *IndexProgressModel) View() tea.View {
 	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n", m.err)
+		return tea.NewView(fmt.Sprintf("Error: %v\n", m.err))
 	}
 	percent := 0
 	if m.totalRoots > 0 {
@@ -205,7 +238,9 @@ func (m *IndexProgressModel) View() string {
 	status := m.theme.StatusBarStyle().Width(m.width).Render("Indexing... please wait")
 	sections = append(sections, status)
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, sections...))
+	v.AltScreen = true
+	return v
 }
 
 // Tree returns the constructed tree.

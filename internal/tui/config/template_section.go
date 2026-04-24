@@ -5,8 +5,8 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type templateSection struct {
@@ -36,24 +36,25 @@ func (t *templateSection) Blur() {
 func (t *templateSection) Resize(width int) {
 	t.width = width
 	if width > 0 {
-		t.state.Input.Width = width
+		t.state.Input.SetWidth(width)
 	}
 }
 
 func (t *templateSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
 		if key.String() == "ctrl+delete" {
 			t.state.Input.SetValue("")
 			return t, nil
 		}
-		if key.Type == tea.KeySpace {
-			key = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
+		if key.String() == "space" {
+			key = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 		}
-		if key.Type == tea.KeyRunes {
-			key.Runes = filterInvalidFilenameRunes(key.Runes)
-			if len(key.Runes) == 0 {
+		if key.Text != "" {
+			filtered := filterInvalidFilenameRunes([]rune(key.Text))
+			if len(filtered) == 0 {
 				return t, nil
 			}
+			key = tea.KeyPressMsg{Code: filtered[0], Text: string(filtered)}
 			var cmd tea.Cmd
 			t.state.Input, cmd = t.state.Input.Update(key)
 			t.state.Input.SetValue(sanitizeTemplateValue(t.state.Input.Value()))
@@ -67,9 +68,9 @@ func (t *templateSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return t, cmd
 }
 
-func (t *templateSection) View() string {
+func (t *templateSection) View() tea.View {
 	label := t.theme.PanelTitleStyle().Render("Format Template:")
-	return lipgloss.JoinVertical(lipgloss.Left, label, t.state.Input.View())
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, label, t.state.Input.View()))
 }
 
 func filterInvalidFilenameRunes(runes []rune) []rune {

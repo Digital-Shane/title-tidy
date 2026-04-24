@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/google/go-cmp/cmp"
 )
 

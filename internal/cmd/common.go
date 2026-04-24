@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
@@ -12,8 +13,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +66,7 @@ func RunMediaCommand(cmd *cobra.Command, cmdConfig CommandConfig) error {
 		return executeInstantMode(model, cmdConfig.CommandName, os.Args[1:])
 	}
 
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
 }
@@ -95,7 +95,7 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 		Filter:      createMediaFilter(cmdConfig.IncludeDirs),
 	}, theme.Default())
 
-	finalModel, err := tea.NewProgram(idxModel, tea.WithAltScreen()).Run()
+	finalModel, err := tea.NewProgram(idxModel).Run()
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *c
 	}
 
 	metaModel := tui.NewMetadataProgressModel(t, formatConfig, theme.Default())
-	finalMetaModel, err := tea.NewProgram(metaModel, tea.WithAltScreen()).Run()
+	finalMetaModel, err := tea.NewProgram(metaModel).Run()
 	if err != nil {
 		return nil
 	}

@@ -2,7 +2,7 @@ package local
 
 import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // ShowParser handles parsing of TV show folders

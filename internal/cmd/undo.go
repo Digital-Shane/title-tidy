@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +47,7 @@ func runUndoCommand(cmd *cobra.Command, args []string) error {
 	tree := treeview.NewTree(sessionNodes)
 	model := tui.NewUndoModel(tree)
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
 }

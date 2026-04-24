@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
 )
 
 // Section represents each top-level configuration panel.

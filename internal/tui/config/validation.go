@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	"github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
-	"github.com/charmbracelet/bubbletea"
 )
 
 type tmdbValidationMsg struct {

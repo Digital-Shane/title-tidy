@@ -6,10 +6,10 @@ import (
 	"io"
 	"os"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
+	"github.com/Digital-Shane/treeview/v2"
 	"iter"
 )
 

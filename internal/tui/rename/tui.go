@@ -14,11 +14,11 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -153,11 +153,13 @@ func NewRenameModel(tree *treeview.Tree[treeview.FileInfo], opts ...Option) *Ren
 	runewidth.DefaultCondition.StrictEmojiNeutral = true
 
 	gradient := m.theme.ProgressGradient()
-	if len(gradient) < 2 {
-		gradient = []string{string(m.theme.Colors().Primary), string(m.theme.Colors().Accent)}
+	if len(gradient) >= 2 {
+		m.progressModel = progress.New(progress.WithColors(lipgloss.Color(gradient[0]), lipgloss.Color(gradient[1])))
+	} else {
+		colors := m.theme.Colors()
+		m.progressModel = progress.New(progress.WithColors(colors.Primary, colors.Accent))
 	}
-	m.progressModel = progress.New(progress.WithGradient(gradient[0], gradient[1]))
-	m.progressModel.Width = 40
+	m.progressModel.SetWidth(40)
 	// establish initial layout metrics before building underlying model
 	m.CalculateLayout()
 
@@ -207,7 +209,7 @@ func (m *RenameModel) CalculateLayout() {
 	}
 
 	// Update stats viewport dimensions if initialized
-	if m.statsViewport != nil && (m.statsViewport.Width > 0 || m.statsViewport.Height > 0) {
+	if m.statsViewport != nil && (m.statsViewport.Width() > 0 || m.statsViewport.Height() > 0) {
 		// Account for border and padding in viewport dimensions
 		// Border (2) + padding (2) = 4 total horizontal frame size
 		frameWidth := 4
@@ -223,8 +225,8 @@ func (m *RenameModel) CalculateLayout() {
 			viewportHeight = 1
 		}
 
-		m.statsViewport.Width = viewportWidth
-		m.statsViewport.Height = viewportHeight
+		m.statsViewport.SetWidth(viewportWidth)
+		m.statsViewport.SetHeight(viewportHeight)
 	}
 }
 
@@ -249,7 +251,7 @@ func (m *RenameModel) createSizedTuiModel(tree *treeview.Tree[treeview.FileInfo]
 func (m *RenameModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.TuiTreeModel.Init(),
-		tea.WindowSize(),
+		tea.RequestWindowSize,
 	)
 }
 
@@ -270,7 +272,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Handle custom keys before passing to tree model
 		switch msg.String() {
 		case "esc", "ctrl+c":
@@ -343,24 +345,20 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case tea.MouseMsg:
-		// Handle mouse wheel scrolling
-		switch {
-		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(4): // Mouse wheel up
+	case tea.MouseWheelMsg:
+		mouse := msg.Mouse()
+		switch mouse.Button {
+		case tea.MouseWheelUp:
 			if m.statsFocused {
-				// Scroll stats panel up
 				m.statsViewport.ScrollUp(1)
 			} else {
-				// Scroll tree up by 1 line
 				m.TuiTreeModel.Tree.Move(context.Background(), -1)
 			}
 			return m, nil
-		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(5): // Mouse wheel down
+		case tea.MouseWheelDown:
 			if m.statsFocused {
-				// Scroll stats panel down
 				m.statsViewport.ScrollDown(1)
 			} else {
-				// Scroll tree down by 1 line
 				m.TuiTreeModel.Tree.Move(context.Background(), 1)
 			}
 			return m, nil
@@ -419,8 +417,8 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	case progress.FrameMsg:
 		// propagate animation frames for the progress bar so percent updates render
-		pm, cmd := m.progressModel.Update(msg)
-		m.progressModel = pm.(progress.Model)
+		var cmd tea.Cmd
+		m.progressModel, cmd = m.progressModel.Update(msg)
 		return m, cmd
 	}
 
@@ -434,7 +432,7 @@ func (m *RenameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View returns the full TUI string (header, tree+stats layout, status bar).
-func (m *RenameModel) View() string {
+func (m *RenameModel) View() tea.View {
 	var b strings.Builder
 
 	// Render header
@@ -447,7 +445,10 @@ func (m *RenameModel) View() string {
 
 	// Render integrated status bar
 	b.WriteString(m.renderStatusBar())
-	return b.String()
+	v := tea.NewView(b.String())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 // renderHeader creates the single‑line header bar with mode + working directory.
@@ -550,7 +551,7 @@ func (m *RenameModel) renderStatusBar() string {
 // renderTwoPanelLayout joins the tree view and statistics panel horizontally.
 func (m *RenameModel) renderTwoPanelLayout() string {
 	statsPanel := m.renderStatsPanel()
-	treeView := m.TuiTreeModel.View()
+	treeView := m.TuiTreeModel.View().Content
 
 	// Force tree view to use exact allocated width to prevent stats panel from jumping
 	treeContainer := lipgloss.NewStyle().
@@ -576,7 +577,7 @@ func (m *RenameModel) renderStatsPanel() string {
 	titleStyle := m.panelTitleStyle().MarginBottom(1)
 
 	scrollIndicator := ""
-	if m.statsViewport.TotalLineCount() > m.statsViewport.Height {
+	if m.statsViewport.TotalLineCount() > m.statsViewport.Height() {
 		if m.statsFocused {
 			scrollIndicator = " [Use Tab+↑↓]"
 		} else {

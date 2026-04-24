@@ -5,7 +5,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 func newShowsTestNode(name string, isDir bool, path string) *treeview.Node[treeview.FileInfo] {
