@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ## [v1.18.1] - 2026-06-24
+### Added
+* Instructions for persisting config to the README.md.
 ### Updated
 * treeview and charm ecosystem dependencies to v2 versions.
 * Go version to 1.25.
