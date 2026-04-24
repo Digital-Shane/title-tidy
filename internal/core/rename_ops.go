@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // RenameRegular renames a node; returns true only when an actual filesystem rename occurred.

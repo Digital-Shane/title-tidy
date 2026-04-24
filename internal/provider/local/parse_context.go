@@ -3,7 +3,7 @@ package local
 import (
 	"strings"
 
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // ParseContext captures precomputed details about a media item name and its tree node.

@@ -5,8 +5,8 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type loggingSection struct {
@@ -41,7 +41,7 @@ func (l *loggingSection) Blur() {
 func (l *loggingSection) Resize(width int) {
 	l.width = width
 	if width > 0 {
-		l.state.Retention.Width = width
+		l.state.Retention.SetWidth(width)
 	}
 }
 
@@ -56,18 +56,18 @@ func (l *loggingSection) moveFocus(delta int) tea.Cmd {
 }
 
 func (l *loggingSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.Type {
-		case tea.KeyUp:
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		switch key.String() {
+		case "up":
 			return l, l.moveFocus(-1)
-		case tea.KeyDown:
+		case "down":
 			return l, l.moveFocus(1)
-		case tea.KeyEnter, tea.KeySpace:
+		case "enter", "space":
 			if l.state.Focus == LoggingFieldToggle {
 				l.state.Enabled = !l.state.Enabled
 				return l, nil
 			}
-			if key.Type == tea.KeySpace {
+			if key.String() == "space" {
 				return l, nil
 			}
 		}
@@ -76,10 +76,12 @@ func (l *loggingSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !l.state.Enabled {
 				return l, nil
 			}
-			switch key.Type {
-			case tea.KeyRunes:
-				filtered := make([]rune, 0, len(key.Runes))
-				for _, r := range key.Runes {
+			if key.String() == "space" {
+				return l, nil
+			}
+			if key.Text != "" {
+				filtered := make([]rune, 0, len(key.Text))
+				for _, r := range key.Text {
 					if unicode.IsDigit(r) {
 						filtered = append(filtered, r)
 					}
@@ -87,9 +89,7 @@ func (l *loggingSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(filtered) == 0 {
 					return l, nil
 				}
-				key = tea.KeyMsg{Type: tea.KeyRunes, Runes: filtered}
-			case tea.KeySpace:
-				return l, nil
+				key = tea.KeyPressMsg{Code: filtered[0], Text: string(filtered)}
 			}
 			var cmd tea.Cmd
 			l.state.Retention, cmd = l.state.Retention.Update(key)
@@ -100,7 +100,7 @@ func (l *loggingSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return l, nil
 }
 
-func (l *loggingSection) View() string {
+func (l *loggingSection) View() tea.View {
 	colors := l.theme.Colors()
 
 	label := l.theme.PanelTitleStyle().Render("Logging Configuration")
@@ -144,5 +144,5 @@ func (l *loggingSection) View() string {
 	help := lipgloss.NewStyle().Foreground(colors.Muted).Render("Auto-cleans log history when enabled.")
 
 	rows := []string{label, toggleText, retentionLabel + retentionValue, "", help}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }

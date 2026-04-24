@@ -4,7 +4,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"testing"
 
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/google/go-cmp/cmp"
 )
 

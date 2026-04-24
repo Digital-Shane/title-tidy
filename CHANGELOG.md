@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.18.1] - 2026-06-24
+### Updated
+* treeview and charm ecosystem dependencies to v2 versions.
+
 ## [v1.18.0] - 2026-03-13
 ### Added
 * Ability to escape curly braces in config templates to retain them during rename.

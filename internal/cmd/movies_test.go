@@ -11,7 +11,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 	"github.com/Digital-Shane/title-tidy/internal/tui"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // TestSubtitleExtensionWithLanguage tests that local.ExtractExtension properly

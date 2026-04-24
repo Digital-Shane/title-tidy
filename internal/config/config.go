@@ -14,7 +14,7 @@ import (
 	omdbProv "github.com/Digital-Shane/title-tidy/internal/provider/omdb"
 	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
 	tvdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // FormatContext holds all the contextual information needed for formatting media names.

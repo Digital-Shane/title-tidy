@@ -2,15 +2,16 @@ package undo
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 var undoSessionFn = log.UndoSession
@@ -73,9 +74,9 @@ func (m *UndoModel) treeContentWidth() int {
 	return width
 }
 
-func (m *UndoModel) sizedPanel(width, height int, borderColor lipgloss.Color) lipgloss.Style {
+func (m *UndoModel) sizedPanel(width, height int, borderColor color.Color) lipgloss.Style {
 	style := m.panelStyle()
-	if borderColor != "" {
+	if borderColor != nil {
 		style = style.BorderForeground(borderColor)
 	}
 	if width > 0 {
@@ -150,13 +151,13 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update details viewport dimensions
 		rightWidth := m.width - treeWidth
-		viewportHeight := m.height - 4 - 4       // Account for header, borders, and instructions
-		m.detailsViewport.Width = rightWidth - 6 // Account for border and padding
-		m.detailsViewport.Height = viewportHeight
+		viewportHeight := m.height - 4 - 4 // Account for header, borders, and instructions
+		m.detailsViewport.SetWidth(rightWidth - 6)
+		m.detailsViewport.SetHeight(viewportHeight)
 
 		return m, cmd
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "ctrl+c":
 			return m, tea.Quit
@@ -216,22 +217,17 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case tea.MouseMsg:
-		// Handle mouse wheel scrolling
-		switch {
-		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(4): // Mouse wheel up
+	case tea.MouseWheelMsg:
+		switch msg.Mouse().Button {
+		case tea.MouseWheelUp:
 			if m.detailsFocused {
-				// Scroll details panel up
 				m.detailsViewport.ScrollUp(1)
 			}
-			// If tree is focused, let it handle the mouse wheel in the default handler below
 			return m, nil
-		case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButton(5): // Mouse wheel down
+		case tea.MouseWheelDown:
 			if m.detailsFocused {
-				// Scroll details panel down
 				m.detailsViewport.ScrollDown(1)
 			}
-			// If tree is focused, let it handle the mouse wheel in the default handler below
 			return m, nil
 		}
 
@@ -253,7 +249,7 @@ func (m *UndoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *UndoModel) View() string {
+func (m *UndoModel) View() tea.View {
 	var b strings.Builder
 
 	// Header
@@ -304,7 +300,9 @@ func (m *UndoModel) View() string {
 		b.WriteString(m.renderMainView())
 	}
 
-	return b.String()
+	v := tea.NewView(b.String())
+	v.AltScreen = true
+	return v
 }
 
 // renderMainView renders the split view with session list and preview
@@ -357,7 +355,7 @@ func (m *UndoModel) renderSessionList(width, height int) string {
 		Render("Sessions")
 
 	// Get tree view
-	treeView := m.TuiTreeModel.View()
+	treeView := m.TuiTreeModel.View().Content
 
 	// Combine title and tree
 	content := title + "\n" + treeView
@@ -371,7 +369,7 @@ func (m *UndoModel) renderSessionPreview(width, height int) string {
 	focusedNode := m.TuiTreeModel.Tree.GetFocusedNode()
 	if focusedNode != nil {
 		summary := *focusedNode.Data()
-		content := m.formatSessionDetails(summary, m.detailsViewport.Width)
+		content := m.formatSessionDetails(summary, m.detailsViewport.Width())
 		m.detailsViewport.SetContent(content)
 	} else {
 		emptyContent := lipgloss.NewStyle().
@@ -396,7 +394,7 @@ func (m *UndoModel) renderSessionPreview(width, height int) string {
 		Align(lipgloss.Center)
 
 	scrollIndicator := ""
-	if m.detailsViewport.TotalLineCount() > m.detailsViewport.Height {
+	if m.detailsViewport.TotalLineCount() > m.detailsViewport.Height() {
 		if m.detailsFocused {
 			scrollIndicator = " [Use Tab+↑↓]"
 		} else {

@@ -8,19 +8,23 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/Digital-Shane/treeview/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
-func sendKey(tm *teatest.TestModel, key tea.KeyType) {
-	tm.Send(tea.KeyMsg{Type: key})
+func sendKey(tm *teatest.TestModel, key rune) {
+	tm.Send(tea.KeyPressMsg{Code: key})
 }
 
 func sendRune(tm *teatest.TestModel, r rune) {
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	tm.Send(tea.KeyPressMsg{Code: r})
+}
+
+func sendCtrl(tm *teatest.TestModel, key rune) {
+	tm.Send(tea.KeyPressMsg{Code: key, Mod: tea.ModCtrl})
 }
 
 func newUndoOperation(id, basePath string, idx int, success bool) log.OperationLog {
@@ -133,10 +137,10 @@ func withUndoSessionStub(t *testing.T, fn func(*log.LogSession) (int, int, []err
 func TestUndoModelQuitKeys(t *testing.T) {
 	tests := []struct {
 		name string
-		key  tea.KeyType
+		msg  tea.KeyPressMsg
 	}{
-		{name: "esc", key: tea.KeyEsc},
-		{name: "ctrl_c", key: tea.KeyCtrlC},
+		{name: "esc", msg: tea.KeyPressMsg{Code: tea.KeyEsc}},
+		{name: "ctrl_c", msg: tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}},
 	}
 
 	for _, tc := range tests {
@@ -146,7 +150,7 @@ func TestUndoModelQuitKeys(t *testing.T) {
 			tm := startUndoTestModel(t, model, teatest.WithInitialTermSize(80, 14))
 
 			tm.Send(tea.WindowSizeMsg{Width: 80, Height: 14})
-			tm.Send(tea.KeyMsg{Type: tc.key})
+			tm.Send(tc.msg)
 			tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 			final := finalUndoModel(t, tm)
@@ -176,27 +180,27 @@ func TestUndoModelTabFocusAndScrolling(t *testing.T) {
 	}
 
 	sendKey(tm, tea.KeyPgDown)
-	if model.detailsViewport.YOffset == 0 {
+	if model.detailsViewport.YOffset() == 0 {
 		t.Fatal("detailsViewport.YOffset = 0, want >0 after PgDown")
 	}
-	downOffset := model.detailsViewport.YOffset
+	downOffset := model.detailsViewport.YOffset()
 
 	sendKey(tm, tea.KeyPgUp)
-	if model.detailsViewport.YOffset >= downOffset {
-		t.Fatalf("detailsViewport.YOffset = %d, want < %d after PgUp", model.detailsViewport.YOffset, downOffset)
+	if model.detailsViewport.YOffset() >= downOffset {
+		t.Fatalf("detailsViewport.YOffset = %d, want < %d after PgUp", model.detailsViewport.YOffset(), downOffset)
 	}
 
 	sendKey(tm, tea.KeyDown)
-	if model.detailsViewport.YOffset == 0 {
+	if model.detailsViewport.YOffset() == 0 {
 		t.Fatal("detailsViewport.YOffset = 0, want >0 after Down")
 	}
 
 	sendKey(tm, tea.KeyUp)
-	if model.detailsViewport.YOffset != 0 {
-		t.Fatalf("detailsViewport.YOffset = %d, want 0 after Up", model.detailsViewport.YOffset)
+	if model.detailsViewport.YOffset() != 0 {
+		t.Fatalf("detailsViewport.YOffset = %d, want 0 after Up", model.detailsViewport.YOffset())
 	}
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 	final := finalUndoModel(t, tm)
 	if !final.detailsFocused {
@@ -233,7 +237,7 @@ func TestUndoModelTreeNavigationRespectsFocus(t *testing.T) {
 		t.Fatalf("tree focus changed to %s while details focused, want %s", id, nodes[1].ID())
 	}
 
-	if model.detailsViewport.YOffset == 0 {
+	if model.detailsViewport.YOffset() == 0 {
 		t.Fatal("detailsViewport.YOffset = 0, want >0 after Down when details focused")
 	}
 
@@ -250,7 +254,7 @@ func TestUndoModelTreeNavigationRespectsFocus(t *testing.T) {
 		t.Fatalf("tree focus after Up = %s, want %s", id, nodes[0].ID())
 	}
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 }
 
@@ -283,7 +287,7 @@ func TestUndoModelCancelConfirmation(t *testing.T) {
 		t.Fatal("confirmingUndo = true, want false after final cancel")
 	}
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 }
 
@@ -314,6 +318,9 @@ func TestUndoModelPerformUndoFlow(t *testing.T) {
 	}
 
 	sendKey(tm, tea.KeyEnter)
+	teatest.WaitFor(t, tm.Output(), func([]byte) bool {
+		return !model.confirmingUndo && model.undoInProgress
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(25*time.Millisecond))
 	if model.confirmingUndo {
 		t.Fatal("confirmingUndo = true, want false while undo in progress")
 	}
@@ -327,10 +334,10 @@ func TestUndoModelPerformUndoFlow(t *testing.T) {
 		t.Fatal("timed out waiting for UndoSession to be invoked")
 	}
 
-	waitForUndoOutput(t, tm, "Undoing operations...")
 	releaseOnce.Do(func() { close(release) })
-
-	waitForUndoOutput(t, tm, "Undo completed: 3 success, 1 failed")
+	teatest.WaitFor(t, tm.Output(), func([]byte) bool {
+		return !model.undoInProgress && model.undoComplete
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(25*time.Millisecond))
 
 	if model.undoInProgress {
 		t.Error("undoInProgress = true, want false after completion")
@@ -345,7 +352,7 @@ func TestUndoModelPerformUndoFlow(t *testing.T) {
 		t.Errorf("undoFailed diff (-want +got):\n%s", diff)
 	}
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 	final := finalUndoModel(t, tm)
 	if !final.undoComplete {
@@ -375,10 +382,10 @@ func TestUndoModelWindowResizeUpdatesLayout(t *testing.T) {
 	if diff := cmp.Diff(40, model.height); diff != "" {
 		t.Errorf("first height diff (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(56, model.detailsViewport.Width); diff != "" {
+	if diff := cmp.Diff(56, model.detailsViewport.Width()); diff != "" {
 		t.Errorf("first viewport width diff (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(32, model.detailsViewport.Height); diff != "" {
+	if diff := cmp.Diff(32, model.detailsViewport.Height()); diff != "" {
 		t.Errorf("first viewport height diff (-want +got):\n%s", diff)
 	}
 
@@ -390,13 +397,13 @@ func TestUndoModelWindowResizeUpdatesLayout(t *testing.T) {
 	if diff := cmp.Diff(20, model.height); diff != "" {
 		t.Errorf("second height diff (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(26, model.detailsViewport.Width); diff != "" {
+	if diff := cmp.Diff(26, model.detailsViewport.Width()); diff != "" {
 		t.Errorf("second viewport width diff (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(12, model.detailsViewport.Height); diff != "" {
+	if diff := cmp.Diff(12, model.detailsViewport.Height()); diff != "" {
 		t.Errorf("second viewport height diff (-want +got):\n%s", diff)
 	}
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 }

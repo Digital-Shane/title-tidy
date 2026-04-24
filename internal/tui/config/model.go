@@ -10,10 +10,10 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Option configures the configuration TUI model.
@@ -147,61 +147,60 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if key.Mod.Contains(tea.ModAlt) && key.Code == tea.KeySpace {
+			m.variablesAuto = !m.variablesAuto
+			if m.variablesAuto {
+				if cmd := m.scheduleVariablesTick(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+			return m, tea.Batch(cmds...)
+		}
+		switch key.String() {
+		case "ctrl+c", "esc":
 			cmds = append(cmds, tea.Quit)
 			return m, tea.Batch(cmds...)
-		case tea.KeyCtrlS:
+		case "ctrl+s":
 			m.save()
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
-		case tea.KeyCtrlR:
+		case "ctrl+r":
 			m.reset()
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
-		case tea.KeyTab:
+		case "tab":
 			if cmd := m.setActiveSection((m.activeIndex + 1) % len(m.sections)); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
-		case tea.KeyShiftTab:
+		case "shift+tab":
 			next := (m.activeIndex - 1 + len(m.sections)) % len(m.sections)
 			if cmd := m.setActiveSection(next); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
-		case tea.KeySpace:
-			if key.Alt {
-				m.variablesAuto = !m.variablesAuto
-				if m.variablesAuto {
-					if cmd := m.scheduleVariablesTick(); cmd != nil {
-						cmds = append(cmds, cmd)
-					}
-				}
-				return m, tea.Batch(cmds...)
-			}
-		case tea.KeyUp:
+		case "up":
 			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders {
 				m.disableVariablesAuto()
 				m.scrollVariables(-1, 1)
 			}
-		case tea.KeyDown:
+		case "down":
 			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders {
 				m.disableVariablesAuto()
 				m.scrollVariables(1, 1)
 			}
-		case tea.KeyPgUp:
+		case "pgup":
 			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders && m.variables != nil {
 				m.disableVariablesAuto()
-				m.scrollVariables(-1, m.variables.Height/2)
+				m.scrollVariables(-1, m.variables.Height()/2)
 			}
-		case tea.KeyPgDown:
+		case "pgdown":
 			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders && m.variables != nil {
 				m.disableVariablesAuto()
-				m.scrollVariables(1, m.variables.Height/2)
+				m.scrollVariables(1, m.variables.Height()/2)
 			}
 		}
 	}
@@ -272,8 +271,8 @@ func (m *Model) handleWindowResize(msg tea.WindowSizeMsg) {
 			viewportHeight = 0
 		}
 		if m.variables != nil {
-			m.variables.Width = viewportWidth
-			m.variables.Height = viewportHeight
+			m.variables.SetWidth(viewportWidth)
+			m.variables.SetHeight(viewportHeight)
 		}
 	}
 
@@ -302,12 +301,12 @@ func (m *Model) activeSection() Section {
 }
 
 // View renders the UI.
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	if m.width == 0 || m.height == 0 {
-		return "Loading..."
+		return tea.NewView("Loading...")
 	}
 	if m.width < 30 || m.height < 10 {
-		return "Terminal too small. Please resize to at least 30x10."
+		return tea.NewView("Terminal too small. Please resize to at least 30x10.")
 	}
 
 	title := lipgloss.NewStyle().
@@ -336,7 +335,9 @@ func (m *Model) View() string {
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 	status := m.renderStatusBar()
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, tabs, panels, status)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, title, tabs, panels, status))
+	v.AltScreen = true
+	return v
 }
 
 func (m *Model) renderTabs() string {
@@ -425,7 +426,7 @@ func (m *Model) renderVariablesSidebar(width int) string {
 func (m *Model) renderRightPanel(width, height int) string {
 	panel := m.theme.PanelStyle().Width(width).Height(height)
 
-	sectionView := m.sections[m.activeIndex].View()
+	sectionView := m.sections[m.activeIndex].View().Content
 
 	if m.activeSection() == SectionProviders {
 		return panel.Render(sectionView)
@@ -617,7 +618,7 @@ func (m *Model) variablesOverflowing() bool {
 	if m.variables == nil {
 		return false
 	}
-	return m.variables.TotalLineCount() > m.variables.Height+1
+	return m.variables.TotalLineCount() > m.variables.Height()+1
 }
 
 func (m *Model) refreshVariablesPanel() {
@@ -757,15 +758,18 @@ func newTemplateInput(value string, th theme.Theme) textinput.Model {
 	configureInput(&ti, th)
 	ti.SetValue(value)
 	ti.CursorEnd()
-	ti.Width = 64
+	ti.SetWidth(64)
 	return ti
 }
 
 func configureInput(ti *textinput.Model, th theme.Theme) {
 	ti.Prompt = ""
 	ti.Placeholder = ""
-	ti.CursorStyle = lipgloss.NewStyle().Background(th.Colors().Accent).Foreground(th.Colors().Background)
-	ti.TextStyle = lipgloss.NewStyle().Foreground(th.Colors().Primary)
+	styles := ti.Styles()
+	styles.Cursor.Color = th.Colors().Accent
+	styles.Focused.Text = lipgloss.NewStyle().Foreground(th.Colors().Primary)
+	styles.Blurred.Text = lipgloss.NewStyle().Foreground(th.Colors().Primary)
+	ti.SetStyles(styles)
 	ti.Focus()
 	ti.Blur()
 }

@@ -6,8 +6,8 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type providerSection struct {
@@ -60,18 +60,14 @@ func (p *providerSection) Blur() {
 func (p *providerSection) Resize(width int) {
 	p.width = width
 	if width > 0 {
-		p.state.WorkerCount.Width = width
-		p.state.TMDB.APIKey.Width = width
-		p.state.TMDB.Language.Width = width
-		p.state.TVDB.APIKey.Width = width
-		p.state.OMDB.APIKey.Width = width
+
 	}
 }
 
 func (p *providerSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m := msg.(type) {
-	case tea.KeyMsg:
-		if m.Alt {
+	case tea.KeyPressMsg:
+		if m.Mod.Contains(tea.ModAlt) {
 			return p, nil
 		}
 		p.ensureActiveField()
@@ -92,14 +88,14 @@ func (p *providerSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return p, nil
 }
 
-func (p *providerSection) handleKey(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyLeft, tea.KeyUp:
+func (p *providerSection) handleKey(key tea.KeyPressMsg) tea.Cmd {
+	switch key.String() {
+	case "left", "up":
 		return p.moveFocus(-1)
-	case tea.KeyRight, tea.KeyDown:
+	case "right", "down":
 		return p.moveFocus(1)
-	case tea.KeyEnter, tea.KeySpace:
-		if key.Type == tea.KeySpace && key.Alt {
+	case "enter", "space":
+		if key.String() == "space" && key.Mod.Contains(tea.ModAlt) {
 			return nil
 		}
 		return p.toggleActive()
@@ -234,15 +230,15 @@ func (p *providerSection) applyFocus() tea.Cmd {
 	return nil
 }
 
-func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
+func (p *providerSection) handleTextInputs(key tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch p.state.Active {
 	case ProviderFieldWorkers:
-		if key.Type == tea.KeySpace {
+		if key.String() == "space" {
 			return nil, true
 		}
-		if key.Type == tea.KeyRunes {
-			digits := make([]rune, 0, len(key.Runes))
-			for _, r := range key.Runes {
+		if key.Text != "" {
+			digits := make([]rune, 0, len(key.Text))
+			for _, r := range key.Text {
 				if unicode.IsDigit(r) {
 					digits = append(digits, r)
 				}
@@ -250,7 +246,7 @@ func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
 			if len(digits) == 0 {
 				return nil, true
 			}
-			key = tea.KeyMsg{Type: tea.KeyRunes, Runes: digits}
+			key = tea.KeyPressMsg{Code: digits[0], Text: string(digits)}
 		}
 		prev := p.state.WorkerCount.Value()
 		var cmd tea.Cmd
@@ -264,7 +260,7 @@ func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
 		if !p.state.OMDB.Enabled {
 			return nil, false
 		}
-		if key.Type == tea.KeySpace {
+		if key.String() == "space" {
 			return nil, true
 		}
 		prev := p.state.OMDB.APIKey.Value()
@@ -281,7 +277,7 @@ func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
 		if !p.state.TMDB.Enabled {
 			return nil, false
 		}
-		if key.Type == tea.KeySpace {
+		if key.String() == "space" {
 			return nil, true
 		}
 		prev := p.state.TMDB.APIKey.Value()
@@ -298,9 +294,9 @@ func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
 		if !p.state.TMDB.Enabled {
 			return nil, false
 		}
-		if key.Type == tea.KeyRunes {
-			filtered := make([]rune, 0, len(key.Runes))
-			for _, r := range key.Runes {
+		if key.Text != "" {
+			filtered := make([]rune, 0, len(key.Text))
+			for _, r := range key.Text {
 				if unicode.IsLetter(r) || r == '-' {
 					filtered = append(filtered, r)
 				}
@@ -308,7 +304,7 @@ func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
 			if len(filtered) == 0 {
 				return nil, true
 			}
-			key = tea.KeyMsg{Type: tea.KeyRunes, Runes: filtered}
+			key = tea.KeyPressMsg{Code: filtered[0], Text: string(filtered)}
 		}
 		prev := p.state.TMDB.Language.Value()
 		var cmd tea.Cmd
@@ -322,7 +318,7 @@ func (p *providerSection) handleTextInputs(key tea.KeyMsg) (tea.Cmd, bool) {
 		if !p.state.TVDB.Enabled {
 			return nil, false
 		}
-		if key.Type == tea.KeySpace {
+		if key.String() == "space" {
 			return nil, true
 		}
 		prev := p.state.TVDB.APIKey.Value()
@@ -500,7 +496,7 @@ func (p *providerSection) tvdbValidateOnActivate() tea.Cmd {
 	return p.tvdbValidate(key)
 }
 
-func (p *providerSection) View() string {
+func (p *providerSection) View() tea.View {
 	colors := p.theme.Colors()
 	title := p.theme.PanelTitleStyle().Render("Metadata Providers")
 
@@ -519,7 +515,7 @@ func (p *providerSection) View() string {
 	if inline {
 		gap := lipgloss.NewStyle().Width(columnGap).Render(" ")
 		row := lipgloss.JoinHorizontal(lipgloss.Top, shared, gap, ffprobe, gap, omdb, gap, tmdb, gap, tvdb)
-		return lipgloss.JoinVertical(lipgloss.Left, title, row)
+		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, title, row))
 	}
 
 	separator := lipgloss.NewStyle().Height(1).Render("")
@@ -535,7 +531,7 @@ func (p *providerSection) View() string {
 		separator,
 		tvdb,
 	)
-	return lipgloss.JoinVertical(lipgloss.Left, title, stacked)
+	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, title, stacked))
 }
 
 func (p *providerSection) renderSharedColumn(colors theme.Colors) string {

@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"charm.land/bubbles/v2/progress"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbles/progress"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -16,14 +16,13 @@ func TestIndexProgressModel_CustomFilterDelegation(t *testing.T) {
 	var called []string
 	results := make(map[string]bool)
 
-	withIndexProgressBuilder(t, func(_ context.Context, path string, _ bool, opts ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error) {
-		cfg := treeview.NewMasterConfig(opts)
+	withIndexProgressBuilder(t, func(_ context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
 		files := []treeview.FileInfo{
 			{FileInfo: fakeFileInfo{name: "keep.me"}, Path: filepath.Join(path, "keep.me")},
 			{FileInfo: fakeFileInfo{name: "drop.me"}, Path: filepath.Join(path, "drop.me")},
 		}
 		for _, fi := range files {
-			results[fi.Name()] = !cfg.ShouldFilter(fi)
+			results[fi.Name()] = params.Filter(fi)
 		}
 		return &treeview.Tree[treeview.FileInfo]{}, nil
 	})
@@ -78,8 +77,7 @@ func TestIndexProgressModel_DefaultFilterFallback(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := make(map[string]bool)
-			withIndexProgressBuilder(t, func(_ context.Context, path string, _ bool, opts ...treeview.Option[treeview.FileInfo]) (*treeview.Tree[treeview.FileInfo], error) {
-				cfg := treeview.NewMasterConfig(opts)
+			withIndexProgressBuilder(t, func(_ context.Context, path string, params indexBuildParams) (*treeview.Tree[treeview.FileInfo], error) {
 				files := []treeview.FileInfo{
 					{FileInfo: fakeFileInfo{name: ".DS_Store"}, Path: filepath.Join(path, ".DS_Store")},
 					{FileInfo: fakeFileInfo{name: "._hidden"}, Path: filepath.Join(path, "._hidden")},
@@ -87,7 +85,7 @@ func TestIndexProgressModel_DefaultFilterFallback(t *testing.T) {
 					{FileInfo: fakeFileInfo{name: "subdir", dir: true}, Path: filepath.Join(path, "subdir")},
 				}
 				for _, fi := range files {
-					got[fi.Name()] = !cfg.ShouldFilter(fi)
+					got[fi.Name()] = params.Filter(fi)
 				}
 				return &treeview.Tree[treeview.FileInfo]{}, nil
 			})

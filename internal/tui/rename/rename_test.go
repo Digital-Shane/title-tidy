@@ -7,7 +7,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // fsTestNode creates a node representing a filesystem entry; path provided explicitly.

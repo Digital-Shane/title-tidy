@@ -8,7 +8,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 func TestUndoCompleteMsgAccessors(t *testing.T) {

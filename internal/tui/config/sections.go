@@ -1,6 +1,6 @@
 package config
 
-import "github.com/charmbracelet/bubbletea"
+import "charm.land/bubbletea/v2"
 
 // sectionModel represents a focusable child model rendered inside the config UI.
 type sectionModel interface {

@@ -9,7 +9,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/tui/rename"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/title-tidy/internal/tui/undo"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 )
 
 // Type aliases to preserve the public API under the legacy tui package path.

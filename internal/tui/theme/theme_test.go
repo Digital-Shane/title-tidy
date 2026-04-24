@@ -1,10 +1,11 @@
 package theme
 
 import (
+	"image/color"
 	"runtime"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -114,7 +115,7 @@ func TestProgressGradientUsesPrimaryAndAccent(t *testing.T) {
 	colors := theme.Colors()
 
 	got := theme.ProgressGradient()
-	want := []string{string(colors.Primary), string(colors.Accent)}
+	want := []string{colorToHex(colors.Primary), colorToHex(colors.Accent)}
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ProgressGradient() mismatch (-want +got):\n%s", diff)
@@ -159,12 +160,12 @@ func TestHeaderStyleProperties(t *testing.T) {
 		t.Errorf("HeaderStyle() bold = %v, want %v", style.GetBold(), true)
 	}
 
-	if bg, ok := style.GetBackground().(lipgloss.Color); !ok || bg != colors.Primary {
-		t.Errorf("HeaderStyle() background = %v, want %v", style.GetBackground(), colors.Primary)
+	if bg := style.GetBackground(); colorToHex(bg) != colorToHex(colors.Primary) {
+		t.Errorf("HeaderStyle() background = %v, want %v", bg, colors.Primary)
 	}
 
-	if fg, ok := style.GetForeground().(lipgloss.Color); !ok || fg != colors.Background {
-		t.Errorf("HeaderStyle() foreground = %v, want %v", style.GetForeground(), colors.Background)
+	if fg := style.GetForeground(); colorToHex(fg) != colorToHex(colors.Background) {
+		t.Errorf("HeaderStyle() foreground = %v, want %v", fg, colors.Background)
 	}
 
 	if got, want := style.GetAlignHorizontal(), lipgloss.Center; got != want {
@@ -179,12 +180,12 @@ func TestStatusBarStylePadding(t *testing.T) {
 
 	style := theme.StatusBarStyle()
 
-	if bg, ok := style.GetBackground().(lipgloss.Color); !ok || bg != colors.Secondary {
-		t.Errorf("StatusBarStyle() background = %v, want %v", style.GetBackground(), colors.Secondary)
+	if bg := style.GetBackground(); colorToHex(bg) != colorToHex(colors.Secondary) {
+		t.Errorf("StatusBarStyle() background = %v, want %v", bg, colors.Secondary)
 	}
 
-	if fg, ok := style.GetForeground().(lipgloss.Color); !ok || fg != colors.Background {
-		t.Errorf("StatusBarStyle() foreground = %v, want %v", style.GetForeground(), colors.Background)
+	if fg := style.GetForeground(); colorToHex(fg) != colorToHex(colors.Background) {
+		t.Errorf("StatusBarStyle() foreground = %v, want %v", fg, colors.Background)
 	}
 
 	top, right, bottom, left := style.GetPadding()
@@ -229,7 +230,9 @@ func TestPanelStyleProperties(t *testing.T) {
 		)
 	}
 
-	if fg, ok := style.GetBorderTopForeground().(lipgloss.Color); !ok || fg != colors.Accent {
-		t.Errorf("PanelStyle() border color = %v, want %v", style.GetBorderTopForeground(), colors.Accent)
+	if fg := style.GetBorderTopForeground(); colorToHex(fg) != colorToHex(colors.Accent) {
+		t.Errorf("PanelStyle() border color = %v, want %v", fg, colors.Accent)
 	}
 }
+
+var _ color.Color

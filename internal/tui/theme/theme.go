@@ -1,10 +1,12 @@
 package theme
 
 import (
+	"fmt"
+	"image/color"
 	"os"
 	"runtime"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // IconSet represents a collection of icons keyed by semantic usage.
@@ -24,13 +26,13 @@ func (s IconSet) clone() IconSet {
 
 // Colors holds the shared color palette used across the TUI.
 type Colors struct {
-	Primary    lipgloss.Color
-	Secondary  lipgloss.Color
-	Accent     lipgloss.Color
-	Background lipgloss.Color
-	Muted      lipgloss.Color
-	Success    lipgloss.Color
-	Error      lipgloss.Color
+	Primary    color.Color
+	Secondary  color.Color
+	Accent     color.Color
+	Background color.Color
+	Muted      color.Color
+	Success    color.Color
+	Error      color.Color
 }
 
 // Borders defines reusable border styles.
@@ -185,7 +187,17 @@ func (t Theme) PanelTitleStyle() lipgloss.Style {
 
 // ProgressGradient returns the gradient colors for progress bars.
 func (t Theme) ProgressGradient() []string {
-	return []string{string(t.colors.Primary), string(t.colors.Accent)}
+	return []string{colorToHex(t.colors.Primary), colorToHex(t.colors.Accent)}
+}
+
+// colorToHex converts a color.Color into a hex string suitable for
+// progress bar gradient configuration.
+func colorToHex(c color.Color) string {
+	if c == nil {
+		return ""
+	}
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
 // defaultIconSet chooses the best icon set for the current terminal.

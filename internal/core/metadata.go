@@ -1,6 +1,6 @@
 package core
 
-import "github.com/Digital-Shane/treeview"
+import "github.com/Digital-Shane/treeview/v2"
 
 // MediaType enumerates the semantic classification of a node within the media library hierarchy.
 type MediaType int

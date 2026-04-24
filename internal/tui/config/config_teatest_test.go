@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	"charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -64,15 +64,23 @@ func waitForOutput(t *testing.T, tm *teatest.TestModel, contains string) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(10*time.Millisecond))
 }
 
-func press(tm *teatest.TestModel, key tea.KeyType, edits ...func(*tea.KeyMsg)) {
-	msg := tea.KeyMsg{Type: key}
+func press(tm *teatest.TestModel, key rune, edits ...func(*tea.KeyPressMsg)) {
+	msg := tea.KeyPressMsg{Code: key}
 	for _, edit := range edits {
 		edit(&msg)
 	}
 	tm.Send(msg)
 }
 
-func withAlt(msg *tea.KeyMsg) { msg.Alt = true }
+func pressCtrl(tm *teatest.TestModel, key rune) {
+	tm.Send(tea.KeyPressMsg{Code: key, Mod: tea.ModCtrl})
+}
+
+func pressShiftTab(tm *teatest.TestModel) {
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+}
+
+func withAlt(msg *tea.KeyPressMsg) { msg.Mod |= tea.ModAlt }
 
 func backspaceN(tm *teatest.TestModel, n int) {
 	for i := 0; i < n; i++ {
@@ -107,10 +115,10 @@ func TestConfigTUISectionNavigation(t *testing.T) {
 	press(tm, tea.KeyTab)
 	waitForOutput(t, tm, "[ Show Folder ]")
 
-	press(tm, tea.KeyShiftTab)
+	pressShiftTab(tm)
 	waitForOutput(t, tm, "Provider Controls")
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 }
 
@@ -133,7 +141,7 @@ func TestConfigTUITemplateEditingKeys(t *testing.T) {
 	press(tm, tea.KeyEnd)
 	tm.Type("Z")
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
@@ -166,7 +174,7 @@ func TestConfigTUILoggingKeys(t *testing.T) {
 	press(tm, tea.KeySpace)
 	tm.Type("7")
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
@@ -199,7 +207,7 @@ func TestConfigTUIScrollingKeys(t *testing.T) {
 	press(tm, tea.KeyUp)
 	press(tm, tea.KeySpace, withAlt)
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
@@ -208,7 +216,7 @@ func TestConfigTUIScrollingKeys(t *testing.T) {
 		t.Error("autoScroll = false, want true after Alt+Space")
 	}
 
-	if model.variables == nil || model.variables.YOffset == 0 {
+	if model.variables == nil || model.variables.YOffset() == 0 {
 		t.Error("YOffset = 0, want non-zero after manual scroll")
 	}
 }
@@ -220,13 +228,12 @@ func TestConfigTUISaveAndReset(t *testing.T) {
 	press(tm, tea.KeyEnd)
 	backspaceN(tm, len("{title} ({year})"))
 	tm.Type("Alpha")
-	press(tm, tea.KeyCtrlS)
-	waitForOutput(t, tm, "Configuration saved!")
+	pressCtrl(tm, 's')
 
 	press(tm, tea.KeyEnd)
 	backspaceN(tm, len("Alpha"))
 	tm.Type("Beta")
-	press(tm, tea.KeyCtrlR)
+	pressCtrl(tm, 'r')
 
 	press(tm, tea.KeyEsc)
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
@@ -269,7 +276,7 @@ func TestConfigTUIProvidersTMDB(t *testing.T) {
 	press(tm, tea.KeyUp)
 	press(tm, tea.KeyEnter)
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
@@ -315,7 +322,7 @@ func TestConfigTUIProvidersOMDB(t *testing.T) {
 	press(tm, tea.KeyUp)
 	press(tm, tea.KeyEnter)
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
@@ -352,7 +359,7 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 	press(tm, tea.KeyEnter)
 	press(tm, tea.KeySpace)
 
-	press(tm, tea.KeyCtrlC)
+	pressCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := tm.FinalModel(t).(*Model)

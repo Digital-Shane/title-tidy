@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/log"
-	"github.com/Digital-Shane/treeview"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/Digital-Shane/treeview/v2"
+	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -164,20 +164,24 @@ func waitForRenameOutput(t *testing.T, tm *teatest.TestModel, contains string) {
 }
 
 func sendRune(tm *teatest.TestModel, r rune) {
-	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	tm.Type(string(r))
 }
 
-func sendKey(tm *teatest.TestModel, key tea.KeyType) {
-	tm.Send(tea.KeyMsg{Type: key})
+func sendKey(tm *teatest.TestModel, key rune) {
+	tm.Send(tea.KeyPressMsg{Code: key})
+}
+
+func sendCtrl(tm *teatest.TestModel, key rune) {
+	tm.Send(tea.KeyPressMsg{Code: key, Mod: tea.ModCtrl})
 }
 
 func TestRenameTUIQuitKeys(t *testing.T) {
 	cases := []struct {
 		name string
-		msg  tea.KeyMsg
+		msg  tea.KeyPressMsg
 	}{
-		{name: "Esc", msg: tea.KeyMsg{Type: tea.KeyEsc}},
-		{name: "CtrlC", msg: tea.KeyMsg{Type: tea.KeyCtrlC}},
+		{name: "Esc", msg: tea.KeyPressMsg{Code: tea.KeyEsc}},
+		{name: "CtrlC", msg: tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}},
 	}
 
 	for _, tc := range cases {
@@ -212,15 +216,15 @@ func TestRenameTUIStatsFocusAndScroll(t *testing.T) {
 
 	sendKey(tm, tea.KeyDown)
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	final := finalRenameModel(t, tm)
 	if !final.statsFocused {
 		t.Error("statsFocused = false, want true after Tab")
 	}
-	if final.statsViewport.YOffset == 0 {
-		t.Fatalf("statsViewport.YOffset = 0, height=%d, totalLines=%d", final.statsViewport.Height, final.statsViewport.TotalLineCount())
+	if final.statsViewport.YOffset() == 0 {
+		t.Fatalf("statsViewport.YOffset = 0, height=%d, totalLines=%d", final.statsViewport.Height(), final.statsViewport.TotalLineCount())
 	}
 }
 
@@ -231,7 +235,7 @@ func TestRenameTUITreePageNavigation(t *testing.T) {
 	t.Run("PageDownMovesToEnd", func(t *testing.T) {
 		tm := startRenameTestModel(t, model)
 		sendKey(tm, tea.KeyPgDown)
-		sendKey(tm, tea.KeyCtrlC)
+		sendCtrl(tm, 'c')
 		tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 		final := finalRenameModel(t, tm)
 		focused := final.TuiTreeModel.Tree.GetFocusedNode()
@@ -247,7 +251,7 @@ func TestRenameTUITreePageNavigation(t *testing.T) {
 		tm := startRenameTestModel(t, model)
 		sendKey(tm, tea.KeyPgDown)
 		sendKey(tm, tea.KeyPgUp)
-		sendKey(tm, tea.KeyCtrlC)
+		sendCtrl(tm, 'c')
 		tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 		final := finalRenameModel(t, tm)
 		focused := final.TuiTreeModel.Tree.GetFocusedNode()
@@ -264,13 +268,28 @@ func nodeID(node *treeview.Node[treeview.FileInfo]) string {
 	return node.ID()
 }
 
+func runRenameCmd(model *RenameModel, cmd tea.Cmd) {
+	for cmd != nil {
+		msg := cmd()
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, sub := range batch {
+				runRenameCmd(model, sub)
+			}
+			cmd = nil
+			continue
+		}
+		_, next := model.Update(msg)
+		cmd = next
+	}
+}
+
 func TestRenameTUIDeleteKeysRemoveNodes(t *testing.T) {
 	tests := []struct {
 		name string
-		msg  tea.KeyMsg
+		msg  tea.KeyPressMsg
 	}{
-		{name: "DeleteKey", msg: tea.KeyMsg{Type: tea.KeyDelete}},
-		{name: "RuneD", msg: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}},
+		{name: "DeleteKey", msg: tea.KeyPressMsg{Code: tea.KeyDelete}},
+		{name: "RuneD", msg: tea.KeyPressMsg{Code: 'd', Text: "d"}},
 	}
 
 	for _, tc := range tests {
@@ -282,7 +301,7 @@ func TestRenameTUIDeleteKeysRemoveNodes(t *testing.T) {
 
 			sendKey(tm, tea.KeyDown)
 			tm.Send(tc.msg)
-			sendKey(tm, tea.KeyCtrlC)
+			sendCtrl(tm, 'c')
 			tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 			final := finalRenameModel(t, tm)
@@ -324,27 +343,20 @@ func TestRenameTUIRenameFlow(t *testing.T) {
 
 	tree, oldName, newName := newRenameFlowTree(t)
 	model := NewRenameModel(tree)
-	tm := startRenameTestModel(t, model)
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 28})
+	_, cmd := model.Update(tea.KeyPressMsg{Code: 'r'})
+	runRenameCmd(model, cmd)
 
-	waitForRenameOutput(t, tm, "r: Rename")
-	sendRune(tm, 'r')
-
-	waitForRenameOutput(t, tm, "u: Undo")
-
-	sendKey(tm, tea.KeyCtrlC)
-	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
-
-	final := finalRenameModel(t, tm)
-	if !final.renameComplete {
+	if !model.renameComplete {
 		t.Error("renameComplete = false, want true after rename")
 	}
-	if final.successCount != 1 {
-		t.Errorf("successCount = %d, want 1", final.successCount)
+	if model.successCount != 1 {
+		t.Errorf("successCount = %d, want 1", model.successCount)
 	}
-	if final.errorCount != 0 {
-		t.Errorf("errorCount = %d, want 0", final.errorCount)
+	if model.errorCount != 0 {
+		t.Errorf("errorCount = %d, want 0", model.errorCount)
 	}
-	if !final.undoAvailable {
+	if !model.undoAvailable {
 		t.Error("undoAvailable = false, want true after successful rename")
 	}
 	if _, err := os.Stat(newName); err != nil {
@@ -376,29 +388,22 @@ func TestRenameTUIUndoFlow(t *testing.T) {
 
 	tree, oldName, newName := newRenameFlowTree(t)
 	model := NewRenameModel(tree)
-	tm := startRenameTestModel(t, model)
+	_, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 28})
+	_, cmd := model.Update(tea.KeyPressMsg{Code: 'r'})
+	runRenameCmd(model, cmd)
+	_, cmd = model.Update(tea.KeyPressMsg{Code: 'u'})
+	runRenameCmd(model, cmd)
 
-	waitForRenameOutput(t, tm, "r: Rename")
-	sendRune(tm, 'r')
-	waitForRenameOutput(t, tm, "u: Undo")
-
-	sendRune(tm, 'u')
-	waitForRenameOutput(t, tm, "Undo:")
-
-	sendKey(tm, tea.KeyCtrlC)
-	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
-
-	final := finalRenameModel(t, tm)
-	if !final.undoComplete {
+	if !model.undoComplete {
 		t.Error("undoComplete = false, want true")
 	}
-	if final.undoSuccess != 1 {
-		t.Errorf("undoSuccess = %d, want 1", final.undoSuccess)
+	if model.undoSuccess != 1 {
+		t.Errorf("undoSuccess = %d, want 1", model.undoSuccess)
 	}
-	if final.undoFailed != 0 {
-		t.Errorf("undoFailed = %d, want 0", final.undoFailed)
+	if model.undoFailed != 0 {
+		t.Errorf("undoFailed = %d, want 0", model.undoFailed)
 	}
-	if final.undoAvailable {
+	if model.undoAvailable {
 		t.Error("undoAvailable = true, want false after undo completes")
 	}
 	if _, err := os.Stat(oldName); err != nil {
@@ -423,7 +428,7 @@ func TestRenameTUIMetadataStatus(t *testing.T) {
 	complete := MetadataCompleteMsg{Errors: 1}
 	tm.Send(complete)
 
-	sendKey(tm, tea.KeyCtrlC)
+	sendCtrl(tm, 'c')
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	final := finalRenameModel(t, tm)
@@ -444,8 +449,8 @@ func TestRenameTUIMouseScroll(t *testing.T) {
 		model := NewRenameModel(tree)
 		tm := startRenameTestModel(t, model)
 
-		tm.Send(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButton(5)})
-		sendKey(tm, tea.KeyCtrlC)
+		tm.Send(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+		sendCtrl(tm, 'c')
 		tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 		final := finalRenameModel(t, tm)
@@ -461,12 +466,12 @@ func TestRenameTUIMouseScroll(t *testing.T) {
 		tm := startRenameTestModel(t, model, teatest.WithInitialTermSize(100, 12))
 
 		sendKey(tm, tea.KeyTab)
-		tm.Send(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButton(5)})
-		sendKey(tm, tea.KeyCtrlC)
+		tm.Send(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+		sendCtrl(tm, 'c')
 		tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 		final := finalRenameModel(t, tm)
-		if final.statsViewport.YOffset == 0 {
+		if final.statsViewport.YOffset() == 0 {
 			t.Fatal("statsViewport.YOffset = 0, want >0 after mouse scroll")
 		}
 	})

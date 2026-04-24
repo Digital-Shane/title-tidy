@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/treeview"
+	"github.com/Digital-Shane/treeview/v2"
 	"github.com/google/go-cmp/cmp"
 )
 
