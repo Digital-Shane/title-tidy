@@ -388,6 +388,8 @@ services:
     image: digitalnal/title-tidy:latest
     volumes:
       - ./media:/app/media
+      # Persist config and logs across runs (see "Persisting Configuration" below)
+      - ./title-tidy-config:/root/.title-tidy
     working_dir: /app/media
     entrypoint: ["/bin/sh"]
 ```
@@ -403,6 +405,20 @@ docker-compose run --rm title-tidy
 # title-tidy episodes
 # exit
 ```
+
+#### Persisting Configuration
+
+Title Tidy reads its config from `~/.title-tidy/config.json`. Inside the official image this resolves
+to `/root/.title-tidy`, so mount a host directory there to keep your templates, API keys, and undo logs between runs:
+
+```bash
+docker run -v /path/to/your/media:/app/media \
+           -v /path/to/your/title-tidy-config:/root/.title-tidy \
+           -w /app/media digitalnal/title-tidy:latest title-tidy shows
+```
+
+If your container runs as a different user, mount to that user's home directory instead (for example `/home/youruser/.title-tidy`),
+or set `HOME=/config` and mount to `/config/.title-tidy`.
 
 #### Building Locally
 
