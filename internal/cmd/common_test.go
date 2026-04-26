@@ -31,6 +31,12 @@ func TestCreateMediaFilter(t *testing.T) {
 			want:               true,
 		},
 		{
+			name:               "ogm_video_file",
+			includeDirectories: false,
+			fileInfo:           treeview.FileInfo{FileInfo: core.NewSimpleFileInfo("movie.ogm", false)},
+			want:               true,
+		},
+		{
 			name:               "subtitle_file",
 			includeDirectories: false,
 			fileInfo:           treeview.FileInfo{FileInfo: core.NewSimpleFileInfo("movie.srt", false)},

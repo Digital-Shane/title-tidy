@@ -28,6 +28,7 @@ func TestSubtitleExtensionWithLanguage(t *testing.T) {
 		{"subtitle_locale", "movie.en-US.srt", ".en-US.srt"},
 		{"subtitle_locale_underscore", "movie.pt_BR.srt", ".pt_BR.srt"},
 		{"video_file", "movie.mkv", ".mkv"},
+		{"ogm_video_file", "movie.ogm", ".ogm"},
 		{"video_with_dots", "movie.2020.1080p.mkv", ".mkv"},
 	}
 
@@ -110,6 +111,30 @@ func TestAnnotateMoviesTreeNoDirAppliesMetadata(t *testing.T) {
 	}
 	if diff := cmp.Diff("Inception (2010) tt1375666.en.srt", gotSubtitle); diff != "" {
 		t.Errorf("subtitle rename mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestAnnotateMoviesTreeRenamesOGMVideo(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	videoNode := treeview.NewNode("matrix.ogm", "The.Matrix.1999.ogm", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("The.Matrix.1999.ogm", false),
+		Path:     "The.Matrix.1999.ogm",
+		Extra:    map[string]any{},
+	})
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{videoNode},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	annotateMoviesTree(tree, cfg, nil)
+
+	meta := core.GetMeta(videoNode)
+	if meta == nil {
+		t.Fatal("movie metadata missing")
+	}
+	if diff := cmp.Diff("The Matrix (1999).ogm", meta.NewName); diff != "" {
+		t.Errorf("OGM movie rename mismatch (-want +got):\n%s", diff)
 	}
 }
 
