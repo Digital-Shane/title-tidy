@@ -18,7 +18,7 @@ var (
 	episodeNumberRe       = regexp.MustCompile(`(?:^|[\s\.\-_]|[Ee])(\d+)(?:[\s\.\-_]|$)`)
 
 	// File type patterns
-	videoRe    = regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|mpeg|mpg|m4v|3gp|vob|ts|mts|m2ts|rmvb|divx)$`)
+	videoRe    = regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|mpeg|mpg|m4v|3gp|vob|ts|mts|m2ts|rmvb|divx|ogm)$`)
 	subtitleRe = regexp.MustCompile(`(?i)\.(srt|sub|idx|ass|ssa|smi|vtt|sbv|sami|usf|stl|dks|pjs|jss|psb|rt|scc|cap|sup|dfxp|ttml)$`)
 	nfoRe      = regexp.MustCompile(`(?i)\.nfo$`)
 	imageRe    = regexp.MustCompile(`(?i)\.(jpg|jpeg|png|gif|bmp|webp|tiff?|ico|svg)$`)
