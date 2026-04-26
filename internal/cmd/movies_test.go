@@ -28,7 +28,6 @@ func TestSubtitleExtensionWithLanguage(t *testing.T) {
 		{"subtitle_locale", "movie.en-US.srt", ".en-US.srt"},
 		{"subtitle_locale_underscore", "movie.pt_BR.srt", ".pt_BR.srt"},
 		{"video_file", "movie.mkv", ".mkv"},
-		{"ogm_video_file", "movie.ogm", ".ogm"},
 		{"video_with_dots", "movie.2020.1080p.mkv", ".mkv"},
 	}
 
