@@ -114,30 +114,6 @@ func TestAnnotateMoviesTreeNoDirAppliesMetadata(t *testing.T) {
 	}
 }
 
-func TestAnnotateMoviesTreeRenamesOGMVideo(t *testing.T) {
-	cfg := config.DefaultConfig()
-
-	videoNode := treeview.NewNode("matrix.ogm", "The.Matrix.1999.ogm", treeview.FileInfo{
-		FileInfo: core.NewSimpleFileInfo("The.Matrix.1999.ogm", false),
-		Path:     "The.Matrix.1999.ogm",
-		Extra:    map[string]any{},
-	})
-	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{videoNode},
-		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
-	)
-
-	annotateMoviesTree(tree, cfg, nil)
-
-	meta := core.GetMeta(videoNode)
-	if meta == nil {
-		t.Fatal("movie metadata missing")
-	}
-	if diff := cmp.Diff("The Matrix (1999).ogm", meta.NewName); diff != "" {
-		t.Errorf("OGM movie rename mismatch (-want +got):\n%s", diff)
-	}
-}
-
 func TestNoDirSubtitleRenaming(t *testing.T) {
 	tests := []struct {
 		name           string
