@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -94,6 +98,46 @@ func TestCreateMediaFilter(t *testing.T) {
 				t.Errorf("createMediaFilter(%v)(%v) = %v, want %v", tt.includeDirectories, tt.fileInfo.Name(), got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIndexFilterKeepsEpisodeFilesWhenDirectoriesExcluded(t *testing.T) {
+	tempDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tempDir, "Better.Call.Saul.S03E01.mkv"), []byte("video"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(episode video) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "Better.Call.Saul.S03E01.en-US.srt"), []byte("subtitle"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(episode subtitle) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "readme.txt"), []byte("notes"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(readme) error = %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(tempDir, "Season 01"), 0o755); err != nil {
+		t.Fatalf("os.Mkdir(Season 01) error = %v", err)
+	}
+
+	indexTree, err := treeview.NewTreeFromFileSystem(
+		context.Background(),
+		tempDir,
+		false,
+		treeview.WithMaxDepth[treeview.FileInfo](1),
+		treeview.WithFilterFunc(createIndexFilter()),
+	)
+	if err != nil {
+		t.Fatalf("treeview.NewTreeFromFileSystem(%q) error = %v", tempDir, err)
+	}
+
+	gotTree := treeview.NewTree(unwrapRoot(indexTree), treeview.WithFilterFunc(createMediaFilter(false)))
+
+	var got []string
+	for _, node := range gotTree.Nodes() {
+		got = append(got, node.Name())
+	}
+	sort.Strings(got)
+
+	want := []string{"Better.Call.Saul.S03E01.en-US.srt", "Better.Call.Saul.S03E01.mkv"}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("treeview episode index nodes mismatch (-want +got):\n%s", diff)
 	}
 }
 
