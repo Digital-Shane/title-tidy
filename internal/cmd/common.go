@@ -89,23 +89,17 @@ func validateLinkDestination(linkPath string) error {
 
 // indexFiles performs file indexing and tree creation
 func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*treeview.Tree[treeview.FileInfo], error) {
-	idxModel := tui.NewIndexProgressModel(".", tui.IndexConfig{
+	indexConfig := tui.IndexConfig{
 		MaxDepth:    cmdConfig.MaxDepth,
 		IncludeDirs: cmdConfig.IncludeDirs,
-		Filter:      createMediaFilter(cmdConfig.IncludeDirs),
-	}, theme.Default())
+		Filter:      createIndexFilter(),
+	}
 
-	finalModel, err := tea.NewProgram(idxModel).Run()
+	t, err := runIndexing(indexConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	im, ok := finalModel.(*tui.IndexProgressModel)
-	if !ok {
-		return nil, fmt.Errorf("unexpected model type %T after indexing", finalModel)
-	}
-
-	t := im.Tree()
 	if t == nil {
 		return nil, fmt.Errorf("indexing produced no tree")
 	}
@@ -119,10 +113,27 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 
 	t = treeview.NewTree(nodes,
 		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithFilterFunc(createMediaFilter(cmdConfig.IncludeDirs)),
 		treeview.WithProvider(tui.CreateRenameProvider()),
 	)
 
 	return t, nil
+}
+
+func runIndexing(indexConfig tui.IndexConfig) (*treeview.Tree[treeview.FileInfo], error) {
+	idxModel := tui.NewIndexProgressModel(".", indexConfig, theme.Default())
+
+	finalModel, err := tea.NewProgram(idxModel).Run()
+	if err != nil {
+		return nil, err
+	}
+
+	im, ok := finalModel.(*tui.IndexProgressModel)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type %T after indexing", finalModel)
+	}
+
+	return im.Tree(), nil
 }
 
 // fetchMetadataIfEnabled fetches TMDB metadata if configured
@@ -170,14 +181,32 @@ func executeInstantMode(model *tui.RenameModel, commandName string, commandArgs 
 
 func createMediaFilter(includeDirectories bool) func(info treeview.FileInfo) bool {
 	return func(info treeview.FileInfo) bool {
-		if len(info.Name()) > 0 && info.Name()[0] == '.' {
+		if isHiddenMediaName(info.Name()) {
 			return false
 		}
 		if includeDirectories && info.IsDir() {
 			return true
 		}
-		return local.IsSubtitle(info.Name()) || local.IsVideo(info.Name()) || local.IsNFO(info.Name()) || local.IsImage(info.Name())
+		return isSupportedMediaFile(info.Name())
 	}
+}
+
+func createIndexFilter() func(info treeview.FileInfo) bool {
+	return func(info treeview.FileInfo) bool {
+		if isHiddenMediaName(info.Name()) {
+			return false
+		}
+		if info.IsDir() {
+			return true
+		}
+		return isSupportedMediaFile(info.Name())
+	}
+}
+
+func isHiddenMediaName(name string) bool { return len(name) > 0 && name[0] == '.' }
+
+func isSupportedMediaFile(name string) bool {
+	return local.IsSubtitle(name) || local.IsVideo(name) || local.IsNFO(name) || local.IsImage(name)
 }
 
 func unwrapRoot(t *treeview.Tree[treeview.FileInfo]) []*treeview.Node[treeview.FileInfo] {
@@ -245,7 +274,7 @@ func fetchLocalMetadata(ctx context.Context, node *treeview.Node[treeview.FileIn
 	return localProvider.Fetch(ctx, provider.FetchRequest{
 		MediaType: mediaType,
 		Name:      node.Name(),
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"node": node,
 		},
 	})
