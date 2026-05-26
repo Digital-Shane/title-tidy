@@ -1,6 +1,7 @@
 package local
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -31,6 +32,8 @@ func ExtractNameAndYear(name string) (string, string) {
 		}
 	}
 
+	formatted = stripTagBlocksIfUseful(formatted)
+
 	// Replace separators with spaces
 	formatted = strings.ReplaceAll(formatted, ".", " ")
 	formatted = strings.ReplaceAll(formatted, "-", " ")
@@ -43,6 +46,38 @@ func ExtractNameAndYear(name string) (string, string) {
 	formatted = strings.TrimSpace(strings.Join(strings.Fields(formatted), " "))
 
 	return formatted, year
+}
+
+func tagAwareCandidates(input string) []string {
+	candidates := make([]string, 0, 2)
+	addCandidate := func(candidate string) {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			return
+		}
+		if slices.Contains(candidates, candidate) {
+			return
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	addCandidate(stripTagBlocks(input))
+	addCandidate(input)
+
+	return candidates
+}
+
+func stripTagBlocksIfUseful(input string) string {
+	stripped := stripTagBlocks(input)
+	if stripped == "" {
+		return input
+	}
+	return stripped
+}
+
+func stripTagBlocks(input string) string {
+	stripped := tagBlockRe.ReplaceAllString(input, " ")
+	return CleanName(stripped)
 }
 
 // CleanName performs basic cleaning on a media name
@@ -84,6 +119,17 @@ func ExtractShowNameFromPath(path string, isFile bool) (showName, year string) {
 		}
 	}
 
+	for _, candidate := range tagAwareCandidates(workingPath) {
+		if showName, year, found := extractShowNameFromCandidate(candidate); found {
+			return showName, year
+		}
+	}
+
+	// Fallback: extract from the whole original name.
+	return ExtractNameAndYear(workingPath)
+}
+
+func extractShowNameFromCandidate(workingPath string) (showName, year string, found bool) {
 	// Find where season/episode info starts
 	idx := FindSeasonEpisodeIndex(workingPath)
 	if idx > 0 {
@@ -95,7 +141,7 @@ func ExtractShowNameFromPath(path string, isFile bool) (showName, year string) {
 
 		showName, year = ExtractNameAndYear(showPart)
 		if showName != "" {
-			return showName, year
+			return showName, year, true
 		}
 	}
 
@@ -107,15 +153,14 @@ func ExtractShowNameFromPath(path string, isFile bool) (showName, year string) {
 			showPart = strings.TrimRight(showPart, ".-_ ")
 			showName, year = ExtractNameAndYear(showPart)
 			if showName != "" {
-				return showName, year
+				return showName, year, true
 			}
 		}
 		// If it's a season folder but has no show name before "Season", return empty
-		return "", ""
+		return "", "", true
 	}
 
-	// Fallback: extract from the whole name
-	return ExtractNameAndYear(workingPath)
+	return "", "", false
 }
 
 // findSeasonPatternIndex finds where a season pattern starts in the string

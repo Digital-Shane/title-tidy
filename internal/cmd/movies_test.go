@@ -113,6 +113,142 @@ func TestAnnotateMoviesTreeNoDirAppliesMetadata(t *testing.T) {
 	}
 }
 
+func TestAnnotateMoviesTreeTreatsBracketHashAsMovieTag(t *testing.T) {
+	prevNoDir := noDir
+	noDir = false
+	t.Cleanup(func() { noDir = prevNoDir })
+
+	cfg := config.DefaultConfig()
+	movie := treeview.NewNode("movie-hash", "Movie.Title.[0E123677].mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Movie.Title.[0E123677].mkv", false),
+		Path:     "Movie.Title.[0E123677].mkv",
+		Extra:    map[string]any{},
+	})
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	annotateMoviesTree(tree, cfg, nil)
+
+	meta := core.GetMeta(movie)
+	if meta == nil {
+		t.Fatal("movie metadata missing")
+	}
+	if meta.NewName != "Movie Title.mkv" {
+		t.Errorf("movie rename = %q, want %q", meta.NewName, "Movie Title.mkv")
+	}
+}
+
+func TestAnnotateMoviesTreeTreatsShortBracketHashAsMovieTag(t *testing.T) {
+	prevNoDir := noDir
+	noDir = false
+	t.Cleanup(func() { noDir = prevNoDir })
+
+	cfg := config.DefaultConfig()
+	movie := treeview.NewNode("movie-short-hash", "Movie.Title.[0E123].mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Movie.Title.[0E123].mkv", false),
+		Path:     "Movie.Title.[0E123].mkv",
+		Extra:    map[string]any{},
+	})
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	annotateMoviesTree(tree, cfg, nil)
+
+	meta := core.GetMeta(movie)
+	if meta == nil {
+		t.Fatal("movie metadata missing")
+	}
+	if meta.NewName != "Movie Title.mkv" {
+		t.Errorf("movie rename = %q, want %q", meta.NewName, "Movie Title.mkv")
+	}
+}
+
+func TestAnnotateMoviesTreeTreatsELeadingNumberedTitleAsMovie(t *testing.T) {
+	prevNoDir := noDir
+	noDir = false
+	t.Cleanup(func() { noDir = prevNoDir })
+
+	cfg := config.DefaultConfig()
+	movie := treeview.NewNode("e-leading-movie", "Evil.Dead.2.mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Evil.Dead.2.mkv", false),
+		Path:     "Evil.Dead.2.mkv",
+		Extra:    map[string]any{},
+	})
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	annotateMoviesTree(tree, cfg, nil)
+
+	meta := core.GetMeta(movie)
+	if meta == nil {
+		t.Fatal("movie metadata missing")
+	}
+	if meta.NewName != "Evil Dead 2.mkv" {
+		t.Errorf("movie rename = %q, want %q", meta.NewName, "Evil Dead 2.mkv")
+	}
+}
+
+func TestAnnotateMoviesTreePreservesRawTagsAfterParsing(t *testing.T) {
+	prevNoDir := noDir
+	noDir = false
+	t.Cleanup(func() { noDir = prevNoDir })
+
+	cfg := config.DefaultConfig()
+	cfg.PreserveExistingTags = true
+	movie := treeview.NewNode("movie-hash", "Movie.Title.[0E123677].mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Movie.Title.[0E123677].mkv", false),
+		Path:     "Movie.Title.[0E123677].mkv",
+		Extra:    map[string]any{},
+	})
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	annotateMoviesTree(tree, cfg, nil)
+
+	meta := core.GetMeta(movie)
+	if meta == nil {
+		t.Fatal("movie metadata missing")
+	}
+	if meta.NewName != "Movie Title[0E123677].mkv" {
+		t.Errorf("movie rename = %q, want %q", meta.NewName, "Movie Title[0E123677].mkv")
+	}
+}
+
+func TestAnnotateMoviesTreePreservesBracketedYear(t *testing.T) {
+	prevNoDir := noDir
+	noDir = false
+	t.Cleanup(func() { noDir = prevNoDir })
+
+	cfg := config.DefaultConfig()
+	movie := treeview.NewNode("movie-year", "Movie.Title.[1999].mkv", treeview.FileInfo{
+		FileInfo: core.NewSimpleFileInfo("Movie.Title.[1999].mkv", false),
+		Path:     "Movie.Title.[1999].mkv",
+		Extra:    map[string]any{},
+	})
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
+		treeview.WithExpandAll[treeview.FileInfo](),
+		treeview.WithProvider(tui.CreateRenameProvider()),
+	)
+
+	annotateMoviesTree(tree, cfg, nil)
+
+	meta := core.GetMeta(movie)
+	if meta == nil {
+		t.Fatal("movie metadata missing")
+	}
+	if meta.NewName != "Movie Title (1999).mkv" {
+		t.Errorf("movie rename = %q, want %q", meta.NewName, "Movie Title (1999).mkv")
+	}
+}
+
 func TestNoDirSubtitleRenaming(t *testing.T) {
 	tests := []struct {
 		name           string

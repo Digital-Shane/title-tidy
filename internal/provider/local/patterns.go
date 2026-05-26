@@ -13,9 +13,11 @@ var (
 	seasonAltRe = regexp.MustCompile(`(?i)(?:^|[\s\.\-_])(?:s|season)[\s\.\-_]+(\d+)`)
 
 	// Episode patterns
-	seasonEpisodeRe       = regexp.MustCompile(`(?i)[sx]?(\d+)[ex](\d+)`)
+	seasonEpisodeRe       = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s?(\d{1,2})e(\d{1,3})|(\d{1,2})x(\d{1,3}))(?:[^a-z0-9]|$)`)
 	dottedSeasonEpisodeRe = regexp.MustCompile(`(?i)(?:^|[\s_\-\.])([0-9]{1,2})[\. _-]([0-9]{1,2})(?:[^0-9]|$)`)
 	episodeNumberRe       = regexp.MustCompile(`(?:^|[\s\.\-_]|[Ee])(\d+)(?:[\s\.\-_]|$)`)
+	separatorEpisodeRe    = regexp.MustCompile(`(?i)(?:^|[\s._])[-–—][\s._]*(\d{1,3})(?:[^0-9]|$)`)
+	tagBlockRe            = regexp.MustCompile(`\[[^\[\]]*\]|\{[^{}]*\}|<[^<>]*>`)
 
 	// File type patterns
 	videoRe    = regexp.MustCompile(`(?i)\.(mp4|mkv|avi|mov|wmv|flv|webm|mpeg|mpg|m4v|3gp|vob|ts|mts|m2ts|rmvb|divx|ogm)$`)
@@ -40,12 +42,13 @@ var (
 
 	// Patterns to find where season/episode info starts
 	seasonEpisodePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)[sx]?\d+[ex]\d+`),                // S01E01, 1x01, s1e1
-		regexp.MustCompile(`(?i)[\s._-](?:s|season)[\s._-]*\d+`), // _Season_02, .Season.02
-		regexp.MustCompile(`(?i)^(?:s|season)[\s._-]*\d+`),       // Season at start
-		regexp.MustCompile(`\b\d{1,2}[\. _-]\d{1,2}\b`),          // Dotted format: 1.04
-		regexp.MustCompile(`(?i)^[eE]\d+`),                       // Episode at start: E01
-		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`),            // Episode at start
+		seasonEpisodeRe,                    // S01E01, 1x01, s1e1
+		seasonAltRe,                        // _Season_02, .Season.02
+		seasonRe,                           // Season at start
+		dottedSeasonEpisodeRe,              // Dotted format: 1.04
+		regexp.MustCompile(`(?i)^[eE]\d+`), // Episode at start: E01
+		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`), // Episode at start
+		separatorEpisodeRe,                            // Anime style: Title - 17
 	}
 )
 
@@ -112,10 +115,20 @@ func extractSubtitleSuffix(filename string) string {
 
 // ExtractSeasonNumber extracts a season number from a string
 func ExtractSeasonNumber(input string) (int, bool) {
+	for _, candidate := range tagAwareCandidates(input) {
+		if season, found := extractSeasonNumberFromCandidate(candidate); found {
+			return season, true
+		}
+	}
+
+	return 0, false
+}
+
+func extractSeasonNumberFromCandidate(input string) (int, bool) {
 	// Try explicit season patterns first
 	if num, found := firstIntFromRegexps(input, seasonRe, seasonAltRe); found {
 		// Season 0 is valid (used for specials)
-		if num >= 0 {
+		if num >= 0 && num <= 100 {
 			return num, found
 		}
 	}

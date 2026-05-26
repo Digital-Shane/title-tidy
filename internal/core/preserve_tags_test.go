@@ -38,6 +38,13 @@ func TestPreserveExistingBracketTags(t *testing.T) {
 			enabled:   true,
 			want:      "Movie (1999) [uncut]",
 		},
+		{
+			name:      "preserves_anime_source_tags",
+			generated: "S00E17",
+			source:    "[sam] Kaichou wa Maid-sama! - 17 [BD 1080p FLAC] [0E123677]",
+			enabled:   true,
+			want:      "S00E17[sam][BD 1080p FLAC][0E123677]",
+		},
 	}
 
 	for _, tt := range tests {

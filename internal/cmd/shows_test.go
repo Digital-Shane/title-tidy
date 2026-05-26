@@ -45,3 +45,25 @@ func TestAnnotateShowsTreeRenamesSeasonZeroSpecials(t *testing.T) {
 		t.Errorf("episode rename = %q, want %q", episodeMeta.NewName, "S00E00.mkv")
 	}
 }
+
+func TestAnnotateShowsTreeIgnoresEpisodeBracketHash(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	show := newShowsTestNode("Kaichou wa Maid-sama!", true, "Kaichou wa Maid-sama!")
+	season := newShowsTestNode("Season 01", true, "Kaichou wa Maid-sama!/Season 01")
+	episode := newShowsTestNode("[sam] Kaichou wa Maid-sama! - 17 [BD 1080p FLAC] [0E123677].mkv", false, "Kaichou wa Maid-sama!/Season 01/[sam] Kaichou wa Maid-sama! - 17 [BD 1080p FLAC] [0E123677].mkv")
+
+	season.SetChildren([]*treeview.Node[treeview.FileInfo]{episode})
+	show.SetChildren([]*treeview.Node[treeview.FileInfo]{season})
+
+	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{show})
+	annotateShowsTree(tree, cfg, nil)
+
+	episodeMeta := core.GetMeta(episode)
+	if episodeMeta == nil {
+		t.Fatal("episode metadata missing")
+	}
+	if episodeMeta.NewName != "S01E17.mkv" {
+		t.Errorf("episode rename = %q, want %q", episodeMeta.NewName, "S01E17.mkv")
+	}
+}
