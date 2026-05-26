@@ -77,6 +77,24 @@ func TestExtractNameAndYear(t *testing.T) {
 			wantYear: "2009",
 		},
 		{
+			name:     "MovieWithTrailingHashTag",
+			input:    "Movie.Title.[0E123677]",
+			wantName: "Movie Title",
+			wantYear: "",
+		},
+		{
+			name:     "MovieWithBracketedYear",
+			input:    "Movie [1999]",
+			wantName: "Movie",
+			wantYear: "1999",
+		},
+		{
+			name:     "BracketedTitleWithYear",
+			input:    "[REC] (2007)",
+			wantName: "[REC]",
+			wantYear: "2007",
+		},
+		{
 			name:     "ShowNoYear",
 			input:    "The Office",
 			wantName: "The Office",
@@ -118,6 +136,7 @@ func TestExtractSeasonNumber(t *testing.T) {
 		{"YearNotSeason", "2019", 0, false},
 		{"NoSeason", "Random Text", 0, false},
 		{"SeasonZero", "Season 0", 0, true},
+		{"BracketedSeason", "[Season 02]", 2, true},
 	}
 
 	for _, tt := range tests {
@@ -196,6 +215,14 @@ func TestEpisodeParser(t *testing.T) {
 			wantSeason:   0,
 			wantEpisode:  0,
 			wantShow:     "",
+			wantCanParse: true,
+		},
+		{
+			name:         "AnimeBareEpisodeWithBracketTags",
+			filename:     "[sam] Kaichou wa Maid-sama! - 17 [BD 1080p FLAC] [0E123677].mkv",
+			wantSeason:   0,
+			wantEpisode:  17,
+			wantShow:     "Kaichou wa Maid sama!",
 			wantCanParse: true,
 		},
 	}
@@ -293,6 +320,43 @@ func TestSeasonEpisodeFromContext(t *testing.T) {
 			wantFound:   true,
 		},
 		{
+			name:        "AnimeBareEpisodeWithParentSeason",
+			filename:    "[sam] Kaichou wa Maid-sama! - 17 [BD 1080p FLAC] [0E123677].mkv",
+			parentName:  "Season 01",
+			wantSeason:  1,
+			wantEpisode: 17,
+			wantFound:   true,
+		},
+		{
+			name:        "ExplicitEpisodeWithTrailingHash",
+			filename:    "Show.S01E02.[0E123677].mkv",
+			wantSeason:  1,
+			wantEpisode: 2,
+			wantFound:   true,
+		},
+		{
+			name:        "ExplicitEpisodeWithShortTrailingHash",
+			filename:    "Show.S01E02.[0E123].mkv",
+			wantSeason:  1,
+			wantEpisode: 2,
+			wantFound:   true,
+		},
+		{
+			name:      "MovieHashTagNotEpisode",
+			filename:  "Movie.Title.[0E123677].mkv",
+			wantFound: false,
+		},
+		{
+			name:      "ShortMovieHashTagNotEpisode",
+			filename:  "Movie.Title.[0E123].mkv",
+			wantFound: false,
+		},
+		{
+			name:      "ELeadingMovieTitleNotEpisode",
+			filename:  "Evil.Dead.2.mkv",
+			wantFound: false,
+		},
+		{
 			name:      "NoMatch",
 			filename:  "Notes.txt",
 			wantFound: false,
@@ -354,6 +418,12 @@ func TestMovieParser(t *testing.T) {
 			name:      "MovieNoYear",
 			input:     "Avatar.mkv",
 			wantTitle: "Avatar",
+			wantYear:  "",
+		},
+		{
+			name:      "MovieWithTrailingHashTag",
+			input:     "Movie.Title.[0E123677].mkv",
+			wantTitle: "Movie Title",
 			wantYear:  "",
 		},
 	}
@@ -440,6 +510,14 @@ func TestResolveShowInfo(t *testing.T) {
 				return newTestNode("Season 01", true)
 			},
 			wantTitle: "",
+			wantYear:  "",
+		},
+		{
+			name: "AnimeEpisodeWithBracketTags",
+			buildNode: func() *treeview.Node[treeview.FileInfo] {
+				return newTestNode("[sam] Kaichou wa Maid-sama! - 17 [BD 1080p FLAC] [0E123677].mkv", false)
+			},
+			wantTitle: "Kaichou wa Maid sama!",
 			wantYear:  "",
 		},
 	}
@@ -623,7 +701,11 @@ func TestDetectorDetect(t *testing.T) {
 	detector := NewDetector()
 
 	episodeFile := newTestNode("Breaking.Bad.S01E01.mkv", false)
+	episodeFileWithHash := newTestNode("Show.S01E02.[0E123677].mkv", false)
 	movieFile := newTestNode("Inception.2010.mkv", false)
+	movieFileWithHash := newTestNode("Movie.Title.[0E123677].mkv", false)
+	movieFileWithShortHash := newTestNode("Movie.Title.[0E123].mkv", false)
+	eLeadingMovieFile := newTestNode("Evil.Dead.2.mkv", false)
 	seasonDir := newTestNode("Season 01", true)
 	showDir := newTestNode("Breaking Bad", true)
 	showSeason := newTestNode("Season 01", true)
@@ -643,8 +725,28 @@ func TestDetectorDetect(t *testing.T) {
 			want: provider.MediaTypeEpisode,
 		},
 		{
+			name: "EpisodeFileWithTrailingHash",
+			node: episodeFileWithHash,
+			want: provider.MediaTypeEpisode,
+		},
+		{
 			name: "MovieFile",
 			node: movieFile,
+			want: provider.MediaTypeMovie,
+		},
+		{
+			name: "MovieFileWithHashTag",
+			node: movieFileWithHash,
+			want: provider.MediaTypeMovie,
+		},
+		{
+			name: "MovieFileWithShortHashTag",
+			node: movieFileWithShortHash,
+			want: provider.MediaTypeMovie,
+		},
+		{
+			name: "ELeadingMovieFile",
+			node: eLeadingMovieFile,
 			want: provider.MediaTypeMovie,
 		},
 		{

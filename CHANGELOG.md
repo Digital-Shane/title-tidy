@@ -6,14 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [v1.19.0] - 2026-05-25
+### Updated
+* Name parsing logic to avoid parsing episode or seasons names in tags.
 ### Fixed
 * Episode indexing with treeview v2 filtering out directories before media files were discovered.
 
-## [v1.18.2] - 2026-06-26
+## [v1.18.2] - 2026-04-26
 ### Updated
 * Video regex to include ogm video files.
 
-## [v1.18.1] - 2026-06-24
+## [v1.18.1] - 2026-04-24
 ### Added
 * Instructions for persisting config to the README.md.
 ### Updated
