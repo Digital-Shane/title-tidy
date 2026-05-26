@@ -1,8 +1,6 @@
 package local
 
 import (
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -51,14 +49,16 @@ func SeasonEpisodeFromContext(ctx ParseContext) (int, int, bool) {
 }
 
 func seasonEpisodeFromContext(ctx ParseContext, allowBareSeparatorEpisode bool) (int, int, bool) {
-	for _, candidate := range contextNameCandidates(ctx) {
+	candidates := contextNameCandidates(ctx)
+
+	for _, candidate := range candidates {
 		if season, episode, ok := seasonEpisodeFromString(candidate); ok {
 			return season, episode, true
 		}
 	}
 
-	for _, candidate := range contextNameCandidates(ctx) {
-		episode, fromSeparator, ok := episodeNumberFromString(candidate)
+	for _, candidate := range candidates {
+		episode, fromSeparator, explicitEpisode, ok := episodeNumberFromString(candidate)
 		if !ok {
 			continue
 		}
@@ -68,7 +68,7 @@ func seasonEpisodeFromContext(ctx ParseContext, allowBareSeparatorEpisode bool) 
 			return season, episode, true
 		}
 
-		if episodeOnlyAllowed(candidate, fromSeparator, allowBareSeparatorEpisode) {
+		if episodeOnlyAllowed(fromSeparator, explicitEpisode, allowBareSeparatorEpisode) {
 			return 0, episode, true
 		}
 	}
@@ -77,63 +77,51 @@ func seasonEpisodeFromContext(ctx ParseContext, allowBareSeparatorEpisode bool) 
 }
 
 func contextNameCandidates(ctx ParseContext) []string {
-	workingName := ctx.WorkingName()
-	inputs := []string{workingName}
-	if workingName != ctx.Name {
-		inputs = append(inputs, ctx.Name)
-	}
+	workingName := strings.TrimSpace(ctx.WorkingName())
+	rawName := strings.TrimSpace(ctx.Name)
 
-	candidates := make([]string, 0, len(inputs)*2)
-	addCandidate := func(candidate string) {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			return
+	if workingName == "" {
+		if rawName == "" {
+			return nil
 		}
-		if slices.Contains(candidates, candidate) {
-			return
-		}
-		candidates = append(candidates, candidate)
+		return []string{rawName}
+	}
+	if rawName == "" || rawName == workingName {
+		return []string{workingName}
 	}
 
-	for _, input := range inputs {
-		addCandidate(stripTagBlocks(input))
-	}
-	for _, input := range inputs {
-		addCandidate(input)
-	}
-
-	return candidates
+	return []string{workingName, rawName}
 }
 
-func episodeNumberFromString(input string) (episode int, fromSeparator bool, ok bool) {
-	if episode, ok := firstEpisodeIntFromRegexp(input, separatorEpisodeRe); ok {
-		return episode, true, true
+func episodeNumberFromString(input string) (episode int, fromSeparator bool, explicitEpisode bool, ok bool) {
+	if episode, _, ok := episodeFromMatches(input, separatorEpisodeRe.FindStringSubmatchIndex(input)); ok {
+		return episode, true, false, true
 	}
-	if episode, ok := firstEpisodeIntFromRegexp(input, episodeNumberRe); ok {
-		return episode, false, true
+
+	if episode, numberStart, ok := episodeFromMatches(input, episodeNumberRe.FindStringSubmatchIndex(input)); ok {
+		return episode, false, hasExplicitEpisodePrefix(input, numberStart), true
 	}
-	return 0, false, false
+
+	return 0, false, false, false
 }
 
-func firstEpisodeIntFromRegexp(input string, re *regexp.Regexp) (int, bool) {
-	if !matchOutsideTagBlock(input, re.FindStringIndex(input)) {
-		return 0, false
+func episodeFromMatches(input string, matches []int) (episode int, numberStart int, ok bool) {
+	if len(matches) < 4 || !matchOutsideTagBlock(input, matches[:2]) {
+		return 0, 0, false
 	}
 
-	m := re.FindStringSubmatch(input)
-	if len(m) < 2 {
-		return 0, false
-	}
-	for i := 1; i < len(m); i++ {
-		if m[i] == "" {
+	for i := 2; i < len(matches); i += 2 {
+		if matches[i] < 0 || matches[i+1] < 0 {
 			continue
 		}
-		episode, err := strconv.Atoi(m[i])
+
+		episode, err := strconv.Atoi(input[matches[i]:matches[i+1]])
 		if err == nil && episode >= 0 && episode <= maxEpisodeNumber {
-			return episode, true
+			return episode, matches[i], true
 		}
 	}
-	return 0, false
+
+	return 0, 0, false
 }
 
 func matchOutsideTagBlock(input string, match []int) bool {
@@ -154,16 +142,34 @@ func rangesOverlap(startA, endA, startB, endB int) bool {
 	return startA < endB && startB < endA
 }
 
-func episodeOnlyAllowed(input string, fromSeparator bool, allowBareSeparatorEpisode bool) bool {
+func episodeOnlyAllowed(fromSeparator bool, explicitEpisode bool, allowBareSeparatorEpisode bool) bool {
 	if fromSeparator {
 		return allowBareSeparatorEpisode
 	}
 
-	if matchOutsideTagBlock(input, explicitEpisodeRe.FindStringIndex(input)) {
+	return explicitEpisode
+}
+
+func hasExplicitEpisodePrefix(input string, numberStart int) bool {
+	prefix := strings.TrimRight(input[:numberStart], " \t\r\n._-–—")
+
+	return hasTokenSuffix(prefix, "episode") || hasTokenSuffix(prefix, "e")
+}
+
+func hasTokenSuffix(input string, token string) bool {
+	start := len(input) - len(token)
+	if start < 0 || !strings.EqualFold(input[start:], token) {
+		return false
+	}
+	if start == 0 {
 		return true
 	}
 
-	return false
+	return !isASCIIAlphaNumeric(input[start-1])
+}
+
+func isASCIIAlphaNumeric(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }
 
 // seasonFromParents inspects ancestor folder names for a season indicator.

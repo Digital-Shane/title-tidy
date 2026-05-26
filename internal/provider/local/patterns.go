@@ -16,7 +16,6 @@ var (
 	seasonEpisodeRe       = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s?(\d{1,2})e(\d{1,3})|(\d{1,2})x(\d{1,3}))(?:[^a-z0-9]|$)`)
 	dottedSeasonEpisodeRe = regexp.MustCompile(`(?i)(?:^|[\s_\-\.])([0-9]{1,2})[\. _-]([0-9]{1,2})(?:[^0-9]|$)`)
 	episodeNumberRe       = regexp.MustCompile(`(?:^|[\s\.\-_]|[Ee])(\d+)(?:[\s\.\-_]|$)`)
-	explicitEpisodeRe     = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:episode|e)[\s._-]*(\d{1,3})(?:[^0-9]|$)`)
 	separatorEpisodeRe    = regexp.MustCompile(`(?i)(?:^|[\s._])[-–—][\s._]*(\d{1,3})(?:[^0-9]|$)`)
 	tagBlockRe            = regexp.MustCompile(`\[[^\[\]]*\]|\{[^{}]*\}|<[^<>]*>`)
 
@@ -43,13 +42,13 @@ var (
 
 	// Patterns to find where season/episode info starts
 	seasonEpisodePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s?\d{1,2}e\d{1,3}|\d{1,2}x\d{1,3})(?:[^a-z0-9]|$)`), // S01E01, 1x01, s1e1
-		regexp.MustCompile(`(?i)[\s._-](?:s|season)[\s._-]*\d+`),                                      // _Season_02, .Season.02
-		regexp.MustCompile(`(?i)^(?:s|season)[\s._-]*\d+`),                                            // Season at start
-		regexp.MustCompile(`\b\d{1,2}[\. _-]\d{1,2}\b`),                                               // Dotted format: 1.04
-		regexp.MustCompile(`(?i)^[eE]\d+`),                                                            // Episode at start: E01
-		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`),                                                 // Episode at start
-		regexp.MustCompile(`(?i)(?:^|[\s._])[-–—][\s._]*\d{1,3}(?:[^0-9]|$)`),                         // Anime style: Title - 17
+		seasonEpisodeRe,                    // S01E01, 1x01, s1e1
+		seasonAltRe,                        // _Season_02, .Season.02
+		seasonRe,                           // Season at start
+		dottedSeasonEpisodeRe,              // Dotted format: 1.04
+		regexp.MustCompile(`(?i)^[eE]\d+`), // Episode at start: E01
+		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`), // Episode at start
+		separatorEpisodeRe,                            // Anime style: Title - 17
 	}
 )
 
