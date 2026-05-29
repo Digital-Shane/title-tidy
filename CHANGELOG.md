@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.19.1] - 2026-05-29
+### Update
+* treeview dependency to fix ansi styles overlapping due to long file names.
+
 ## [v1.19.0] - 2026-05-26
 ### Updated
 * Name parsing logic to avoid parsing episode or seasons names in tags.
