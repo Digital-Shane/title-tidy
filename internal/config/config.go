@@ -9,11 +9,6 @@ import (
 	"sync"
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	ffprobeProv "github.com/Digital-Shane/title-tidy/internal/provider/ffprobe"
-	"github.com/Digital-Shane/title-tidy/internal/provider/local"
-	omdbProv "github.com/Digital-Shane/title-tidy/internal/provider/omdb"
-	tmdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
-	tvdbProv "github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
 	"github.com/Digital-Shane/treeview/v2"
 )
 
@@ -31,7 +26,7 @@ type FormatContext struct {
 	OriginalName string
 	Node         *treeview.Node[treeview.FileInfo]
 
-	// External metadata (from providers like TMDB, TVDB, etc.)
+	// External metadata supplied by metadata providers.
 	Metadata *provider.Metadata
 
 	// Configuration
@@ -40,27 +35,21 @@ type FormatContext struct {
 
 // FormatConfig holds the format templates for different media types
 type FormatConfig struct {
-	ShowFolder           string `json:"show_folder"`
-	SeasonFolder         string `json:"season_folder"`
-	Episode              string `json:"episode"`
-	Movie                string `json:"movie"`
-	PreserveExistingTags bool   `json:"preserve_existing_tags"`
-	LogRetentionDays     int    `json:"log_retention_days"`
-	EnableLogging        bool   `json:"enable_logging"`
+	ShowFolder           string                    `json:"show_folder"`
+	SeasonFolder         string                    `json:"season_folder"`
+	Episode              string                    `json:"episode"`
+	Movie                string                    `json:"movie"`
+	PreserveExistingTags bool                      `json:"preserve_existing_tags"`
+	LogRetentionDays     int                       `json:"log_retention_days"`
+	EnableLogging        bool                      `json:"enable_logging"`
+	MetadataWorkerCount  int                       `json:"metadata_worker_count"`
+	Providers            map[string]ProviderConfig `json:"providers,omitempty"`
+}
 
-	// TMDB Integration settings
-	TMDBAPIKey       string `json:"tmdb_api_key"`
-	EnableTMDBLookup bool   `json:"enable_tmdb_lookup"`
-	TMDBLanguage     string `json:"tmdb_language"`
-	TMDBWorkerCount  int    `json:"tmdb_worker_count"`
-	OMDBAPIKey       string `json:"omdb_api_key"`
-	EnableOMDBLookup bool   `json:"enable_omdb_lookup"`
-	TVDBAPIKey       string `json:"tvdb_api_key"`
-	EnableTVDBLookup bool   `json:"enable_tvdb_lookup"`
-	EnableFFProbe    bool   `json:"enable_ffprobe"`
-
-	// Template resolver for dynamic variable resolution
-	resolver *TemplateResolver
+// ProviderConfig stores persisted settings for a metadata provider.
+type ProviderConfig struct {
+	Enabled bool                   `json:"enabled"`
+	Config  map[string]interface{} `json:"config,omitempty"`
 }
 
 // DefaultConfig returns the default format configuration
@@ -73,15 +62,8 @@ func DefaultConfig() *FormatConfig {
 		PreserveExistingTags: false,
 		LogRetentionDays:     30,
 		EnableLogging:        true,
-		TMDBAPIKey:           "",
-		EnableTMDBLookup:     false,
-		TMDBLanguage:         "en-US",
-		TMDBWorkerCount:      10,
-		OMDBAPIKey:           "",
-		EnableOMDBLookup:     false,
-		TVDBAPIKey:           "",
-		EnableTVDBLookup:     false,
-		resolver:             NewTemplateResolver(),
+		MetadataWorkerCount:  10,
+		Providers:            map[string]ProviderConfig{},
 	}
 }
 
@@ -110,10 +92,23 @@ func Load() (*FormatConfig, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var cfg FormatConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	var disk struct {
+		FormatConfig
+
+		TMDBAPIKey       string `json:"tmdb_api_key"`
+		EnableTMDBLookup *bool  `json:"enable_tmdb_lookup"`
+		TMDBLanguage     string `json:"tmdb_language"`
+		TMDBWorkerCount  int    `json:"tmdb_worker_count"`
+		OMDBAPIKey       string `json:"omdb_api_key"`
+		EnableOMDBLookup *bool  `json:"enable_omdb_lookup"`
+		TVDBAPIKey       string `json:"tvdb_api_key"`
+		EnableTVDBLookup *bool  `json:"enable_tvdb_lookup"`
+		EnableFFProbe    *bool  `json:"enable_ffprobe"`
+	}
+	if err := json.Unmarshal(data, &disk); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
+	cfg := disk.FormatConfig
 
 	// Fill in any missing fields with defaults
 	defaults := DefaultConfig()
@@ -132,17 +127,19 @@ func Load() (*FormatConfig, error) {
 	if cfg.LogRetentionDays == 0 {
 		cfg.LogRetentionDays = defaults.LogRetentionDays
 	}
-
-	// Fill in missing TMDB fields with defaults
-	if cfg.TMDBLanguage == "" {
-		cfg.TMDBLanguage = defaults.TMDBLanguage
+	if cfg.MetadataWorkerCount == 0 && disk.TMDBWorkerCount > 0 {
+		cfg.MetadataWorkerCount = disk.TMDBWorkerCount
 	}
-	if cfg.TMDBWorkerCount == 0 {
-		cfg.TMDBWorkerCount = defaults.TMDBWorkerCount
+	if cfg.MetadataWorkerCount == 0 {
+		cfg.MetadataWorkerCount = defaults.MetadataWorkerCount
 	}
-
-	// Initialize the template resolver
-	cfg.resolver = NewTemplateResolver()
+	if cfg.Providers == nil {
+		cfg.Providers = make(map[string]ProviderConfig)
+	}
+	if len(cfg.Providers) == 0 {
+		cfg.applyLegacyProviderConfig(disk.TMDBAPIKey, disk.EnableTMDBLookup, disk.TMDBLanguage, disk.OMDBAPIKey, disk.EnableOMDBLookup, disk.TVDBAPIKey, disk.EnableTVDBLookup, disk.EnableFFProbe)
+	}
+	cfg.Providers = NormalizeProviderConfigs(cfg.Providers, nil)
 
 	return &cfg, nil
 }
@@ -171,7 +168,8 @@ var (
 
 func metadataVariableNames() []string {
 	metadataVarOnce.Do(func() {
-		providers := gatherMetadataProviders()
+		_ = EnsureBuiltinProviders()
+		providers := provider.GlobalRegistry.Providers()
 		unique := make(map[string]struct{})
 		for _, p := range providers {
 			if p == nil {
@@ -191,34 +189,15 @@ func metadataVariableNames() []string {
 	return metadataVarCache
 }
 
-func gatherMetadataProviders() []provider.Provider {
-	registryProviders := provider.GlobalRegistry.List()
-	if len(registryProviders) > 0 {
-		providers := make([]provider.Provider, 0, len(registryProviders))
-		for _, name := range registryProviders {
-			if p, ok := provider.GlobalRegistry.Get(name); ok {
-				providers = append(providers, p)
-			}
-		}
-		if len(providers) > 0 {
-			return providers
-		}
-	}
-
-	return []provider.Provider{
-		local.New(),
-		tmdbProv.New(),
-		omdbProv.New(),
-		tvdbProv.New(),
-		ffprobeProv.New(),
-	}
-}
-
 // Save writes the configuration to disk
 func (cfg *FormatConfig) Save() error {
 	path, err := ConfigPath()
 	if err != nil {
 		return err
+	}
+	cfg.Providers = NormalizeProviderConfigs(cfg.Providers, nil)
+	if cfg.MetadataWorkerCount == 0 {
+		cfg.MetadataWorkerCount = DefaultConfig().MetadataWorkerCount
 	}
 
 	// Ensure directory exists
@@ -241,48 +220,28 @@ func (cfg *FormatConfig) Save() error {
 
 // ApplyShowFolderTemplate applies the show folder template using the provided context
 func (cfg *FormatConfig) ApplyShowFolderTemplate(ctx *FormatContext) string {
-	// Ensure resolver is initialized
-	if cfg.resolver == nil {
-		cfg.resolver = NewTemplateResolver()
-	}
-
-	result, _ := cfg.resolver.Resolve(cfg.ShowFolder, ctx, ctx.Metadata, nil)
-	return result
+	return cfg.resolveTemplate(cfg.ShowFolder, ctx)
 }
 
 // ApplySeasonFolderTemplate applies the season folder template using the provided context
 func (cfg *FormatConfig) ApplySeasonFolderTemplate(ctx *FormatContext) string {
-	// Ensure resolver is initialized
-	if cfg.resolver == nil {
-		cfg.resolver = NewTemplateResolver()
-	}
-
-	result, _ := cfg.resolver.Resolve(cfg.SeasonFolder, ctx, ctx.Metadata, nil)
-	return result
+	return cfg.resolveTemplate(cfg.SeasonFolder, ctx)
 }
 
 // ApplyEpisodeTemplate applies the episode template using the provided context
 func (cfg *FormatConfig) ApplyEpisodeTemplate(ctx *FormatContext) string {
-	// Ensure resolver is initialized
-	if cfg.resolver == nil {
-		cfg.resolver = NewTemplateResolver()
-	}
-
-	result, _ := cfg.resolver.Resolve(cfg.Episode, ctx, ctx.Metadata, nil)
-	return result
+	return cfg.resolveTemplate(cfg.Episode, ctx)
 }
 
 // ApplyMovieTemplate applies the movie template using the provided context
 func (cfg *FormatConfig) ApplyMovieTemplate(ctx *FormatContext) string {
-	// Ensure resolver is initialized
-	if cfg.resolver == nil {
-		cfg.resolver = NewTemplateResolver()
-	}
-
-	result, _ := cfg.resolver.Resolve(cfg.Movie, ctx, ctx.Metadata, nil)
-	return result
+	return cfg.resolveTemplate(cfg.Movie, ctx)
 }
 
-// Deprecated: ExtractNameAndYear has been moved to internal/provider/local.
-// This stub is kept for documentation purposes only.
-// Use local.ExtractNameAndYear instead.
+func (cfg *FormatConfig) resolveTemplate(template string, ctx *FormatContext) string {
+	if ctx == nil {
+		ctx = &FormatContext{}
+	}
+	result, _ := ResolveTemplate(template, ctx, ctx.Metadata, nil)
+	return result
+}

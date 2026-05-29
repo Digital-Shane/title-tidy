@@ -329,6 +329,9 @@ func (p *Provider) movieToMetadata(movie *tmdb.Movie) *provider.Metadata {
 	if movie.Homepage != "" {
 		extended["homepage"] = movie.Homepage
 	}
+	if movie.Runtime > 0 {
+		extended["runtime"] = movie.Runtime
+	}
 
 	// Add production companies
 	if len(movie.ProductionCompanies) > 0 {
@@ -465,6 +468,9 @@ func (p *Provider) tvToMetadata(show *tmdb.TV) *provider.Metadata {
 		"in_production": show.InProduction,
 		"type":          show.Type,
 	}
+	if len(show.EpisodeRunTime) > 0 && show.EpisodeRunTime[0] > 0 {
+		extended["runtime"] = show.EpisodeRunTime[0]
+	}
 
 	if show.Homepage != "" {
 		extended["homepage"] = show.Homepage
@@ -567,6 +573,10 @@ func (p *Provider) episodeToMetadata(episode *tmdb.TvEpisode, show *tmdb.TV, sho
 			"rating":       providerName,
 		},
 		Confidence: 1.0,
+	}
+	if episode.AirDate != "" {
+		meta.Extended["air_date"] = episode.AirDate
+		meta.Sources["air_date"] = providerName
 	}
 
 	if show != nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -14,7 +15,7 @@ type variable struct {
 	example     string
 }
 
-func buildVariables(section Section, state *ConfigState, registry *config.TemplateRegistry) []variable {
+func buildVariables(section Section, state *ConfigState, registry *provider.Registry) []variable {
 	switch section {
 	case SectionRename:
 		return []variable{
@@ -27,45 +28,64 @@ func buildVariables(section Section, state *ConfigState, registry *config.Templa
 			{"Retention", "Auto-cleanup old logs", "Days to keep log files"},
 		}
 	case SectionProviders:
-		return []variable{
+		result := []variable{
 			{"←/→ arrows", "Switch between provider columns", ""},
 			{"↑/↓ arrows", "Navigate settings in the active column", ""},
 			{"Space/Enter", "Toggle highlighted setting", ""},
-			{"OMDb API Key", "Create at omdbapi.com/apikey.aspx", "8+ characters"},
-			{"TVDB API Key", "Generate from thetvdb.com account dashboard", "API key string"},
-			{"TMDB API Key", "Generate from the TMDB web console", "32 hex characters"},
-			{"TMDB Language", "Preferred metadata language code", "en-US, fr-FR, etc."},
-			{"ffprobe", "Enable codec metadata extraction", "Adds audio/video codec and resolution variables"},
 		}
-	}
-
-	if registry != nil {
-		mediaType, ok := sectionMediaType(section)
-		if ok {
-			vars := registry.GetVariablesForMediaType(mediaType)
-			result := make([]variable, 0, len(vars))
-			for _, v := range vars {
-				if !providerEnabledForVariable(registry, v.Name, state) {
-					continue
-				}
-				name := "{" + v.Name + "}"
-				result = append(result, variable{name: name, description: v.Description, example: v.Example})
+		for _, p := range config.ProvidersByDisplayOrder(registry) {
+			caps := p.Capabilities()
+			if caps.Local {
+				continue
 			}
-			if len(result) > 0 {
-				sort.SliceStable(result, func(i, j int) bool {
-					pi := variableProviderPriority(registry, result[i].name)
-					pj := variableProviderPriority(registry, result[j].name)
-					if pi != pj {
-						return pi < pj
-					}
-					return result[i].name < result[j].name
+
+			displayName := config.ProviderDisplayName(p)
+			schema := p.ConfigSchema()
+			if len(schema.Fields) == 0 {
+				result = append(result, variable{
+					name:        displayName,
+					description: p.Description(),
+					example:     providerVariableExample(p),
 				})
-				return result
+				continue
 			}
+
+			for _, field := range schema.Fields {
+				result = append(result, variable{
+					name:        displayName + " " + field.DisplayName,
+					description: field.Description,
+					example:     configFieldExample(field),
+				})
+			}
+		}
+		return result
+	}
+
+	mediaType, ok := sectionMediaType(section)
+	if ok {
+		vars := config.TemplateVariablesForMediaType(registry, mediaType)
+		result := make([]variable, 0, len(vars))
+		for _, v := range vars {
+			if !providerEnabledForVariable(registry, v.Name, state) {
+				continue
+			}
+			name := "{" + v.Name + "}"
+			result = append(result, variable{name: name, description: v.Description, example: v.Example})
+		}
+		if len(result) > 0 {
+			sort.SliceStable(result, func(i, j int) bool {
+				pi := variableProviderPriority(registry, result[i].name)
+				pj := variableProviderPriority(registry, result[j].name)
+				if pi != pj {
+					return pi < pj
+				}
+				return result[i].name < result[j].name
+			})
+			return result
 		}
 	}
 
-	return fallbackVariables(section)
+	return nil
 }
 
 func sectionMediaType(section Section) (provider.MediaType, bool) {
@@ -83,107 +103,76 @@ func sectionMediaType(section Section) (provider.MediaType, bool) {
 	}
 }
 
-func providerEnabledForVariable(reg *config.TemplateRegistry, variableName string, state *ConfigState) bool {
-	owners := reg.VariableProviders(variableName)
+func providerEnabledForVariable(reg *provider.Registry, variableName string, state *ConfigState) bool {
+	owners := config.TemplateVariableProviders(reg, variableName)
 	if len(owners) == 0 {
 		return true
 	}
-	for _, owner := range owners {
-		switch owner {
-		case "tmdb":
-			if state.Providers.TMDB.Enabled {
-				return true
-			}
-		case "omdb":
-			if state.Providers.OMDB.Enabled {
-				return true
-			}
-		case "tvdb":
-			if state.Providers.TVDB.Enabled {
-				return true
-			}
-		case "ffprobe":
-			if state.Providers.FFProbeEnabled {
-				return true
-			}
-		default:
+	for _, p := range owners {
+		if p.Capabilities().Local {
+			return true
+		}
+		if state == nil {
+			continue
+		}
+		providerState := state.Providers.Provider(p.Name())
+		if providerState != nil && providerState.Enabled {
 			return true
 		}
 	}
 	return false
 }
 
-func variableProviderPriority(reg *config.TemplateRegistry, name string) int {
+func variableProviderPriority(reg *provider.Registry, name string) int {
 	if reg == nil {
 		return 0
 	}
 	trimmed := strings.TrimPrefix(strings.TrimSuffix(name, "}"), "{")
-	owners := reg.VariableProviders(trimmed)
-	priority := 4
-	for _, owner := range owners {
-		switch owner {
-		case "local":
-			return 0
-		case "tmdb":
-			if priority > 1 {
-				priority = 1
-			}
-		case "tvdb":
-			if priority > 2 {
-				priority = 2
-			}
-		case "omdb":
-			if priority > 3 {
-				priority = 3
-			}
-		case "ffprobe":
-			if priority > 4 {
-				priority = 4
-			}
-		default:
-			if priority > 4 {
-				priority = 4
-			}
-		}
-	}
-	return priority
+	return config.TemplateVariableDisplayOrder(reg, trimmed)
 }
 
-func fallbackVariables(section Section) []variable {
-	switch section {
-	case SectionShowFolder:
-		return []variable{
-			{"{title}", "Show title", "Breaking Bad"},
-			{"{year}", "Year", "2008"},
-			{"{rating}", "Average rating", "8.5"},
-			{"{genres}", "Genres", "Drama, Crime"},
-			{"{tagline}", "Tagline", "All Hail the King"},
+func configFieldExample(field provider.ConfigField) string {
+	if field.Validation != nil {
+		if len(field.Validation.Options) > 0 {
+			values := make([]string, 0, min(3, len(field.Validation.Options)))
+			for idx, option := range field.Validation.Options {
+				if idx >= 3 {
+					break
+				}
+				values = append(values, option.Value)
+			}
+			if len(field.Validation.Options) > len(values) {
+				return strings.Join(values, ", ") + ", etc."
+			}
+			return strings.Join(values, ", ")
 		}
-	case SectionSeasonFolder:
-		return []variable{
-			{"{title}", "Show title", "Breaking Bad"},
-			{"{season}", "Season number", "01"},
+		if field.Validation.MinLength > 0 {
+			if field.Validation.MaxLength == field.Validation.MinLength {
+				return fmt.Sprintf("%d characters", field.Validation.MinLength)
+			}
+			return fmt.Sprintf("%d+ characters", field.Validation.MinLength)
 		}
-	case SectionEpisode:
-		return []variable{
-			{"{title}", "Show title", "Breaking Bad"},
-			{"{year}", "Year", "2008"},
-			{"{season}", "Season number", "01"},
-			{"{episode}", "Episode number", "05"},
-			{"{episode_title}", "Episode title", "Gray Matter"},
-			{"{air_date}", "Air date", "2008-02-24"},
-			{"{rating}", "Episode rating", "8.3"},
-			{"{runtime}", "Runtime in minutes", "48"},
-		}
-	case SectionMovie:
-		return []variable{
-			{"{title}", "Movie title", "The Matrix"},
-			{"{year}", "Year", "1999"},
-			{"{rating}", "Rating", "8.7"},
-			{"{genres}", "Genres", "Action, Sci-Fi"},
-			{"{runtime}", "Runtime in minutes", "136"},
-			{"{tagline}", "Tagline", "Welcome to the Real World"},
+		if field.Validation.Pattern != "" {
+			return field.Validation.Pattern
 		}
 	}
-	return nil
+	if field.Default != nil {
+		return fmt.Sprintf("%v", field.Default)
+	}
+	return ""
+}
+
+func providerVariableExample(p provider.Provider) string {
+	vars := p.SupportedVariables()
+	if len(vars) == 0 {
+		return ""
+	}
+	names := make([]string, 0, min(3, len(vars)))
+	for idx, v := range vars {
+		if idx >= 3 {
+			break
+		}
+		names = append(names, "{"+v.Name+"}")
+	}
+	return "Adds " + strings.Join(names, ", ")
 }

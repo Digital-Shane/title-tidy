@@ -11,6 +11,8 @@ import (
 
 type retryTestProvider struct{}
 
+const retryTestProviderType MetadataProviderType = "retry-test"
+
 func (retryTestProvider) Name() string                                    { return "retry-test" }
 func (retryTestProvider) Description() string                             { return "retry-test" }
 func (retryTestProvider) SupportedVariables() []provider.TemplateVariable { return nil }
@@ -46,25 +48,34 @@ func TestMetadataEngineRetryProviderClearsFailures(t *testing.T) {
 	notFound := &provider.ProviderError{Provider: "retry-test", Code: "NOT_FOUND", Message: "missing", Retry: false}
 
 	engine := &MetadataEngine{
-		tmdbProvider: retryTestProvider{},
-		metadata:     csmap.Create[string, *provider.Metadata](),
+		providers: map[MetadataProviderType]provider.Provider{
+			retryTestProviderType: retryTestProvider{},
+		},
+		providerSlots: []metadataProviderSlot{{
+			Name:     retryTestProviderType,
+			Provider: retryTestProvider{},
+			Priority: 100,
+		}},
+		metadata: csmap.Create[string, *provider.Metadata](),
 	}
 
 	engine.processResult(MetadataResult{
-		Item:    item,
-		Errs:    []error{notFound},
-		TMDBErr: notFound,
+		Item: item,
+		Errs: []error{notFound},
+		ProviderErrs: map[MetadataProviderType]error{
+			retryTestProviderType: notFound,
+		},
 	})
 
 	failures := engine.ProviderFailures()
 	if diff := cmp.Diff(1, len(failures)); diff != "" {
 		t.Fatalf("ProviderFailures length mismatch (-want +got):\n%s", diff)
 	}
-	if failures[0].Provider != MetadataProviderTMDB {
-		t.Fatalf("failure provider = %s, want TMDB", failures[0].Provider)
+	if failures[0].Provider != retryTestProviderType {
+		t.Fatalf("failure provider = %s, want %s", failures[0].Provider, retryTestProviderType)
 	}
 
-	result, err := engine.RetryProvider(context.Background(), item.Key, MetadataProviderTMDB, "Manual Success")
+	result, err := engine.RetryProvider(context.Background(), item.Key, retryTestProviderType, "Manual Success")
 	if err != nil {
 		t.Fatalf("RetryProvider() unexpected error: %v", err)
 	}
@@ -105,9 +116,11 @@ func TestMetadataEngineNonRetryableErrorsNotTracked(t *testing.T) {
 	}
 
 	engine.processResult(MetadataResult{
-		Item:    item,
-		Errs:    []error{authErr},
-		TMDBErr: authErr,
+		Item: item,
+		Errs: []error{authErr},
+		ProviderErrs: map[MetadataProviderType]error{
+			retryTestProviderType: authErr,
+		},
 	})
 
 	if diff := cmp.Diff(0, len(engine.ProviderFailures())); diff != "" {

@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"testing"
+	"time"
 
 	"charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/config"
@@ -12,14 +13,19 @@ import (
 )
 
 type fakeProvider struct {
-	name string
-	vars []provider.TemplateVariable
+	name  string
+	order int
+	vars  []provider.TemplateVariable
 }
 
 func (f fakeProvider) Name() string        { return f.name }
 func (f fakeProvider) Description() string { return "fake provider" }
 func (f fakeProvider) Capabilities() provider.ProviderCapabilities {
-	return provider.ProviderCapabilities{}
+	return provider.ProviderCapabilities{
+		MediaTypes:   []provider.MediaType{provider.MediaTypeShow},
+		DisplayOrder: f.order,
+		Local:        f.name == "local",
+	}
 }
 func (f fakeProvider) SupportedVariables() []provider.TemplateVariable { return f.vars }
 func (f fakeProvider) Configure(map[string]interface{}) error          { return nil }
@@ -28,23 +34,88 @@ func (f fakeProvider) Fetch(context.Context, provider.FetchRequest) (*provider.M
 	return nil, nil
 }
 
-func TestNewWithRegistrySetsTemplateRegistry(t *testing.T) {
+func testProviderState(t *testing.T, providers *ProviderState, name string) *ProviderServiceState {
+	t.Helper()
+	state := providers.Provider(name)
+	if state == nil {
+		t.Fatalf("provider state %q not found", name)
+	}
+	return state
+}
+
+func testProviderField(t *testing.T, providerState *ProviderServiceState, name string) *ProviderFieldState {
+	t.Helper()
+	field := providerState.Field(name)
+	if field == nil {
+		t.Fatalf("provider field %q not found on %s", name, providerState.Name())
+	}
+	return field
+}
+
+func TestNewWithRegistrySetsProviderRegistry(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	reg := config.NewTemplateRegistry()
+	reg := provider.NewRegistry()
 
 	m, err := NewWithRegistry(reg)
 	if err != nil {
 		t.Fatalf("NewWithRegistry() error = %v", err)
 	}
-	if m.templateRegistry != reg {
-		t.Fatalf("templateRegistry = %p, want %p", m.templateRegistry, reg)
+	if m.providerRegistry != reg {
+		t.Fatalf("providerRegistry = %p, want %p", m.providerRegistry, reg)
+	}
+}
+
+func TestVariablesViewportKeepsHorizontalOffsetPinned(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	m, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	m.variables.SetWidth(8)
+	m.variables.SetContent("abcdefghijklmnopqrstuvwxyz")
+	m.variables.SetXOffset(6)
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model := updated.(*Model)
+
+	if got := model.variables.XOffset(); got != 0 {
+		t.Fatalf("variables XOffset = %d, want 0", got)
+	}
+}
+
+func TestSaveStatusClearsAfterLatestNotification(t *testing.T) {
+	if saveStatusDuration != 3*time.Second {
+		t.Fatalf("saveStatusDuration = %s, want 3s", saveStatusDuration)
+	}
+
+	m := &Model{}
+	if cmd := m.setSaveStatus("Configuration saved!", nil); cmd == nil {
+		t.Fatal("setSaveStatus() returned nil command")
+	}
+	firstID := m.saveID
+
+	m.setSaveStatus("Configuration saved!", nil)
+	secondID := m.saveID
+
+	updated, _ := m.Update(saveStatusClearMsg{id: firstID})
+	model := updated.(*Model)
+	if got := model.saveStatus; got != "Configuration saved!" {
+		t.Fatalf("saveStatus after stale clear = %q, want Configuration saved!", got)
+	}
+
+	updated, _ = model.Update(saveStatusClearMsg{id: secondID})
+	model = updated.(*Model)
+	if got := model.saveStatus; got != "" {
+		t.Fatalf("saveStatus after latest clear = %q, want empty", got)
 	}
 }
 
 func TestBuildVariablesFiltersByEnabledProviders(t *testing.T) {
-	reg := config.NewTemplateRegistry()
+	reg := provider.NewRegistry()
 	if err := reg.RegisterProvider(fakeProvider{
-		name: "local",
+		name:  "local",
+		order: 0,
 		vars: []provider.TemplateVariable{{
 			Name:        "title",
 			Description: "local title",
@@ -55,7 +126,8 @@ func TestBuildVariablesFiltersByEnabledProviders(t *testing.T) {
 	}
 
 	if err := reg.RegisterProvider(fakeProvider{
-		name: "tmdb",
+		name:  "tmdb",
+		order: 10,
 		vars: []provider.TemplateVariable{{
 			Name:        "rating",
 			Description: "tmdb rating",
@@ -73,7 +145,7 @@ func TestBuildVariablesFiltersByEnabledProviders(t *testing.T) {
 		t.Fatalf("variables diff (-want +got):\n%s", diff)
 	}
 
-	state.Providers.TMDB.Enabled = true
+	testProviderState(t, &state.Providers, "tmdb").Enabled = true
 	vars = buildVariables(SectionShowFolder, &state, reg)
 	want = []variable{
 		{name: "{title}", description: "local title"},
@@ -86,14 +158,17 @@ func TestBuildVariablesFiltersByEnabledProviders(t *testing.T) {
 
 func TestBuildPreviewsProviders(t *testing.T) {
 	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
-	state.Providers.FFProbeEnabled = true
-	state.Providers.TMDB.Enabled = true
-	state.Providers.TMDB.APIKey.SetValue("abc")
-	state.Providers.TMDB.Validation.Status = ProviderValidationValid
-	state.Providers.TMDB.Language.SetValue("es-ES")
-	state.Providers.OMDB.Enabled = true
-	state.Providers.OMDB.APIKey.SetValue("xyz")
-	state.Providers.OMDB.Validation.Status = ProviderValidationValidating
+	ffprobe := testProviderState(t, &state.Providers, "ffprobe")
+	ffprobe.Enabled = true
+	tmdb := testProviderState(t, &state.Providers, "tmdb")
+	tmdb.Enabled = true
+	testProviderField(t, tmdb, "api_key").Input.SetValue("abc")
+	tmdb.Validation.Status = ProviderValidationValid
+	testProviderField(t, tmdb, "language").Input.SetValue("es-ES")
+	omdb := testProviderState(t, &state.Providers, "omdb")
+	omdb.Enabled = true
+	testProviderField(t, omdb, "api_key").Input.SetValue("xyz")
+	omdb.Validation.Status = ProviderValidationValidating
 
 	previews := buildPreviews(SectionProviders, &state, theme.Default().IconSet(), nil)
 	got := map[string]string{}
@@ -142,16 +217,14 @@ func TestBuildPreviewsRename(t *testing.T) {
 	}
 }
 
-func TestBuildPreviewsTemplateRegistry(t *testing.T) {
+func TestBuildPreviewsProviderVariables(t *testing.T) {
 	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
 	state.Templates.Show.Input.SetValue("{title}::{genres}")
 	state.Templates.Season.Input.SetValue("Season {season}")
 	state.Templates.Episode.Input.SetValue("{episode_title} - {audio_codec}")
 	state.Templates.Movie.Input.SetValue("{title}-movie")
 
-	reg := config.NewTemplateRegistry()
-
-	previews := buildPreviews(SectionEpisode, &state, theme.Default().IconSet(), reg)
+	previews := buildPreviews(SectionEpisode, &state, theme.Default().IconSet(), nil)
 	got := map[string]string{}
 	for _, p := range previews {
 		got[p.label] = p.preview
@@ -160,7 +233,7 @@ func TestBuildPreviewsTemplateRegistry(t *testing.T) {
 		t.Errorf("Episode preview = %q, want Gray Matter - aac.mkv", got["Episode"])
 	}
 
-	previews = buildPreviews(SectionShowFolder, &state, theme.Default().IconSet(), reg)
+	previews = buildPreviews(SectionShowFolder, &state, theme.Default().IconSet(), nil)
 	got = map[string]string{}
 	for _, p := range previews {
 		got[p.label] = p.preview
@@ -169,7 +242,7 @@ func TestBuildPreviewsTemplateRegistry(t *testing.T) {
 		t.Errorf("Show preview = %q, want Breaking Bad::Drama, Crime", got["Show"])
 	}
 
-	previews = buildPreviews(SectionMovie, &state, theme.Default().IconSet(), reg)
+	previews = buildPreviews(SectionMovie, &state, theme.Default().IconSet(), nil)
 	got = map[string]string{}
 	for _, p := range previews {
 		got[p.label] = p.preview
@@ -179,12 +252,11 @@ func TestBuildPreviewsTemplateRegistry(t *testing.T) {
 	}
 }
 
-func TestBuildPreviewsTemplateRegistryWithEscapedBraces(t *testing.T) {
+func TestBuildPreviewsProviderVariablesWithEscapedBraces(t *testing.T) {
 	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
 	state.Templates.Show.Input.SetValue(`{title} \{imdb-{imdb_id}\}`)
 
-	reg := config.NewTemplateRegistry()
-	previews := buildPreviews(SectionShowFolder, &state, theme.Default().IconSet(), reg)
+	previews := buildPreviews(SectionShowFolder, &state, theme.Default().IconSet(), nil)
 	got := map[string]string{}
 	for _, p := range previews {
 		got[p.label] = p.preview
@@ -247,20 +319,21 @@ func TestMaskAPIKeyVisible(t *testing.T) {
 // Ensure the provider section exposes validation hooks for tests.
 func TestProviderSectionActivateTriggersValidation(t *testing.T) {
 	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
-	state.Providers.TMDB.Enabled = true
-	state.Providers.TMDB.APIKey.SetValue("secret")
+	tmdb := testProviderState(t, &state.Providers, "tmdb")
+	tmdb.Enabled = true
+	testProviderField(t, tmdb, "api_key").Input.SetValue("secret")
 
 	ps := newProviderSection(&state.Providers, theme.Default())
 
 	var called int
-	ps.tmdbValidate = func(key string) tea.Cmd {
+	ps.validate = func(providerName, fieldName, value string) tea.Cmd {
 		called++
-		if key != "secret" {
-			t.Fatalf("tmdbValidate called with %q, want secret", key)
+		if providerName != "tmdb" || fieldName != "api_key" || value != "secret" {
+			t.Fatalf("validate called with %q/%q/%q, want tmdb/api_key/secret", providerName, fieldName, value)
 		}
 		return nil
 	}
-	ps.tmdbDebounce = func(string) tea.Cmd { return nil }
+	ps.debounce = func(string, string, string) tea.Cmd { return nil }
 
 	if cmd := ps.Activate(); cmd != nil {
 		cmd()

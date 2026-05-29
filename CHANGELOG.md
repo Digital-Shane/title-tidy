@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.19.2] - 2026-06-12
+### Updated
+* Provider registry to be the source of truth for built-in provider config, priority, variables, and display ordering.
+* Metadata engine and config UI to load provider runtime config and variable help from registered providers.
+* Config UI save notification now clears after three seconds so repeated saves show feedback.
+### Fixed
+* Legacy TMDB cache settings no longer appear in provider configuration.
+* Config UI template variables panel clipping variable examples after horizontal viewport movement.
+
 ## [v1.19.1] - 2026-05-29
-### Update
+### Updated
 * treeview dependency to fix ansi styles overlapping due to long file names.
 
 ## [v1.19.0] - 2026-05-26

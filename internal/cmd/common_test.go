@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
@@ -352,10 +351,7 @@ func TestCreateFormatContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := createFormatContext(cfg, tt.showName, tt.movieName, tt.year, tt.season, tt.episode, tt.metadata)
-			if diff := cmp.Diff(tt.want, got, cmp.FilterPath(func(p cmp.Path) bool {
-				// Ignore unexported fields in FormatConfig like 'resolver'
-				return strings.Contains(p.String(), ".resolver")
-			}, cmp.Ignore())); diff != "" {
+			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("createFormatContext() mismatch (-want +got):\n%s", diff)
 			}
 		})

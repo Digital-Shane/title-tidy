@@ -10,7 +10,7 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
-	"github.com/Digital-Shane/title-tidy/internal/tui"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/treeview/v2"
 )
 
@@ -64,7 +64,7 @@ func TestAnnotateMoviesTreeNoDirAppliesMetadata(t *testing.T) {
 	nodes := moviePreprocess([]*treeview.Node[treeview.FileInfo]{videoNode, subNode}, cfg, true)
 	tree := treeview.NewTree(nodes,
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	metadata := &provider.Metadata{
@@ -126,7 +126,7 @@ func TestAnnotateMoviesTreeTreatsBracketHashAsMovieTag(t *testing.T) {
 	})
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	annotateMoviesTree(tree, cfg, nil)
@@ -153,7 +153,7 @@ func TestAnnotateMoviesTreeTreatsShortBracketHashAsMovieTag(t *testing.T) {
 	})
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	annotateMoviesTree(tree, cfg, nil)
@@ -180,7 +180,7 @@ func TestAnnotateMoviesTreeTreatsELeadingNumberedTitleAsMovie(t *testing.T) {
 	})
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	annotateMoviesTree(tree, cfg, nil)
@@ -208,7 +208,7 @@ func TestAnnotateMoviesTreePreservesRawTagsAfterParsing(t *testing.T) {
 	})
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	annotateMoviesTree(tree, cfg, nil)
@@ -235,7 +235,7 @@ func TestAnnotateMoviesTreePreservesBracketedYear(t *testing.T) {
 	})
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{movie},
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	annotateMoviesTree(tree, cfg, nil)
@@ -434,7 +434,7 @@ func TestAnnotateMoviesTreePreservesExistingTagsWhenEnabled(t *testing.T) {
 
 	tree := treeview.NewTree([]*treeview.Node[treeview.FileInfo]{root},
 		treeview.WithExpandAll[treeview.FileInfo](),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	metadata := &provider.Metadata{

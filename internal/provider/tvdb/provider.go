@@ -55,12 +55,42 @@ func (p *Provider) Capabilities() provider.ProviderCapabilities {
 		},
 		RequiresAuth: true,
 		Priority:     95,
+		DisplayName:  "TVDB",
+		DisplayOrder: 20,
+		Icon:         "film",
 	}
 }
 
 // SupportedVariables returns the template variables supported by TVDB.
 func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 	return []provider.TemplateVariable{
+		{
+			Name:        "title",
+			DisplayName: "Title",
+			Description: "Show or movie title from TVDB",
+			MediaTypes: []provider.MediaType{
+				provider.MediaTypeMovie,
+				provider.MediaTypeShow,
+				provider.MediaTypeSeason,
+				provider.MediaTypeEpisode,
+			},
+			Example:     "Breaking Bad",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyTitle,
+		},
+		{
+			Name:        "year",
+			DisplayName: "Year",
+			Description: "Release year from TVDB",
+			MediaTypes:  []provider.MediaType{provider.MediaTypeMovie, provider.MediaTypeShow},
+			Example:     "2008",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyYear,
+		},
 		{
 			Name:        "rating",
 			DisplayName: "Rating",
@@ -70,6 +100,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "ratings",
 			Format:      "number",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyRating,
 		},
 		{
 			Name:        "genres",
@@ -80,6 +112,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "basic",
 			Format:      "list",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyGenres,
 		},
 		{
 			Name:        "networks",
@@ -90,6 +124,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "production",
 			Format:      "list",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "networks",
 		},
 		{
 			Name:        "episode_title",
@@ -99,6 +135,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "Pilot",
 			Category:    "basic",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyEpisodeTitle,
 		},
 		{
 			Name:        "imdb_id",
@@ -108,6 +146,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "tt0133093",
 			Category:    "identifiers",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceID,
+			ValueKey:    "imdb_id",
 		},
 	}
 }
@@ -117,12 +157,14 @@ func (p *Provider) ConfigSchema() provider.ConfigSchema {
 	return provider.ConfigSchema{
 		Fields: []provider.ConfigField{
 			{
-				Name:        "api_key",
-				DisplayName: "API Key",
-				Type:        provider.ConfigFieldTypePassword,
-				Required:    true,
-				Description: "TVDB API key. Generate one from your thetvdb.com account dashboard",
-				Sensitive:   true,
+				Name:         "api_key",
+				DisplayName:  "API Key",
+				Type:         provider.ConfigFieldTypePassword,
+				Required:     true,
+				Description:  "TVDB API key. Generate one from your thetvdb.com account dashboard",
+				Sensitive:    true,
+				Icon:         "key",
+				PreviewLabel: "TVDB API",
 				Validation: &provider.ConfigFieldValidation{
 					MinLength: 8,
 					MaxLength: 128,

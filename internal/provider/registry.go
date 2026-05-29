@@ -49,6 +49,16 @@ func (r *Registry) Register(name string, provider Provider, priority int) error 
 	return nil
 }
 
+// RegisterProvider adds a provider using the facts supplied by the provider
+// itself.
+func (r *Registry) RegisterProvider(provider Provider) error {
+	if provider == nil {
+		return fmt.Errorf("provider is nil")
+	}
+	caps := provider.Capabilities()
+	return r.Register(provider.Name(), provider, caps.Priority)
+}
+
 // Get returns a provider by name
 func (r *Registry) Get(name string) (Provider, bool) {
 	r.mu.RLock()
@@ -74,6 +84,35 @@ func (r *Registry) List() []string {
 	})
 
 	return names
+}
+
+// Providers returns all registered providers sorted by registry priority.
+func (r *Registry) Providers() []Provider {
+	names := r.List()
+	providers := make([]Provider, 0, len(names))
+	for _, name := range names {
+		if p, ok := r.Get(name); ok {
+			providers = append(providers, p)
+		}
+	}
+	return providers
+}
+
+// Priority returns the registry priority for a provider.
+func (r *Registry) Priority(name string) (int, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	priority, exists := r.priorities[name]
+	return priority, exists
+}
+
+// IsEnabled reports whether a provider is currently enabled.
+func (r *Registry) IsEnabled(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.enabledStatus[name]
 }
 
 // Enable enables a provider

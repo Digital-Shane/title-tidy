@@ -19,7 +19,7 @@ var moviesCmd = &cobra.Command{
 	Long: `Rename movie files and their containing directories.
 	
 This command processes movie files, creating directories for loose files (unless --no-dir is specified)
-and renaming according to your configured format with optional TMDB metadata lookup.`,
+and renaming according to your configured format with optional metadata provider lookup.`,
 	RunE: runMoviesCommand,
 }
 

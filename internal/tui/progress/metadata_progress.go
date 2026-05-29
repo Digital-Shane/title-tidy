@@ -60,9 +60,10 @@ type MetadataProgressModel struct {
 	width  int
 	height int
 
-	progress progress.Model
-	theme    theme.Theme
-	input    textinput.Model
+	progress       progress.Model
+	theme          theme.Theme
+	input          textinput.Model
+	providerLabels map[core.MetadataProviderType]string
 
 	failures            []core.MetadataFailure
 	selectedFailure     int
@@ -95,53 +96,33 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 	}
 	prog.SetWidth(50)
 
-	tmdbEnabled := cfg.EnableTMDBLookup && cfg.TMDBAPIKey != ""
-	tvdbEnabled := cfg.EnableTVDBLookup && cfg.TVDBAPIKey != ""
-	omdbEnabled := cfg.EnableOMDBLookup && cfg.OMDBAPIKey != ""
-	ffprobeEnabled := cfg.EnableFFProbe
+	_ = config.EnsureBuiltinProviders()
+	runtimeProviders := cfg.ProviderRuntimeConfigs(nil)
+	providerLabels := make(map[core.MetadataProviderType]string, len(runtimeProviders))
+	for _, runtime := range runtimeProviders {
+		providerLabels[core.MetadataProviderType(runtime.Name)] = config.ProviderDisplayName(runtime.Provider)
+	}
 
 	engineCfg := core.MetadataEngineConfig{
 		Tree:        tree,
-		WorkerCount: cfg.TMDBWorkerCount,
-		Providers: core.MetadataProvidersConfig{
-			TMDB: core.TMDBProviderConfig{
-				Enabled:  tmdbEnabled,
-				APIKey:   cfg.TMDBAPIKey,
-				Language: cfg.TMDBLanguage,
-			},
-			TVDB: core.TVDBProviderConfig{
-				Enabled: tvdbEnabled,
-				APIKey:  cfg.TVDBAPIKey,
-			},
-			OMDB: core.OMDBProviderConfig{
-				Enabled: omdbEnabled,
-				APIKey:  cfg.OMDBAPIKey,
-			},
-			FFProbe: core.FFProbeProviderConfig{Enabled: ffprobeEnabled},
-		},
-	}
-
-	if engineCfg.Providers.TMDB.Enabled {
-		if engineCfg.Providers.TMDB.Language == "" {
-			engineCfg.Providers.TMDB.Language = "en-US"
-		}
-		cacheEnabled := true
-		engineCfg.Providers.TMDB.CacheEnabled = &cacheEnabled
+		WorkerCount: cfg.MetadataWorkerCount,
+		Providers:   runtimeProviders,
 	}
 
 	engine := core.NewMetadataEngine(engineCfg)
 	summary := engine.SummarySnapshot()
 
 	return &MetadataProgressModel{
-		engine:       engine,
-		summary:      summary,
-		width:        80,
-		height:       12,
-		progress:     prog,
-		theme:        th,
-		shouldRun:    len(summary.ActiveProviders) > 0,
-		input:        newMetadataSearchInput(th),
-		manualStatus: "",
+		engine:         engine,
+		summary:        summary,
+		width:          80,
+		height:         12,
+		progress:       prog,
+		theme:          th,
+		providerLabels: providerLabels,
+		shouldRun:      len(summary.ActiveProviders) > 0,
+		input:          newMetadataSearchInput(th),
+		manualStatus:   "",
 	}
 }
 
@@ -290,13 +271,13 @@ func (m *MetadataProgressModel) handleRetryFinished(msg metadataRetryFinishedMsg
 	if len(m.failures) == 0 {
 		m.manualActive = false
 		m.done = true
-		m.manualStatus = fmt.Sprintf("Resolved metadata via %s", strings.ToUpper(string(msg.provider)))
+		m.manualStatus = fmt.Sprintf("Resolved metadata via %s", m.providerLabel(msg.provider))
 		return m, tea.Quit
 	}
 	if m.selectedFailure >= len(m.failures) {
 		m.selectedFailure = len(m.failures) - 1
 	}
-	m.manualStatus = fmt.Sprintf("Resolved via %s. %d remaining.", strings.ToUpper(string(msg.provider)), len(m.failures))
+	m.manualStatus = fmt.Sprintf("Resolved via %s. %d remaining.", m.providerLabel(msg.provider), len(m.failures))
 	m.prepareInputForSelection()
 	return m, nil
 }
@@ -321,7 +302,7 @@ func (m *MetadataProgressModel) handleManualKey(msg tea.KeyPressMsg) (tea.Model,
 		failure := m.failures[m.selectedFailure]
 		query := m.input.Value()
 		m.retrying = true
-		m.manualStatus = fmt.Sprintf("Retrying %s…", strings.ToUpper(string(failure.Provider)))
+		m.manualStatus = fmt.Sprintf("Retrying %s…", m.providerLabel(failure.Provider))
 		return m, m.retryFailureCmd(failure, query)
 	case "ctrl+s":
 		m.manualSkipped = true
@@ -408,8 +389,17 @@ func (m *MetadataProgressModel) updateInputWidth(width int) {
 	m.input.SetWidth(inputWidth)
 }
 
+func (m *MetadataProgressModel) providerLabel(providerType core.MetadataProviderType) string {
+	if m != nil && m.providerLabels != nil {
+		if label := strings.TrimSpace(m.providerLabels[providerType]); label != "" {
+			return label
+		}
+	}
+	return strings.ToUpper(string(providerType))
+}
+
 func (m *MetadataProgressModel) describeFailure(f core.MetadataFailure) string {
-	providerLabel := strings.ToUpper(string(f.Provider))
+	providerLabel := m.providerLabel(f.Provider)
 	target := core.FormatMetadataProgressMessage(f.Item)
 	query := strings.TrimSpace(f.Query)
 	if query == "" {
@@ -518,7 +508,7 @@ func (m *MetadataProgressModel) renderManualResolutionView() string {
 
 	statusText := m.manualStatus
 	if m.retrying && remaining > 0 {
-		statusText = fmt.Sprintf("Retrying %s…", strings.ToUpper(string(m.failures[m.selectedFailure].Provider)))
+		statusText = fmt.Sprintf("Retrying %s…", m.providerLabel(m.failures[m.selectedFailure].Provider))
 	}
 	if statusText == "" {
 		statusText = "Adjust the search term and press Enter to retry."
@@ -575,7 +565,7 @@ func (m *MetadataProgressModel) renderFailureList() string {
 		block := fmt.Sprintf(
 			"%s [%s] %s%s\n  query: %q\n  error: %s",
 			indicator,
-			strings.ToUpper(string(failure.Provider)),
+			m.providerLabel(failure.Provider),
 			core.FormatMetadataProgressMessage(failure.Item),
 			attemptInfo,
 			query,
@@ -591,7 +581,7 @@ func (m *MetadataProgressModel) renderSearchInput() string {
 	if len(m.failures) == 0 {
 		return ""
 	}
-	providerLabel := strings.ToUpper(string(m.failures[m.selectedFailure].Provider))
+	providerLabel := m.providerLabel(m.failures[m.selectedFailure].Provider)
 	title := fmt.Sprintf("Search term (%s): ", providerLabel)
 	text := m.input.View()
 	return lipgloss.NewStyle().Width(m.width).Render(title + text)

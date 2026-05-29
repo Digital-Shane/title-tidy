@@ -10,7 +10,6 @@ import (
 
 const (
 	providerName = "ffprobe"
-	filePathKey  = "path"
 )
 
 // probeFunc defines the function signature used to execute ffprobe.
@@ -45,8 +44,12 @@ func (p *Provider) Capabilities() provider.ProviderCapabilities {
 			provider.MediaTypeMovie,
 			provider.MediaTypeEpisode,
 		},
-		RequiresAuth: false,
-		Priority:     50,
+		RequiresAuth:     false,
+		Priority:         50,
+		DisplayName:      "ffprobe",
+		DisplayOrder:     40,
+		Icon:             "chip",
+		RequiresFilePath: true,
 	}
 }
 
@@ -63,6 +66,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "h264",
 			Category:    "technical",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "video_codec",
 		},
 		{
 			Name:        "video_resolution",
@@ -72,6 +77,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "1080p",
 			Category:    "technical",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "video_resolution",
 		},
 		{
 			Name:        "audio_codec",
@@ -81,6 +88,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "aac",
 			Category:    "technical",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "audio_codec",
 		},
 	}
 }
@@ -180,7 +189,7 @@ func extractPath(extra map[string]interface{}) (string, error) {
 		}
 	}
 
-	if path, ok := extra[filePathKey]; ok {
+	if path, ok := extra[provider.FetchRequestExtraFilePath]; ok {
 		switch v := path.(type) {
 		case string:
 			if v != "" {

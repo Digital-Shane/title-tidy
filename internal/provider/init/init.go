@@ -14,38 +14,36 @@ import (
 
 // LoadBuiltinProviders loads all built-in providers into the global registry
 func LoadBuiltinProviders() error {
-	// Register local provider first (always enabled)
-	localProvider := local.New()
-	if err := provider.GlobalRegistry.Register("local", localProvider, 0); err != nil {
+	if err := registerBuiltin(local.New(), true); err != nil {
 		return fmt.Errorf("failed to register local provider: %w", err)
 	}
-	// Local provider is always enabled
-	if err := provider.GlobalRegistry.Enable("local"); err != nil {
-		return fmt.Errorf("failed to enable local provider: %w", err)
-	}
-
-	// Register TMDB provider
-	tmdbProvider := tmdb.New()
-	if err := provider.GlobalRegistry.Register("tmdb", tmdbProvider, 100); err != nil {
+	if err := registerBuiltin(tmdb.New(), false); err != nil {
 		return fmt.Errorf("failed to register TMDB provider: %w", err)
 	}
-
-	// Register OMDb provider
-	omdbProvider := omdb.New()
-	if err := provider.GlobalRegistry.Register("omdb", omdbProvider, 90); err != nil {
-		return fmt.Errorf("failed to register OMDb provider: %w", err)
-	}
-
-	tvdbProvider := tvdb.New()
-	if err := provider.GlobalRegistry.Register("tvdb", tvdbProvider, 95); err != nil {
+	if err := registerBuiltin(tvdb.New(), false); err != nil {
 		return fmt.Errorf("failed to register TVDB provider: %w", err)
 	}
-
-	// Register ffprobe provider
-	ffprobeProvider := ffprobe.New()
-	if err := provider.GlobalRegistry.Register("ffprobe", ffprobeProvider, 50); err != nil {
+	if err := registerBuiltin(omdb.New(), false); err != nil {
+		return fmt.Errorf("failed to register OMDb provider: %w", err)
+	}
+	if err := registerBuiltin(ffprobe.New(), false); err != nil {
 		return fmt.Errorf("failed to register ffprobe provider: %w", err)
 	}
 
+	return nil
+}
+
+func registerBuiltin(p provider.Provider, enabled bool) error {
+	name := p.Name()
+	if _, exists := provider.GlobalRegistry.Get(name); !exists {
+		if err := provider.GlobalRegistry.RegisterProvider(p); err != nil {
+			return err
+		}
+	}
+	if enabled {
+		if err := provider.GlobalRegistry.Enable(name); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -78,19 +78,14 @@ func newMetadataFakeProvider(name string, fetch func(provider.FetchRequest) (*pr
 }
 
 func configureTestEngine(model *MetadataProgressModel, tree *treeview.Tree[treeview.FileInfo], prov provider.Provider, workerCount int) {
-	cache := true
 	cfg := core.MetadataEngineConfig{
 		Tree:        tree,
 		WorkerCount: workerCount,
-		Providers: core.MetadataProvidersConfig{
-			TMDB: core.TMDBProviderConfig{
-				Enabled:      true,
-				APIKey:       "test-key",
-				Language:     "en-US",
-				CacheEnabled: &cache,
-				Provider:     prov,
-			},
-		},
+		Providers: []provider.RuntimeConfig{{
+			Name:     prov.Name(),
+			Enabled:  true,
+			Provider: prov,
+		}},
 	}
 	engine := core.NewMetadataEngine(cfg)
 	model.engine = engine
@@ -158,10 +153,7 @@ func TestMetadataProgressCompletesAndStoresResults(t *testing.T) {
 	tree := newMetadataTestTree()
 
 	cfg := &config.FormatConfig{
-		EnableTMDBLookup: false,
-		EnableOMDBLookup: false,
-		EnableFFProbe:    false,
-		TMDBWorkerCount:  2,
+		MetadataWorkerCount: 2,
 	}
 
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
@@ -250,7 +242,7 @@ func TestMetadataProgressQuitKeys(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tree := newMetadataTestTree()
 
-			cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+			cfg := &config.FormatConfig{MetadataWorkerCount: 1}
 			model := NewMetadataProgressModel(tree, cfg, theme.Default())
 
 			ready := make(chan struct{})
@@ -292,7 +284,7 @@ func TestMetadataProgressQuitKeys(t *testing.T) {
 func TestMetadataProgressWindowResize(t *testing.T) {
 	tree := newMetadataTestTree()
 
-	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+	cfg := &config.FormatConfig{MetadataWorkerCount: 1}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 
 	ready := make(chan struct{})
@@ -340,7 +332,7 @@ func TestMetadataProgressWindowResize(t *testing.T) {
 func TestMetadataProgressDisplaysErrorsAndExposesErr(t *testing.T) {
 	tree := newMetadataTestTree()
 
-	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+	cfg := &config.FormatConfig{MetadataWorkerCount: 1}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	configureTestEngine(model, tree, newMetadataFakeProvider("fakeTMDB", func(provider.FetchRequest) (*provider.Metadata, error) {
 		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "AUTH_FAILED", Message: "bad key", Retry: false}
@@ -382,7 +374,7 @@ func TestMetadataProgressDisplaysErrorsAndExposesErr(t *testing.T) {
 func TestMetadataProgressManualRetryResolvesFailure(t *testing.T) {
 	tree := newSingleMovieTree()
 
-	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+	cfg := &config.FormatConfig{MetadataWorkerCount: 1}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	provider := newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		if req.Name == "Manual k Success" {
@@ -436,7 +428,7 @@ func TestMetadataProgressManualRetryResolvesFailure(t *testing.T) {
 func TestMetadataProgressManualSkipAllowsContinue(t *testing.T) {
 	tree := newSingleMovieTree()
 
-	cfg := &config.FormatConfig{TMDBWorkerCount: 1}
+	cfg := &config.FormatConfig{MetadataWorkerCount: 1}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	provider := newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "NOT_FOUND", Message: fmt.Sprintf("no results for %s", req.Name), Retry: false}

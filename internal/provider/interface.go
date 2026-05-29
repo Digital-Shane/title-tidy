@@ -32,11 +32,24 @@ type Provider interface {
 	Fetch(ctx context.Context, request FetchRequest) (*Metadata, error)
 }
 
+// RuntimeConfig is the provider configuration needed by runtime metadata fetching.
+type RuntimeConfig struct {
+	Name     string
+	Enabled  bool
+	Values   map[string]interface{}
+	Provider Provider
+}
+
 // ProviderCapabilities describes what a provider can do
 type ProviderCapabilities struct {
-	MediaTypes   []MediaType // What media types are supported
-	RequiresAuth bool        // Whether authentication is required
-	Priority     int         // Default priority for this provider (higher = preferred)
+	MediaTypes       []MediaType // What media types are supported
+	RequiresAuth     bool        // Whether authentication is required
+	Priority         int         // Default priority for this provider (higher = preferred)
+	DisplayName      string      // Human-friendly provider name for UI surfaces
+	DisplayOrder     int         // UI ordering for provider-owned variables/config
+	Icon             string      // Theme icon key for UI surfaces
+	Local            bool        // Whether this provider derives local filesystem metadata
+	RequiresFilePath bool        // Whether fetch requests require a source file path
 }
 
 // TemplateVariable describes a template variable that a provider can supply
@@ -49,6 +62,8 @@ type TemplateVariable struct {
 	Provider    string      // Provider that supplies this variable
 	Category    string      // Category for grouping (e.g., "Basic", "Advanced", "Technical")
 	Format      string      // Format hint (e.g., "date", "number", "list")
+	ValueSource TemplateVariableValueSource
+	ValueKey    string
 }
 
 // ConfigSchema describes the configuration requirements for a provider
@@ -58,15 +73,17 @@ type ConfigSchema struct {
 
 // ConfigField describes a single configuration field
 type ConfigField struct {
-	Name        string                 // Field name
-	DisplayName string                 // Human-readable name
-	Type        ConfigFieldType        // Field type
-	Required    bool                   // Whether this field is required
-	Default     interface{}            // Default value
-	Description string                 // Help text
-	Validation  *ConfigFieldValidation // Validation rules
-	Sensitive   bool                   // Whether this contains sensitive data (for masking)
-	DependsOn   string                 // Field that this depends on
+	Name         string                 // Field name
+	DisplayName  string                 // Human-readable name
+	Type         ConfigFieldType        // Field type
+	Required     bool                   // Whether this field is required
+	Default      interface{}            // Default value
+	Description  string                 // Help text
+	Validation   *ConfigFieldValidation // Validation rules
+	Sensitive    bool                   // Whether this contains sensitive data (for masking)
+	DependsOn    string                 // Field that this depends on
+	Icon         string                 // Theme icon key for UI previews
+	PreviewLabel string                 // Optional label for compact preview surfaces
 }
 
 // ConfigFieldType represents the type of a configuration field
@@ -107,6 +124,11 @@ type FetchRequest struct {
 	Language  string                 // Preferred language
 	Extra     map[string]interface{} // Provider-specific parameters
 }
+
+const (
+	FetchRequestExtraFilePath = "path"
+	FetchRequestExtraNode     = "node"
+)
 
 // Metadata represents the fetched metadata
 type Metadata struct {

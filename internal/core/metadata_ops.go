@@ -26,13 +26,10 @@ type MetadataItem struct {
 
 // MetadataResult represents the result of fetching metadata for an item.
 type MetadataResult struct {
-	Item       MetadataItem
-	Meta       *provider.Metadata
-	Errs       []error
-	TMDBErr    error
-	TVDBErr    error
-	OMDBErr    error
-	FFProbeErr error
+	Item         MetadataItem
+	Meta         *provider.Metadata
+	Errs         []error
+	ProviderErrs map[MetadataProviderType]error
 }
 
 type localNodeInfo struct {
@@ -200,8 +197,9 @@ func ShouldReplaceItemNode(existing MetadataItem, candidate MetadataItem) bool {
 	return false
 }
 
-// FetchTMDBMetadata retrieves metadata from TMDB with retry/backoff handling.
-func FetchTMDBMetadata(ctx context.Context, prov provider.Provider, cache provider.MetadataCache, item MetadataItem) (*provider.Metadata, error) {
+// FetchProviderMetadata retrieves metadata from a registry provider with
+// retry/backoff handling for rate limits.
+func FetchProviderMetadata(ctx context.Context, prov provider.Provider, item MetadataItem, cache provider.MetadataCache) (*provider.Metadata, error) {
 	if prov == nil {
 		return nil, nil
 	}
@@ -252,64 +250,14 @@ func FetchTMDBMetadata(ctx context.Context, prov provider.Provider, cache provid
 	}
 }
 
-// FetchOMDBMetadata retrieves metadata from OMDb.
-func FetchOMDBMetadata(ctx context.Context, prov provider.Provider, item MetadataItem, cache provider.MetadataCache) (*provider.Metadata, error) {
+// FetchFilePathMetadata retrieves metadata from providers that need the source
+// media file path in the request extras.
+func FetchFilePathMetadata(ctx context.Context, prov provider.Provider, item MetadataItem) (*provider.Metadata, error) {
 	if prov == nil {
 		return nil, nil
 	}
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	meta, err := provider.FetchMetadataWithDependencies(
-		ctx,
-		prov,
-		item.Name,
-		item.Year,
-		item.Season,
-		item.Episode,
-		item.IsMovie,
-		cache,
-	)
-
-	return meta, err
-}
-
-func FetchTVDBMetadata(ctx context.Context, prov provider.Provider, item MetadataItem, cache provider.MetadataCache) (*provider.Metadata, error) {
-	if prov == nil {
-		return nil, nil
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	meta, err := provider.FetchMetadataWithDependencies(
-		ctx,
-		prov,
-		item.Name,
-		item.Year,
-		item.Season,
-		item.Episode,
-		item.IsMovie,
-		cache,
-	)
-
-	return meta, err
-}
-
-// FetchFFProbeMetadata retrieves technical metadata using ffprobe when applicable.
-func FetchFFProbeMetadata(ctx context.Context, prov provider.Provider, item MetadataItem) (*provider.Metadata, error) {
-	if prov == nil {
-		return nil, nil
-	}
-
-	if !ShouldRunFFProbe(item) {
+	if !ShouldRunFilePathProvider(item) {
 		return nil, nil
 	}
 
@@ -319,9 +267,9 @@ func FetchFFProbeMetadata(ctx context.Context, prov provider.Provider, item Meta
 	}
 	if path == "" {
 		return nil, &provider.ProviderError{
-			Provider: "ffprobe",
+			Provider: providerNameOrDefault(prov, "file"),
 			Code:     "MISSING_PATH",
-			Message:  "ffprobe requires a valid file path",
+			Message:  fmt.Sprintf("%s requires a valid file path", providerNameOrDefault(prov, "provider")),
 			Retry:    false,
 		}
 	}
@@ -342,7 +290,7 @@ func FetchFFProbeMetadata(ctx context.Context, prov provider.Provider, item Meta
 		Season:    item.Season,
 		Episode:   item.Episode,
 		Extra: map[string]interface{}{
-			"path": path,
+			provider.FetchRequestExtraFilePath: path,
 		},
 	}
 
@@ -355,8 +303,8 @@ func FetchFFProbeMetadata(ctx context.Context, prov provider.Provider, item Meta
 	return prov.Fetch(ctx, req)
 }
 
-// ShouldRunFFProbe determines whether ffprobe should run for the item.
-func ShouldRunFFProbe(item MetadataItem) bool {
+// ShouldRunFilePathProvider determines whether a file-path provider should run for the item.
+func ShouldRunFilePathProvider(item MetadataItem) bool {
 	if item.Node == nil {
 		return false
 	}

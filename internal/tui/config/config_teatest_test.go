@@ -11,7 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func newConfigTestModel(t *testing.T) *teatest.TestModel {
+func newConfigTestModel(t *testing.T, edits ...func(*Model)) *teatest.TestModel {
 	t.Helper()
 
 	t.Setenv("HOME", t.TempDir())
@@ -21,32 +21,26 @@ func newConfigTestModel(t *testing.T) *teatest.TestModel {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	model.providerSection.tmdbValidate = func(apiKey string) tea.Cmd {
+	model.providerSection.validate = func(providerName, fieldName, value string) tea.Cmd {
 		return func() tea.Msg {
-			if apiKey == "" {
-				return tmdbValidationMsg{apiKey: apiKey, valid: false}
+			if value == "" {
+				return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: value, valid: false}
 			}
-			return tmdbValidationMsg{apiKey: apiKey, valid: !strings.Contains(apiKey, "invalid")}
-		}
-	}
-	model.providerSection.tmdbDebounce = func(apiKey string) tea.Cmd {
-		return func() tea.Msg {
-			return tmdbValidateCmd{apiKey: apiKey}
-		}
-	}
-	model.providerSection.omdbValidate = func(apiKey string) tea.Cmd {
-		return func() tea.Msg {
-			if len(apiKey) < 4 {
-				return omdbValidationMsg{apiKey: apiKey, valid: false}
+			if providerName == "omdb" && len(value) < 4 {
+				return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: value, valid: false}
 			}
-			return omdbValidationMsg{apiKey: apiKey, valid: !strings.Contains(apiKey, "invalid")}
+			return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: value, valid: !strings.Contains(value, "invalid")}
 		}
 	}
-	model.providerSection.omdbDebounce = func(apiKey string) tea.Cmd {
+	model.providerSection.debounce = func(providerName, fieldName, value string) tea.Cmd {
 		return func() tea.Msg {
-			return omdbValidateCmd{apiKey: apiKey}
+			return providerValidateCmd{providerName: providerName, fieldName: fieldName, value: value}
 		}
 	}
+	for _, edit := range edits {
+		edit(model)
+	}
+	model.refreshVariablesPanel()
 
 	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(100, 36))
 	t.Cleanup(func() {
@@ -193,7 +187,11 @@ func TestConfigTUILoggingKeys(t *testing.T) {
 }
 
 func TestConfigTUIScrollingKeys(t *testing.T) {
-	tm := newConfigTestModel(t)
+	tm := newConfigTestModel(t, func(model *Model) {
+		for i := range model.state.Providers.Providers {
+			model.state.Providers.Providers[i].Enabled = true
+		}
+	})
 	waitForOutput(t, tm, "[ Show Folder ]")
 
 	press(tm, tea.KeyTab)
@@ -259,8 +257,6 @@ func TestConfigTUIProvidersTMDB(t *testing.T) {
 	waitForOutput(t, tm, "Provider Controls")
 
 	press(tm, tea.KeyRight)
-	press(tm, tea.KeyRight)
-	press(tm, tea.KeyRight)
 
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyDown)
@@ -280,24 +276,28 @@ func TestConfigTUIProvidersTMDB(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
+	tmdb := testProviderState(t, &model.state.Providers, "tmdb")
+	tmdbKey := testProviderField(t, tmdb, "api_key")
+	tmdbLanguage := testProviderField(t, tmdb, "language")
 
-	if model.state.Providers.TMDB.Enabled {
+	if tmdb.Enabled {
 		t.Error("tmdbEnabled = true, want false after toggle off")
 	}
 
-	if diff := cmp.Diff("valid12X", model.state.Providers.TMDB.APIKey.Value()); diff != "" {
+	if diff := cmp.Diff("valid12X", tmdbKey.Input.Value()); diff != "" {
 		t.Errorf("tmdbAPIKey diff (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff("es-ES", model.state.Providers.TMDB.Language.Value()); diff != "" {
+	if diff := cmp.Diff("es-ES", tmdbLanguage.Input.Value()); diff != "" {
 		t.Errorf("tmdbLanguage diff (-want +got):\n%s", diff)
 	}
 
-	if got := model.state.Providers.Active; got != ProviderFieldTMDBToggle {
-		t.Errorf("providerActive = %d, want ProviderFieldTMDBToggle", got)
+	wantFocus := ProviderFocus{Kind: ProviderFocusToggle, ProviderName: "tmdb"}
+	if got := model.state.Providers.Active; got != wantFocus {
+		t.Errorf("providerActive = %+v, want %+v", got, wantFocus)
 	}
 
-	if diff := cmp.Diff("", model.state.Providers.TMDB.Validation.Status.String()); diff != "" {
+	if diff := cmp.Diff("", tmdb.Validation.Status.String()); diff != "" {
 		t.Errorf("tmdbValidation diff (-want +got):\n%s", diff)
 	}
 }
@@ -313,6 +313,7 @@ func TestConfigTUIProvidersOMDB(t *testing.T) {
 
 	press(tm, tea.KeyRight)
 	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
 
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyDown)
@@ -326,17 +327,20 @@ func TestConfigTUIProvidersOMDB(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
+	omdb := testProviderState(t, &model.state.Providers, "omdb")
+	omdbKey := testProviderField(t, omdb, "api_key")
 
-	if model.state.Providers.OMDB.Enabled {
+	if omdb.Enabled {
 		t.Error("omdbEnabled = true, want false after toggle off")
 	}
 
-	if diff := cmp.Diff("abcZ9", model.state.Providers.OMDB.APIKey.Value()); diff != "" {
+	if diff := cmp.Diff("abcZ9", omdbKey.Input.Value()); diff != "" {
 		t.Errorf("omdbAPIKey diff (-want +got):\n%s", diff)
 	}
 
-	if got := model.state.Providers.Active; got != ProviderFieldOMDBToggle {
-		t.Errorf("providerActive = %d, want ProviderFieldOMDBToggle", got)
+	wantFocus := ProviderFocus{Kind: ProviderFocusToggle, ProviderName: "omdb"}
+	if got := model.state.Providers.Active; got != wantFocus {
+		t.Errorf("providerActive = %+v, want %+v", got, wantFocus)
 	}
 
 }
@@ -355,6 +359,9 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 	tm.Type("a")
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyEnter)
 	press(tm, tea.KeySpace)
@@ -368,11 +375,13 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 		t.Errorf("workerCount diff (-want +got):\n%s", diff)
 	}
 
-	if !model.state.Providers.FFProbeEnabled {
+	ffprobe := testProviderState(t, &model.state.Providers, "ffprobe")
+	if !ffprobe.Enabled {
 		t.Error("ffprobeEnabled = false, want true")
 	}
 
-	if diff := cmp.Diff(ProviderFieldFFProbe, model.state.Providers.Active); diff != "" {
+	wantFocus := ProviderFocus{Kind: ProviderFocusToggle, ProviderName: "ffprobe"}
+	if diff := cmp.Diff(wantFocus, model.state.Providers.Active); diff != "" {
 		t.Errorf("providerActive diff (-want +got):\n%s", diff)
 	}
 }

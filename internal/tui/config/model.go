@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/components"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 
@@ -17,9 +18,16 @@ import (
 )
 
 // Option configures the configuration TUI model.
-const variablesAutoScrollInterval = 3 * time.Second
+const (
+	variablesAutoScrollInterval = 3 * time.Second
+	saveStatusDuration          = 3 * time.Second
+)
 
 type variablesTickMsg struct{}
+
+type saveStatusClearMsg struct {
+	id uint64
+}
 
 // Model orchestrates the configuration UI.
 type Model struct {
@@ -27,7 +35,7 @@ type Model struct {
 	original *config.FormatConfig
 
 	state            ConfigState
-	templateRegistry *config.TemplateRegistry
+	providerRegistry *provider.Registry
 	theme            theme.Theme
 	icons            map[string]string
 	sections         []sectionModel
@@ -40,43 +48,44 @@ type Model struct {
 	width, height int
 
 	saveStatus string
+	saveID     uint64
 	err        error
 }
 
 // New creates a new configuration UI model.
 func New() (*Model, error) {
+	return NewWithRegistry(nil)
+}
+
+// NewWithRegistry creates a new configuration UI model with a provider registry.
+func NewWithRegistry(reg *provider.Registry) (*Model, error) {
+	if err := config.EnsureBuiltinProviders(); err != nil {
+		return nil, fmt.Errorf("failed to load providers: %w", err)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
-
+	if reg == nil {
+		reg = provider.GlobalRegistry
+	}
 	original := cloneFormatConfig(cfg)
 
 	m := &Model{
-		config:   cfg,
-		original: original,
-		theme:    theme.Default(),
+		config:           cfg,
+		original:         original,
+		providerRegistry: reg,
+		theme:            theme.Default(),
 	}
 
 	m.icons = m.theme.IconSet()
 
-	m.state = buildStateFromConfig(cfg, m.theme)
+	m.state = buildStateFromConfig(cfg, m.theme, reg)
 	m.initSections()
 	m.variables = components.NewViewport(0, 0, m.theme)
 	m.variablesAuto = true
 	m.refreshVariablesPanel()
 
-	return m, nil
-}
-
-// NewWithRegistry creates a new configuration UI model with a template registry.
-func NewWithRegistry(reg *config.TemplateRegistry) (*Model, error) {
-	m, err := New()
-	if err != nil {
-		return nil, err
-	}
-	m.templateRegistry = reg
-	m.refreshVariablesPanel()
 	return m, nil
 }
 
@@ -119,6 +128,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.variables != nil {
 		updated, cmd := m.variables.Update(msg)
 		*m.variables = updated
+		m.resetVariablesHorizontalOffset()
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -139,7 +149,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case tmdbValidateCmd, tmdbValidationMsg, tvdbValidateCmd, tvdbValidationMsg, omdbValidateCmd, omdbValidationMsg:
+	case saveStatusClearMsg:
+		if msg.id == m.saveID {
+			m.saveStatus = ""
+			m.err = nil
+		}
+		return m, tea.Batch(cmds...)
+
+	case providerValidateCmd, providerValidationMsg:
 		if cmd := m.handleProviderMessage(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -162,11 +179,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, tea.Quit)
 			return m, tea.Batch(cmds...)
 		case "ctrl+s":
-			m.save()
+			if cmd := m.save(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
 		case "ctrl+r":
-			m.reset()
+			if cmd := m.reset(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
 		case "tab":
@@ -218,23 +239,11 @@ func (m *Model) handleProviderMessage(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	switch msg := msg.(type) {
-	case tmdbValidateCmd:
-		_, cmd := m.providerSection.handleTMDBValidateCmd(msg)
+	case providerValidateCmd:
+		_, cmd := m.providerSection.handleProviderValidateCmd(msg)
 		return cmd
-	case tmdbValidationMsg:
-		_, cmd := m.providerSection.handleTMDBValidationMsg(msg)
-		return cmd
-	case tvdbValidateCmd:
-		_, cmd := m.providerSection.handleTVDBValidateCmd(msg)
-		return cmd
-	case tvdbValidationMsg:
-		_, cmd := m.providerSection.handleTVDBValidationMsg(msg)
-		return cmd
-	case omdbValidateCmd:
-		_, cmd := m.providerSection.handleOMDBValidateCmd(msg)
-		return cmd
-	case omdbValidationMsg:
-		_, cmd := m.providerSection.handleOMDBValidationMsg(msg)
+	case providerValidationMsg:
+		_, cmd := m.providerSection.handleProviderValidationMsg(msg)
 		return cmd
 	default:
 		return nil
@@ -432,7 +441,7 @@ func (m *Model) renderRightPanel(width, height int) string {
 		return panel.Render(sectionView)
 	}
 
-	previews := buildPreviews(m.activeSection(), &m.state, m.icons, m.templateRegistry)
+	previews := buildPreviews(m.activeSection(), &m.state, m.icons, m.providerRegistry)
 	previewView := m.renderPreview(previews, width-2)
 	separator := lipgloss.NewStyle().Foreground(m.theme.Colors().Muted).Render(strings.Repeat("─", max(width-2, 0)))
 
@@ -452,9 +461,9 @@ func (m *Model) renderPreview(previews []preview, width int) string {
 		lines = append(lines, line)
 	}
 	if m.activeSection() != SectionProviders && m.activeSection() != SectionLogging && m.activeSection() != SectionRename {
-		if !m.state.Providers.TMDB.Enabled && !m.state.Providers.TVDB.Enabled && !m.state.Providers.OMDB.Enabled {
+		if m.state.Providers.EnabledProviderCount() == 0 {
 			hintStyle := lipgloss.NewStyle().Foreground(m.theme.Colors().Accent).Italic(true)
-			lines = append(lines, "", hintStyle.Render("Enable TMDB, TVDB, or OMDb for richer variables"))
+			lines = append(lines, "", hintStyle.Render("Enable metadata providers for richer variables"))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -488,7 +497,7 @@ func (m *Model) renderStatusBar() string {
 	return line
 }
 
-func (m *Model) save() {
+func (m *Model) save() tea.Cmd {
 	m.config.ShowFolder = stripNullChars(m.state.Templates.Show.Input.Value())
 	m.config.SeasonFolder = stripNullChars(m.state.Templates.Season.Input.Value())
 	m.config.Episode = stripNullChars(m.state.Templates.Episode.Input.Value())
@@ -503,36 +512,26 @@ func (m *Model) save() {
 		m.config.LogRetentionDays = days
 	}
 
-	m.config.EnableTMDBLookup = m.state.Providers.TMDB.Enabled
-	m.config.TMDBAPIKey = stripNullChars(m.state.Providers.TMDB.APIKey.Value())
-	m.config.TMDBLanguage = stripNullChars(m.state.Providers.TMDB.Language.Value())
-	m.config.EnableTVDBLookup = m.state.Providers.TVDB.Enabled
-	m.config.TVDBAPIKey = stripNullChars(m.state.Providers.TVDB.APIKey.Value())
-	m.config.EnableOMDBLookup = m.state.Providers.OMDB.Enabled
-	m.config.OMDBAPIKey = stripNullChars(m.state.Providers.OMDB.APIKey.Value())
-	m.config.EnableFFProbe = m.state.Providers.FFProbeEnabled
+	applyProviderStateToConfig(m.config, &m.state.Providers)
 
 	workerCount := stripNullChars(m.state.Providers.WorkerCount.Value())
 	if workerCount == "" {
-		m.config.TMDBWorkerCount = 10
+		m.config.MetadataWorkerCount = 10
 	} else if count, err := strconv.Atoi(workerCount); err == nil && count > 0 {
-		m.config.TMDBWorkerCount = count
+		m.config.MetadataWorkerCount = count
 	} else {
-		m.config.TMDBWorkerCount = 10
+		m.config.MetadataWorkerCount = 10
 	}
 
 	if err := m.config.Save(); err != nil {
-		m.err = err
-		m.saveStatus = "Failed to save: " + err.Error()
-		return
+		return m.setSaveStatus("Failed to save: "+err.Error(), err)
 	}
 
-	m.err = nil
-	m.saveStatus = "Configuration saved!"
 	m.original = cloneFormatConfig(m.config)
+	return m.setSaveStatus("Configuration saved!", nil)
 }
 
-func (m *Model) reset() {
+func (m *Model) reset() tea.Cmd {
 	m.state.Templates.Show.Input.SetValue(m.original.ShowFolder)
 	m.state.Templates.Show.Input.CursorEnd()
 	m.state.Templates.Season.Input.SetValue(m.original.SeasonFolder)
@@ -547,29 +546,22 @@ func (m *Model) reset() {
 	m.state.Logging.Retention.SetValue(fmt.Sprintf("%d", m.original.LogRetentionDays))
 	m.state.Logging.Retention.CursorEnd()
 
-	m.state.Providers.TMDB.Enabled = m.original.EnableTMDBLookup
-	m.state.Providers.TMDB.APIKey.SetValue(m.original.TMDBAPIKey)
-	m.state.Providers.TMDB.APIKey.CursorEnd()
-	m.state.Providers.TMDB.Language.SetValue(m.original.TMDBLanguage)
-	m.state.Providers.TMDB.Language.CursorEnd()
-	m.state.Providers.TMDB.Validation.Reset()
+	m.state.Providers = buildProviderState(m.original, m.theme, m.providerRegistry)
+	if m.providerSection != nil {
+		m.providerSection.state = &m.state.Providers
+	}
 
-	m.state.Providers.TVDB.Enabled = m.original.EnableTVDBLookup
-	m.state.Providers.TVDB.APIKey.SetValue(m.original.TVDBAPIKey)
-	m.state.Providers.TVDB.APIKey.CursorEnd()
-	m.state.Providers.TVDB.Validation.Reset()
+	return m.setSaveStatus("Reset to saved values", nil)
+}
 
-	m.state.Providers.OMDB.Enabled = m.original.EnableOMDBLookup
-	m.state.Providers.OMDB.APIKey.SetValue(m.original.OMDBAPIKey)
-	m.state.Providers.OMDB.APIKey.CursorEnd()
-	m.state.Providers.OMDB.Validation.Reset()
-
-	m.state.Providers.FFProbeEnabled = m.original.EnableFFProbe
-	m.state.Providers.WorkerCount.SetValue(fmt.Sprintf("%d", m.original.TMDBWorkerCount))
-	m.state.Providers.WorkerCount.CursorEnd()
-
-	m.saveStatus = "Reset to saved values"
-	m.err = nil
+func (m *Model) setSaveStatus(status string, err error) tea.Cmd {
+	m.saveID++
+	id := m.saveID
+	m.saveStatus = status
+	m.err = err
+	return tea.Tick(saveStatusDuration, func(time.Time) tea.Msg {
+		return saveStatusClearMsg{id: id}
+	})
 }
 
 func (m *Model) disableVariablesAuto() {
@@ -622,9 +614,10 @@ func (m *Model) variablesOverflowing() bool {
 }
 
 func (m *Model) refreshVariablesPanel() {
-	vars := buildVariables(m.activeSection(), &m.state, m.templateRegistry)
+	vars := buildVariables(m.activeSection(), &m.state, m.providerRegistry)
 	if len(vars) == 0 {
 		m.variables.SetContent("")
+		m.resetVariablesHorizontalOffset()
 		return
 	}
 
@@ -642,6 +635,13 @@ func (m *Model) refreshVariablesPanel() {
 		lines = append(lines, "")
 	}
 	m.variables.SetContent(strings.Join(lines, "\n"))
+	m.resetVariablesHorizontalOffset()
+}
+
+func (m *Model) resetVariablesHorizontalOffset() {
+	if m.variables != nil {
+		m.variables.SetXOffset(0)
+	}
 }
 
 func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
@@ -653,19 +653,138 @@ func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
 		PreserveExistingTags: cfg.PreserveExistingTags,
 		LogRetentionDays:     cfg.LogRetentionDays,
 		EnableLogging:        cfg.EnableLogging,
-		TMDBAPIKey:           cfg.TMDBAPIKey,
-		EnableTMDBLookup:     cfg.EnableTMDBLookup,
-		TMDBLanguage:         cfg.TMDBLanguage,
-		TMDBWorkerCount:      cfg.TMDBWorkerCount,
-		TVDBAPIKey:           cfg.TVDBAPIKey,
-		EnableTVDBLookup:     cfg.EnableTVDBLookup,
-		OMDBAPIKey:           cfg.OMDBAPIKey,
-		EnableOMDBLookup:     cfg.EnableOMDBLookup,
-		EnableFFProbe:        cfg.EnableFFProbe,
+		MetadataWorkerCount:  cfg.MetadataWorkerCount,
+		Providers:            cloneProviderConfigs(cfg.Providers),
 	}
 }
 
-func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme) ConfigState {
+func cloneProviderConfigs(values map[string]config.ProviderConfig) map[string]config.ProviderConfig {
+	clone := make(map[string]config.ProviderConfig, len(values))
+	for name, value := range values {
+		configValues := make(map[string]interface{}, len(value.Config))
+		for key, configValue := range value.Config {
+			configValues[key] = configValue
+		}
+		clone[name] = config.ProviderConfig{
+			Enabled: value.Enabled,
+			Config:  configValues,
+		}
+	}
+	return clone
+}
+
+func applyProviderStateToConfig(cfg *config.FormatConfig, state *ProviderState) {
+	if cfg == nil || state == nil {
+		return
+	}
+	for _, providerState := range state.Providers {
+		providerName := providerState.Name()
+		cfg.SetProviderEnabled(providerName, providerState.Enabled)
+		for _, fieldState := range providerState.Fields {
+			cfg.SetProviderValue(providerName, fieldState.Schema.Name, providerInputValue(fieldState))
+		}
+	}
+}
+
+func providerInputValue(fieldState ProviderFieldState) interface{} {
+	value := stripNullChars(fieldState.Input.Value())
+	switch fieldState.Schema.Type {
+	case provider.ConfigFieldTypeInt:
+		if value == "" {
+			return 0
+		}
+		count, err := strconv.Atoi(value)
+		if err != nil {
+			return 0
+		}
+		return count
+	case provider.ConfigFieldTypeBool:
+		return strings.EqualFold(strings.TrimSpace(value), "true")
+	default:
+		return value
+	}
+}
+
+func buildProviderState(cfg *config.FormatConfig, th theme.Theme, reg *provider.Registry) ProviderState {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+
+	workerCount := cfg.MetadataWorkerCount
+	if workerCount <= 0 {
+		workerCount = config.DefaultConfig().MetadataWorkerCount
+	}
+	worker := textinput.New()
+	configureInput(&worker, th)
+	worker.SetValue(fmt.Sprintf("%d", workerCount))
+	worker.CursorEnd()
+	worker.CharLimit = 3
+
+	providerStates := make([]ProviderServiceState, 0)
+	for _, p := range config.ProvidersByDisplayOrder(reg) {
+		if p == nil || p.Capabilities().Local {
+			continue
+		}
+		providerConfig := cfg.Provider(p.Name())
+		fields := make([]ProviderFieldState, 0, len(p.ConfigSchema().Fields))
+		for _, schema := range p.ConfigSchema().Fields {
+			input := textinput.New()
+			configureInput(&input, th)
+			input.SetValue(providerFieldValueString(providerConfig, schema))
+			input.CursorEnd()
+			input.CharLimit = providerFieldLimit(schema)
+			fields = append(fields, ProviderFieldState{
+				Schema: schema,
+				Input:  input,
+			})
+		}
+		providerStates = append(providerStates, ProviderServiceState{
+			Provider: p,
+			Enabled:  providerConfig.Enabled,
+			Fields:   fields,
+		})
+	}
+
+	return ProviderState{
+		WorkerCount: worker,
+		Active:      ProviderFocus{Kind: ProviderFocusWorkers},
+		Providers:   providerStates,
+	}
+}
+
+func providerFieldValueString(providerConfig config.ProviderConfig, field provider.ConfigField) string {
+	value, ok := providerConfig.Config[field.Name]
+	if !ok && field.Default != nil {
+		value = field.Default
+	}
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
+}
+
+func providerFieldLimit(field provider.ConfigField) int {
+	if field.Validation != nil && field.Validation.MaxLength > 0 {
+		return field.Validation.MaxLength
+	}
+	if field.Type == provider.ConfigFieldTypeSelect && field.Validation != nil {
+		maxLen := 0
+		for _, option := range field.Validation.Options {
+			if len(option.Value) > maxLen {
+				maxLen = len(option.Value)
+			}
+		}
+		return maxLen
+	}
+	return 0
+}
+
+func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme, regs ...*provider.Registry) ConfigState {
+	var reg *provider.Registry
+	if len(regs) > 0 {
+		reg = regs[0]
+	}
+
 	tmpl := TemplateSections{
 		Show: TemplateSectionState{
 			Section: SectionShowFolder,
@@ -695,33 +814,6 @@ func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme) ConfigState 
 	retention.CursorEnd()
 	retention.CharLimit = 3
 
-	worker := textinput.New()
-	configureInput(&worker, th)
-	worker.SetValue(fmt.Sprintf("%d", cfg.TMDBWorkerCount))
-	worker.CursorEnd()
-	worker.CharLimit = 3
-
-	tmdbKey := textinput.New()
-	configureInput(&tmdbKey, th)
-	tmdbKey.SetValue(cfg.TMDBAPIKey)
-	tmdbKey.CursorEnd()
-
-	tmdbLang := textinput.New()
-	configureInput(&tmdbLang, th)
-	tmdbLang.SetValue(cfg.TMDBLanguage)
-	tmdbLang.CursorEnd()
-	tmdbLang.CharLimit = 5
-
-	tvdbKey := textinput.New()
-	configureInput(&tvdbKey, th)
-	tvdbKey.SetValue(cfg.TVDBAPIKey)
-	tvdbKey.CursorEnd()
-
-	omdbKey := textinput.New()
-	configureInput(&omdbKey, th)
-	omdbKey.SetValue(cfg.OMDBAPIKey)
-	omdbKey.CursorEnd()
-
 	return ConfigState{
 		Templates: tmpl,
 		Rename: RenameState{
@@ -732,24 +824,7 @@ func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme) ConfigState 
 			Focus:     LoggingFieldToggle,
 			Retention: retention,
 		},
-		Providers: ProviderState{
-			WorkerCount:    worker,
-			Active:         ProviderFieldWorkers,
-			FFProbeEnabled: cfg.EnableFFProbe,
-			TMDB: ProviderServiceState{
-				Enabled:  cfg.EnableTMDBLookup,
-				APIKey:   tmdbKey,
-				Language: tmdbLang,
-			},
-			TVDB: ProviderServiceState{
-				Enabled: cfg.EnableTVDBLookup,
-				APIKey:  tvdbKey,
-			},
-			OMDB: ProviderServiceState{
-				Enabled: cfg.EnableOMDBLookup,
-				APIKey:  omdbKey,
-			},
-		},
+		Providers: buildProviderState(cfg, th, reg),
 	}
 }
 

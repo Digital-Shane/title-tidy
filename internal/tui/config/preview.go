@@ -5,7 +5,6 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 )
 
 type preview struct {
@@ -14,7 +13,7 @@ type preview struct {
 	preview string
 }
 
-func buildPreviews(section Section, state *ConfigState, icons map[string]string, registry *config.TemplateRegistry) []preview {
+func buildPreviews(section Section, state *ConfigState, icons map[string]string, registry *provider.Registry) []preview {
 	switch section {
 	case SectionRename:
 		status := "Disabled"
@@ -42,51 +41,7 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		}
 
 	case SectionProviders:
-		tmdbStatus := "Disabled"
-		tmdbAPI := "Not configured"
-		tmdbLang := state.Providers.TMDB.Language.Value()
-		if state.Providers.TMDB.Enabled {
-			tmdbStatus = "Enabled"
-			tmdbAPI = validationLabel(state.Providers.TMDB.Validation)
-			if tmdbAPI == "" {
-				tmdbAPI = "Configured"
-			}
-		}
-		omdbStatus := "Disabled"
-		omdbAPI := "Not configured"
-		if state.Providers.OMDB.Enabled {
-			omdbStatus = "Enabled"
-			omdbAPI = validationLabel(state.Providers.OMDB.Validation)
-			if omdbAPI == "" {
-				omdbAPI = "Configured"
-			}
-		}
-		tvdbStatus := "Disabled"
-		tvdbAPI := "Not configured"
-		if state.Providers.TVDB.Enabled {
-			tvdbStatus = "Enabled"
-			tvdbAPI = validationLabel(state.Providers.TVDB.Validation)
-			if tvdbAPI == "" {
-				tvdbAPI = "Configured"
-			}
-		}
-		ffprobeStatus := "Disabled"
-		if state.Providers.FFProbeEnabled {
-			ffprobeStatus = "Enabled"
-		}
-		if tmdbLang == "" {
-			tmdbLang = "en-US"
-		}
-		return []preview{
-			{icons["chip"], "ffprobe", ffprobeStatus},
-			{icons["film"], "OMDb Lookup", omdbStatus},
-			{icons["key"], "OMDb API", omdbAPI},
-			{icons["film"], "TVDB Lookup", tvdbStatus},
-			{icons["key"], "TVDB API", tvdbAPI},
-			{icons["film"], "TMDB Lookup", tmdbStatus},
-			{icons["key"], "TMDB API", tmdbAPI},
-			{icons["globe"], "Language", tmdbLang},
-		}
+		return buildProviderPreviews(state, icons)
 	}
 
 	cfg := &config.FormatConfig{
@@ -160,22 +115,11 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		Config:    cfg,
 	}
 
-	var showPreview, seasonPreview, episodePreview, moviePreview string
-	if registry != nil {
-		showPreview, _ = registry.ResolveTemplate(cfg.ShowFolder, showCtx, showMetadata)
-		showPreview = local.CleanName(showPreview)
-		seasonPreview, _ = registry.ResolveTemplate(cfg.SeasonFolder, seasonCtx, showMetadata)
-		seasonPreview = local.CleanName(seasonPreview)
-		episodePreview, _ = registry.ResolveTemplate(cfg.Episode, episodeCtx, showMetadata)
-		episodePreview = local.CleanName(episodePreview) + ".mkv"
-		moviePreview, _ = registry.ResolveTemplate(cfg.Movie, movieCtx, movieMetadata)
-		moviePreview = local.CleanName(moviePreview)
-	} else {
-		showPreview = cfg.ApplyShowFolderTemplate(showCtx)
-		seasonPreview = cfg.ApplySeasonFolderTemplate(seasonCtx)
-		episodePreview = cfg.ApplyEpisodeTemplate(episodeCtx) + ".mkv"
-		moviePreview = cfg.ApplyMovieTemplate(movieCtx)
-	}
+	showPreview, _ := config.ResolveTemplate(cfg.ShowFolder, showCtx, showMetadata, registry)
+	seasonPreview, _ := config.ResolveTemplate(cfg.SeasonFolder, seasonCtx, showMetadata, registry)
+	episodePreview, _ := config.ResolveTemplate(cfg.Episode, episodeCtx, showMetadata, registry)
+	moviePreview, _ := config.ResolveTemplate(cfg.Movie, movieCtx, movieMetadata, registry)
+	episodePreview += ".mkv"
 
 	return []preview{
 		{icons["title"], "Show", showPreview},
@@ -183,6 +127,75 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		{icons["episode"], "Episode", episodePreview},
 		{icons["movie"], "Movie", moviePreview},
 	}
+}
+
+func buildProviderPreviews(state *ConfigState, icons map[string]string) []preview {
+	if state == nil {
+		return nil
+	}
+	previews := make([]preview, 0)
+	for _, providerState := range state.Providers.Providers {
+		status := "Disabled"
+		if providerState.Enabled {
+			status = "Enabled"
+		}
+		previews = append(previews, preview{providerIcon(providerState, icons), providerState.DisplayName(), status})
+		for _, fieldState := range providerState.Fields {
+			previews = append(previews, providerFieldPreview(providerState, fieldState, icons))
+		}
+	}
+	return previews
+}
+
+func providerFieldPreview(providerState ProviderServiceState, fieldState ProviderFieldState, icons map[string]string) preview {
+	label := fieldPreviewLabel(providerState, fieldState.Schema)
+	icon := providerFieldIcon(fieldState.Schema, icons)
+	value := fieldState.Input.Value()
+	if fieldState.Schema.Sensitive {
+		value = "Not configured"
+		if providerState.Enabled {
+			value = validationLabel(providerState.Validation)
+			if value == "" {
+				value = "Configured"
+			}
+		}
+	} else if fieldState.Schema.Default != nil {
+		if value == "" {
+			value = fmt.Sprint(fieldState.Schema.Default)
+		}
+	}
+	return preview{icon, label, value}
+}
+
+func fieldPreviewLabel(providerState ProviderServiceState, field provider.ConfigField) string {
+	if field.PreviewLabel != "" {
+		return field.PreviewLabel
+	}
+	if field.Sensitive {
+		return providerState.DisplayName() + " " + fieldLabel(field)
+	}
+	return fieldLabel(field)
+}
+
+func providerFieldIcon(field provider.ConfigField, icons map[string]string) string {
+	if field.Icon != "" {
+		if icon := icons[field.Icon]; icon != "" {
+			return icon
+		}
+	}
+	if field.Sensitive {
+		return icons["key"]
+	}
+	return icons["document"]
+}
+
+func providerIcon(providerState ProviderServiceState, icons map[string]string) string {
+	if providerState.Icon() != "" {
+		if icon := icons[providerState.Icon()]; icon != "" {
+			return icon
+		}
+	}
+	return icons["film"]
 }
 
 func validationLabel(v ProviderValidationState) string {
