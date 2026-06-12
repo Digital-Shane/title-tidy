@@ -11,7 +11,9 @@ import (
 	"github.com/Digital-Shane/title-tidy/internal/log"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/provider/local"
-	"github.com/Digital-Shane/title-tidy/internal/tui"
+	"github.com/Digital-Shane/title-tidy/internal/tui/components"
+	"github.com/Digital-Shane/title-tidy/internal/tui/progress"
+	"github.com/Digital-Shane/title-tidy/internal/tui/rename"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/Digital-Shane/treeview/v2"
 	"github.com/spf13/cobra"
@@ -54,7 +56,7 @@ func RunMediaCommand(cmd *cobra.Command, cmdConfig CommandConfig) error {
 	markFilesForDeletion(t)
 
 	// Create and configure the rename model
-	model := tui.NewRenameModel(t)
+	model := rename.NewRenameModel(t)
 	model.IsMovieMode = cmdConfig.IsMovieMode
 	model.LinkPath = linkPath
 	model.IsLinkMode = linkPath != ""
@@ -89,7 +91,7 @@ func validateLinkDestination(linkPath string) error {
 
 // indexFiles performs file indexing and tree creation
 func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*treeview.Tree[treeview.FileInfo], error) {
-	indexConfig := tui.IndexConfig{
+	indexConfig := progress.IndexConfig{
 		MaxDepth:    cmdConfig.MaxDepth,
 		IncludeDirs: cmdConfig.IncludeDirs,
 		Filter:      createIndexFilter(),
@@ -114,21 +116,21 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 	t = treeview.NewTree(nodes,
 		treeview.WithExpandAll[treeview.FileInfo](),
 		treeview.WithFilterFunc(createMediaFilter(cmdConfig.IncludeDirs)),
-		treeview.WithProvider(tui.CreateRenameProvider()),
+		treeview.WithProvider(components.CreateRenameProvider()),
 	)
 
 	return t, nil
 }
 
-func runIndexing(indexConfig tui.IndexConfig) (*treeview.Tree[treeview.FileInfo], error) {
-	idxModel := tui.NewIndexProgressModel(".", indexConfig, theme.Default())
+func runIndexing(indexConfig progress.IndexConfig) (*treeview.Tree[treeview.FileInfo], error) {
+	idxModel := progress.NewIndexProgressModel(".", indexConfig, theme.Default())
 
 	finalModel, err := tea.NewProgram(idxModel).Run()
 	if err != nil {
 		return nil, err
 	}
 
-	im, ok := finalModel.(*tui.IndexProgressModel)
+	im, ok := finalModel.(*progress.IndexProgressModel)
 	if !ok {
 		return nil, fmt.Errorf("unexpected model type %T after indexing", finalModel)
 	}
@@ -136,40 +138,34 @@ func runIndexing(indexConfig tui.IndexConfig) (*treeview.Tree[treeview.FileInfo]
 	return im.Tree(), nil
 }
 
-// fetchMetadataIfEnabled fetches TMDB metadata if configured
+// fetchMetadataIfEnabled fetches metadata when any registry provider is enabled.
 func fetchMetadataIfEnabled(t *treeview.Tree[treeview.FileInfo], formatConfig *config.FormatConfig) map[string]*provider.Metadata {
+	_ = config.EnsureBuiltinProviders()
 	shouldFetch := false
-	if formatConfig.EnableTMDBLookup && formatConfig.TMDBAPIKey != "" {
-		shouldFetch = true
+	for _, runtime := range formatConfig.ProviderRuntimeConfigs(nil) {
+		if runtime.Enabled {
+			shouldFetch = true
+			break
+		}
 	}
-	if formatConfig.EnableOMDBLookup && formatConfig.OMDBAPIKey != "" {
-		shouldFetch = true
-	}
-	if formatConfig.EnableTVDBLookup && formatConfig.TVDBAPIKey != "" {
-		shouldFetch = true
-	}
-	if formatConfig.EnableFFProbe {
-		shouldFetch = true
-	}
-
 	if !shouldFetch {
 		return nil
 	}
 
-	metaModel := tui.NewMetadataProgressModel(t, formatConfig, theme.Default())
+	metaModel := progress.NewMetadataProgressModel(t, formatConfig, theme.Default())
 	finalMetaModel, err := tea.NewProgram(metaModel).Run()
 	if err != nil {
 		return nil
 	}
 
-	if mm, ok := finalMetaModel.(*tui.MetadataProgressModel); ok {
+	if mm, ok := finalMetaModel.(*progress.MetadataProgressModel); ok {
 		return mm.Metadata()
 	}
 	return nil
 }
 
 // executeInstantMode runs the rename operation in non-interactive mode
-func executeInstantMode(model *tui.RenameModel, commandName string, commandArgs []string) error {
+func executeInstantMode(model *rename.RenameModel, commandName string, commandArgs []string) error {
 	model.Command = commandName
 	model.CommandArgs = commandArgs
 	result := model.NewOperationEngine().RunToCompletion()
@@ -275,7 +271,7 @@ func fetchLocalMetadata(ctx context.Context, node *treeview.Node[treeview.FileIn
 		MediaType: mediaType,
 		Name:      node.Name(),
 		Extra: map[string]any{
-			"node": node,
+			provider.FetchRequestExtraNode: node,
 		},
 	})
 }

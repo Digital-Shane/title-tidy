@@ -53,12 +53,42 @@ func (p *Provider) Capabilities() provider.ProviderCapabilities {
 		},
 		RequiresAuth: true,
 		Priority:     90,
+		DisplayName:  "OMDb",
+		DisplayOrder: 30,
+		Icon:         "film",
 	}
 }
 
 // SupportedVariables returns the template variables supported by OMDb.
 func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 	return []provider.TemplateVariable{
+		{
+			Name:        "title",
+			DisplayName: "Title",
+			Description: "Show or movie title from OMDb",
+			MediaTypes: []provider.MediaType{
+				provider.MediaTypeMovie,
+				provider.MediaTypeShow,
+				provider.MediaTypeSeason,
+				provider.MediaTypeEpisode,
+			},
+			Example:     "Breaking Bad",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyTitle,
+		},
+		{
+			Name:        "year",
+			DisplayName: "Year",
+			Description: "Release year from OMDb",
+			MediaTypes:  []provider.MediaType{provider.MediaTypeMovie, provider.MediaTypeShow},
+			Example:     "2008",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyYear,
+		},
 		{
 			Name:        "rating",
 			DisplayName: "Rating",
@@ -68,6 +98,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "ratings",
 			Format:      "number",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyRating,
 		},
 		{
 			Name:        "genres",
@@ -78,6 +110,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "basic",
 			Format:      "list",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyGenres,
 		},
 		{
 			Name:        "networks",
@@ -88,6 +122,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "production",
 			Format:      "list",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "networks",
 		},
 		{
 			Name:        "episode_title",
@@ -97,6 +133,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "Pilot",
 			Category:    "basic",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyEpisodeTitle,
 		},
 		{
 			Name:        "imdb_id",
@@ -106,6 +144,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "tt0133093",
 			Category:    "identifiers",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceID,
+			ValueKey:    "imdb_id",
 		},
 	}
 }
@@ -115,12 +155,14 @@ func (p *Provider) ConfigSchema() provider.ConfigSchema {
 	return provider.ConfigSchema{
 		Fields: []provider.ConfigField{
 			{
-				Name:        "api_key",
-				DisplayName: "API Key",
-				Type:        provider.ConfigFieldTypePassword,
-				Required:    true,
-				Description: "OMDb API key. Request one from https://www.omdbapi.com/apikey.aspx",
-				Sensitive:   true,
+				Name:         "api_key",
+				DisplayName:  "API Key",
+				Type:         provider.ConfigFieldTypePassword,
+				Required:     true,
+				Description:  "OMDb API key. Request one from https://www.omdbapi.com/apikey.aspx",
+				Sensitive:    true,
+				Icon:         "key",
+				PreviewLabel: "OMDb API",
 				Validation: &provider.ConfigFieldValidation{
 					MinLength: 8,
 					MaxLength: 64,

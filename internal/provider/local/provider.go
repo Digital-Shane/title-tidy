@@ -45,6 +45,10 @@ func (p *Provider) Capabilities() provider.ProviderCapabilities {
 		},
 		RequiresAuth: false,
 		Priority:     0, // Lowest priority, but always enabled
+		DisplayName:  "Local",
+		DisplayOrder: 0,
+		Icon:         "folder",
+		Local:        true,
 	}
 }
 
@@ -61,9 +65,11 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 				provider.MediaTypeSeason,
 				provider.MediaTypeEpisode,
 			},
-			Example:  "Breaking Bad",
-			Category: "basic",
-			Provider: providerName,
+			Example:     "Breaking Bad",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceContext,
+			ValueKey:    provider.TemplateValueKeyTitle,
 		},
 		{
 			Name:        "year",
@@ -72,10 +78,14 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			MediaTypes: []provider.MediaType{
 				provider.MediaTypeMovie,
 				provider.MediaTypeShow,
+				provider.MediaTypeSeason,
+				provider.MediaTypeEpisode,
 			},
-			Example:  "2008",
-			Category: "basic",
-			Provider: providerName,
+			Example:     "2008",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceContext,
+			ValueKey:    provider.TemplateValueKeyYear,
 		},
 		{
 			Name:        "season",
@@ -85,9 +95,11 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 				provider.MediaTypeSeason,
 				provider.MediaTypeEpisode,
 			},
-			Example:  "01",
-			Category: "basic",
-			Provider: providerName,
+			Example:     "01",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceContext,
+			ValueKey:    provider.TemplateValueKeySeason,
 		},
 		{
 			Name:        "episode",
@@ -96,9 +108,11 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			MediaTypes: []provider.MediaType{
 				provider.MediaTypeEpisode,
 			},
-			Example:  "05",
-			Category: "basic",
-			Provider: providerName,
+			Example:     "05",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceContext,
+			ValueKey:    provider.TemplateValueKeyEpisode,
 		},
 	}
 }
@@ -132,7 +146,7 @@ func (p *Provider) Fetch(ctx context.Context, request provider.FetchRequest) (*p
 	// Extract node from Extra if available
 	var node *treeview.Node[treeview.FileInfo]
 	if request.Extra != nil {
-		if n, ok := request.Extra["node"].(*treeview.Node[treeview.FileInfo]); ok {
+		if n, ok := request.Extra[provider.FetchRequestExtraNode].(*treeview.Node[treeview.FileInfo]); ok {
 			node = n
 		}
 	}

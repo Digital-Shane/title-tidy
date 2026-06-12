@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestMetadataProgressShouldRunFFProbe(t *testing.T) {
+func TestMetadataProgressShouldRunFilePathProvider(t *testing.T) {
 	movieNode := newMetadataFileNode("movie", "movie.mkv", "/library/movie.mkv", false)
 	dirNode := newMetadataFileNode("dir", "movie", "/library/movie", true)
 	subtitleNode := newMetadataFileNode("subtitle", "movie.srt", "/library/movie.srt", false)
@@ -49,15 +49,15 @@ func TestMetadataProgressShouldRunFFProbe(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := core.ShouldRunFFProbe(tc.item)
+			got := core.ShouldRunFilePathProvider(tc.item)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("ShouldRunFFProbe(%s) mismatch (-want +got):%s", tc.name, diff)
+				t.Errorf("ShouldRunFilePathProvider(%s) mismatch (-want +got):%s", tc.name, diff)
 			}
 		})
 	}
 }
 
-func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
+func TestMetadataProgressFetchFilePathMetadata(t *testing.T) {
 	videoNode := newMetadataFileNode("video", "movie.mkv", "/library/movie.mkv", false)
 	missingPathNode := newMetadataFileNode("missing", "movie.mkv", "", false)
 	episodeNode := newMetadataFileNode("episode", "episode.mkv", "/library/episode.mkv", false)
@@ -106,7 +106,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 				t.Helper()
 				var provErr *provider.ProviderError
 				if !errors.As(err, &provErr) {
-					t.Fatalf("fetchFFProbeMetadata() error = %v, want *provider.ProviderError", err)
+					t.Fatalf("FetchFilePathMetadata() error = %v, want *provider.ProviderError", err)
 				}
 				if diff := cmp.Diff("MISSING_PATH", provErr.Code); diff != "" {
 					t.Errorf("provider error code mismatch (-want +got):\n%s", diff)
@@ -131,7 +131,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 				if diff := cmp.Diff(provider.MediaTypeMovie, req.MediaType); diff != "" {
 					t.Errorf("media type mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff("/library/movie.mkv", req.Extra["path"]); diff != "" {
+				if diff := cmp.Diff("/library/movie.mkv", req.Extra[provider.FetchRequestExtraFilePath]); diff != "" {
 					t.Errorf("path extra mismatch (-want +got):\n%s", diff)
 				}
 				if diff := cmp.Diff("Movie", req.Name); diff != "" {
@@ -166,7 +166,7 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 				if diff := cmp.Diff(2, req.Episode); diff != "" {
 					t.Errorf("episode mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff("/library/episode.mkv", req.Extra["path"]); diff != "" {
+				if diff := cmp.Diff("/library/episode.mkv", req.Extra[provider.FetchRequestExtraFilePath]); diff != "" {
 					t.Errorf("path extra mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -186,12 +186,12 @@ func TestMetadataProgressFetchFFProbeMetadata(t *testing.T) {
 				})
 			}
 
-			gotMeta, err := core.FetchFFProbeMetadata(context.Background(), prov, tc.item)
+			gotMeta, err := core.FetchFilePathMetadata(context.Background(), prov, tc.item)
 
 			if tc.wantErrCheck != nil {
 				tc.wantErrCheck(t, err)
 			} else if err != nil {
-				t.Fatalf("fetchFFProbeMetadata() unexpected error = %v", err)
+				t.Fatalf("FetchFilePathMetadata() unexpected error = %v", err)
 			}
 
 			if diff := cmp.Diff(tc.wantProviderCall, called); diff != "" {

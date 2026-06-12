@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 )
 
 // Section represents each top-level configuration panel.
@@ -72,43 +73,123 @@ type LoggingState struct {
 // ProviderState stores metadata provider configuration and focus management.
 type ProviderState struct {
 	WorkerCount textinput.Model
-	Active      ProviderField
-
-	FFProbeEnabled bool
-	TMDB           ProviderServiceState
-	TVDB           ProviderServiceState
-	OMDB           ProviderServiceState
+	Active      ProviderFocus
+	Providers   []ProviderServiceState
 }
 
-// ProviderField enumerates focusable inputs within the provider section UI.
-type ProviderField int
+// Provider returns a provider state by stable provider name.
+func (p *ProviderState) Provider(name string) *ProviderServiceState {
+	if p == nil {
+		return nil
+	}
+	for i := range p.Providers {
+		if p.Providers[i].Name() == name {
+			return &p.Providers[i]
+		}
+	}
+	return nil
+}
+
+// EnabledProviderCount returns the number of enabled metadata providers.
+func (p *ProviderState) EnabledProviderCount() int {
+	if p == nil {
+		return 0
+	}
+	count := 0
+	for _, providerState := range p.Providers {
+		if providerState.Enabled {
+			count++
+		}
+	}
+	return count
+}
+
+// ProviderFocusKind identifies the kind of focused provider control.
+type ProviderFocusKind int
 
 const (
-	ProviderFieldWorkers ProviderField = iota
-	ProviderFieldFFProbe
-	ProviderFieldOMDBToggle
-	ProviderFieldOMDBKey
-	ProviderFieldTMDBToggle
-	ProviderFieldTMDBKey
-	ProviderFieldTMDBLanguage
-	ProviderFieldTVDBToggle
-	ProviderFieldTVDBKey
+	ProviderFocusWorkers ProviderFocusKind = iota
+	ProviderFocusToggle
+	ProviderFocusField
 )
 
-// ProviderServiceState describes the configuration for a single provider.
+// ProviderFocus identifies a focusable provider control.
+type ProviderFocus struct {
+	Kind         ProviderFocusKind
+	ProviderName string
+	FieldName    string
+}
+
+// ProviderServiceState describes the UI state for a single provider.
 type ProviderServiceState struct {
-	Enabled bool
-
-	APIKey   textinput.Model
-	Language textinput.Model
-
+	Provider   provider.Provider
+	Enabled    bool
+	Fields     []ProviderFieldState
 	Validation ProviderValidationState
 }
 
-// MaskedAPIKey returns the masked representation of the API key using the
-// provided prefix/suffix visibility values.
-func (p ProviderServiceState) MaskedAPIKey(prefix, suffix int) string {
-	return maskAPIKeyVisible(p.APIKey.Value(), prefix, suffix)
+func (p *ProviderServiceState) Name() string {
+	if p == nil || p.Provider == nil {
+		return ""
+	}
+	return p.Provider.Name()
+}
+
+func (p *ProviderServiceState) DisplayName() string {
+	if p == nil || p.Provider == nil {
+		return ""
+	}
+	if displayName := strings.TrimSpace(p.Provider.Capabilities().DisplayName); displayName != "" {
+		return displayName
+	}
+	return p.Provider.Name()
+}
+
+func (p *ProviderServiceState) Description() string {
+	if p == nil || p.Provider == nil {
+		return ""
+	}
+	return p.Provider.Description()
+}
+
+func (p *ProviderServiceState) Icon() string {
+	if p == nil || p.Provider == nil {
+		return ""
+	}
+	return p.Provider.Capabilities().Icon
+}
+
+// Field returns one configured provider field by schema name.
+func (p *ProviderServiceState) Field(name string) *ProviderFieldState {
+	if p == nil {
+		return nil
+	}
+	for i := range p.Fields {
+		if p.Fields[i].Schema.Name == name {
+			return &p.Fields[i]
+		}
+	}
+	return nil
+}
+
+// RequiredPasswordField returns the first required password field, when present.
+func (p *ProviderServiceState) RequiredPasswordField() *ProviderFieldState {
+	if p == nil {
+		return nil
+	}
+	for i := range p.Fields {
+		field := p.Fields[i].Schema
+		if field.Required && field.Type == provider.ConfigFieldTypePassword {
+			return &p.Fields[i]
+		}
+	}
+	return nil
+}
+
+// ProviderFieldState stores UI state for one provider config field.
+type ProviderFieldState struct {
+	Schema provider.ConfigField
+	Input  textinput.Model
 }
 
 // ProviderValidationState tracks validation status for API-backed providers.

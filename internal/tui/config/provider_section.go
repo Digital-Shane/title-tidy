@@ -1,10 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
+	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
+	"github.com/atotto/clipboard"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -16,25 +19,17 @@ type providerSection struct {
 	icons map[string]string
 	width int
 
-	tmdbValidate func(string) tea.Cmd
-	tmdbDebounce func(string) tea.Cmd
-	tvdbValidate func(string) tea.Cmd
-	tvdbDebounce func(string) tea.Cmd
-	omdbValidate func(string) tea.Cmd
-	omdbDebounce func(string) tea.Cmd
+	validate func(providerName, fieldName, value string) tea.Cmd
+	debounce func(providerName, fieldName, value string) tea.Cmd
 }
 
 func newProviderSection(state *ProviderState, th theme.Theme) *providerSection {
 	return &providerSection{
-		state:        state,
-		theme:        th,
-		icons:        th.IconSet(),
-		tmdbValidate: validateTMDBAPIKey,
-		tmdbDebounce: debouncedTMDBValidate,
-		tvdbValidate: validateTVDBAPIKey,
-		tvdbDebounce: debouncedTVDBValidate,
-		omdbValidate: validateOMDBAPIKey,
-		omdbDebounce: debouncedOMDBValidate,
+		state:    state,
+		theme:    th,
+		icons:    th.IconSet(),
+		validate: validateProviderAPIKey,
+		debounce: debouncedProviderValidate,
 	}
 }
 
@@ -51,18 +46,14 @@ func (p *providerSection) Focus() tea.Cmd {
 
 func (p *providerSection) Blur() {
 	p.state.WorkerCount.Blur()
-	p.state.TMDB.APIKey.Blur()
-	p.state.TMDB.Language.Blur()
-	p.state.TVDB.APIKey.Blur()
-	p.state.OMDB.APIKey.Blur()
-}
-
-func (p *providerSection) Resize(width int) {
-	p.width = width
-	if width > 0 {
-
+	for i := range p.state.Providers {
+		for j := range p.state.Providers[i].Fields {
+			p.state.Providers[i].Fields[j].Input.Blur()
+		}
 	}
 }
+
+func (p *providerSection) Resize(width int) { p.width = width }
 
 func (p *providerSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m := msg.(type) {
@@ -72,18 +63,13 @@ func (p *providerSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		p.ensureActiveField()
 		return p, p.handleKey(m)
-	case tmdbValidateCmd:
-		return p.handleTMDBValidateCmd(m)
-	case tmdbValidationMsg:
-		return p.handleTMDBValidationMsg(m)
-	case tvdbValidateCmd:
-		return p.handleTVDBValidateCmd(m)
-	case tvdbValidationMsg:
-		return p.handleTVDBValidationMsg(m)
-	case omdbValidateCmd:
-		return p.handleOMDBValidateCmd(m)
-	case omdbValidationMsg:
-		return p.handleOMDBValidationMsg(m)
+	case tea.PasteMsg:
+		p.ensureActiveField()
+		return p, p.handlePaste(m)
+	case providerValidateCmd:
+		return p.handleProviderValidateCmd(m)
+	case providerValidationMsg:
+		return p.handleProviderValidationMsg(m)
 	}
 	return p, nil
 }
@@ -98,7 +84,9 @@ func (p *providerSection) handleKey(key tea.KeyPressMsg) tea.Cmd {
 		if key.String() == "space" && key.Mod.Contains(tea.ModAlt) {
 			return nil
 		}
-		return p.toggleActive()
+		if cmd, handled := p.toggleActive(); handled {
+			return cmd
+		}
 	}
 
 	if cmd, handled := p.handleTextInputs(key); handled {
@@ -125,22 +113,21 @@ func (p *providerSection) moveFocus(delta int) tea.Cmd {
 	return p.applyFocus()
 }
 
-func (p *providerSection) focusOrder() []ProviderField {
-	fields := []ProviderField{
-		ProviderFieldWorkers,
-		ProviderFieldFFProbe,
-		ProviderFieldOMDBToggle,
-	}
-	if p.state.OMDB.Enabled {
-		fields = append(fields, ProviderFieldOMDBKey)
-	}
-	fields = append(fields, ProviderFieldTMDBToggle)
-	if p.state.TMDB.Enabled {
-		fields = append(fields, ProviderFieldTMDBKey, ProviderFieldTMDBLanguage)
-	}
-	fields = append(fields, ProviderFieldTVDBToggle)
-	if p.state.TVDB.Enabled {
-		fields = append(fields, ProviderFieldTVDBKey)
+func (p *providerSection) focusOrder() []ProviderFocus {
+	fields := []ProviderFocus{{Kind: ProviderFocusWorkers}}
+	for _, providerState := range p.state.Providers {
+		providerName := providerState.Name()
+		fields = append(fields, ProviderFocus{Kind: ProviderFocusToggle, ProviderName: providerName})
+		if !providerState.Enabled {
+			continue
+		}
+		for _, field := range providerState.Fields {
+			fields = append(fields, ProviderFocus{
+				Kind:         ProviderFocusField,
+				ProviderName: providerName,
+				FieldName:    field.Schema.Name,
+			})
+		}
 	}
 	return fields
 }
@@ -158,384 +145,267 @@ func (p *providerSection) ensureActiveField() {
 	p.state.Active = fields[0]
 }
 
-func (p *providerSection) toggleActive() tea.Cmd {
-	switch p.state.Active {
-	case ProviderFieldFFProbe:
-		p.state.FFProbeEnabled = !p.state.FFProbeEnabled
-		return nil
-	case ProviderFieldOMDBToggle:
-		p.state.OMDB.Enabled = !p.state.OMDB.Enabled
-		if !p.state.OMDB.Enabled {
-			p.state.OMDB.Validation.Reset()
+func (p *providerSection) toggleActive() (tea.Cmd, bool) {
+	switch p.state.Active.Kind {
+	case ProviderFocusToggle:
+		providerState := p.providerState(p.state.Active.ProviderName)
+		if providerState == nil {
+			return nil, true
+		}
+		providerState.Enabled = !providerState.Enabled
+		if !providerState.Enabled {
+			providerState.Validation.Reset()
 			p.ensureActiveField()
-			return p.applyFocus()
+			return p.applyFocus(), true
 		}
-		if cmd := p.queueOMDBValidation(); cmd != nil {
-			return tea.Batch(p.applyFocus(), cmd)
+		return tea.Batch(p.applyFocus(), p.queueValidation(providerState)), true
+	case ProviderFocusField:
+		providerState := p.providerState(p.state.Active.ProviderName)
+		fieldState := p.activeField()
+		if providerState == nil || fieldState == nil || !providerState.Enabled {
+			return nil, false
 		}
-		return p.applyFocus()
-	case ProviderFieldTMDBToggle:
-		p.state.TMDB.Enabled = !p.state.TMDB.Enabled
-		if !p.state.TMDB.Enabled {
-			p.state.TMDB.Validation.Reset()
-			p.ensureActiveField()
-			return p.applyFocus()
+		if fieldState.Schema.Type != provider.ConfigFieldTypeBool {
+			return nil, false
 		}
-		if cmd := p.queueTMDBValidation(); cmd != nil {
-			return tea.Batch(p.applyFocus(), cmd)
-		}
-		return p.applyFocus()
-	case ProviderFieldTVDBToggle:
-		p.state.TVDB.Enabled = !p.state.TVDB.Enabled
-		if !p.state.TVDB.Enabled {
-			p.state.TVDB.Validation.Reset()
-			p.ensureActiveField()
-			return p.applyFocus()
-		}
-		if cmd := p.queueTVDBValidation(); cmd != nil {
-			return tea.Batch(p.applyFocus(), cmd)
-		}
-		return p.applyFocus()
+		fieldState.Input.SetValue(toggleBoolString(fieldState.Input.Value()))
+		fieldState.Input.CursorEnd()
+		return nil, true
 	}
-	return nil
+	return nil, false
 }
 
 func (p *providerSection) applyFocus() tea.Cmd {
 	p.state.WorkerCount.Blur()
-	p.state.TMDB.APIKey.Blur()
-	p.state.TMDB.Language.Blur()
-	p.state.TVDB.APIKey.Blur()
-	p.state.OMDB.APIKey.Blur()
+	for i := range p.state.Providers {
+		for j := range p.state.Providers[i].Fields {
+			p.state.Providers[i].Fields[j].Input.Blur()
+		}
+	}
 
-	switch p.state.Active {
-	case ProviderFieldWorkers:
+	if p.state.Active.Kind == ProviderFocusWorkers {
 		return p.state.WorkerCount.Focus()
-	case ProviderFieldOMDBKey:
-		if p.state.OMDB.Enabled {
-			return p.state.OMDB.APIKey.Focus()
-		}
-	case ProviderFieldTMDBKey:
-		if p.state.TMDB.Enabled {
-			return p.state.TMDB.APIKey.Focus()
-		}
-	case ProviderFieldTMDBLanguage:
-		if p.state.TMDB.Enabled {
-			return p.state.TMDB.Language.Focus()
-		}
-	case ProviderFieldTVDBKey:
-		if p.state.TVDB.Enabled {
-			return p.state.TVDB.APIKey.Focus()
-		}
+	}
+
+	providerState := p.providerState(p.state.Active.ProviderName)
+	fieldState := p.activeField()
+	if providerState != nil && providerState.Enabled && fieldState != nil {
+		return fieldState.Input.Focus()
 	}
 	return nil
 }
 
 func (p *providerSection) handleTextInputs(key tea.KeyPressMsg) (tea.Cmd, bool) {
-	switch p.state.Active {
-	case ProviderFieldWorkers:
+	if p.state.Active.Kind == ProviderFocusWorkers {
 		if key.String() == "space" {
 			return nil, true
+		}
+		if key.String() == "ctrl+v" {
+			return readClipboardPaste(), true
 		}
 		if key.Text != "" {
-			digits := make([]rune, 0, len(key.Text))
-			for _, r := range key.Text {
-				if unicode.IsDigit(r) {
-					digits = append(digits, r)
-				}
-			}
-			if len(digits) == 0 {
+			digits := filterDigits(key.Text)
+			if digits == "" {
 				return nil, true
 			}
-			key = tea.KeyPressMsg{Code: digits[0], Text: string(digits)}
+			key = tea.KeyPressMsg{Code: []rune(digits)[0], Text: digits}
 		}
-		prev := p.state.WorkerCount.Value()
-		var cmd tea.Cmd
-		p.state.WorkerCount, cmd = p.state.WorkerCount.Update(key)
-		if prev != p.state.WorkerCount.Value() {
-			return cmd, true
-		}
-		return cmd, true
+		return p.updateWorkerInput(key), true
+	}
 
-	case ProviderFieldOMDBKey:
-		if !p.state.OMDB.Enabled {
-			return nil, false
-		}
-		if key.String() == "space" {
+	if p.state.Active.Kind != ProviderFocusField {
+		return nil, false
+	}
+	providerState := p.providerState(p.state.Active.ProviderName)
+	fieldState := p.activeField()
+	if providerState == nil || fieldState == nil || !providerState.Enabled {
+		return nil, false
+	}
+	if fieldState.Schema.Type == provider.ConfigFieldTypeBool {
+		return nil, false
+	}
+	if key.String() == "space" && fieldState.Schema.Type == provider.ConfigFieldTypePassword {
+		return nil, true
+	}
+	if key.String() == "ctrl+v" {
+		return readClipboardPaste(), true
+	}
+	if key.Text != "" {
+		filtered := filterProviderInput(fieldState.Schema, key.Text)
+		if filtered == "" {
 			return nil, true
 		}
-		prev := p.state.OMDB.APIKey.Value()
-		var cmd tea.Cmd
-		p.state.OMDB.APIKey, cmd = p.state.OMDB.APIKey.Update(key)
-		if prev != p.state.OMDB.APIKey.Value() {
-			if debounced := p.queueOMDBValidation(); debounced != nil {
-				cmd = tea.Batch(cmd, debounced)
-			}
-		}
-		return cmd, true
-
-	case ProviderFieldTMDBKey:
-		if !p.state.TMDB.Enabled {
-			return nil, false
-		}
-		if key.String() == "space" {
-			return nil, true
-		}
-		prev := p.state.TMDB.APIKey.Value()
-		var cmd tea.Cmd
-		p.state.TMDB.APIKey, cmd = p.state.TMDB.APIKey.Update(key)
-		if prev != p.state.TMDB.APIKey.Value() {
-			if debounced := p.queueTMDBValidation(); debounced != nil {
-				cmd = tea.Batch(cmd, debounced)
-			}
-		}
-		return cmd, true
-
-	case ProviderFieldTMDBLanguage:
-		if !p.state.TMDB.Enabled {
-			return nil, false
-		}
-		if key.Text != "" {
-			filtered := make([]rune, 0, len(key.Text))
-			for _, r := range key.Text {
-				if unicode.IsLetter(r) || r == '-' {
-					filtered = append(filtered, r)
-				}
-			}
-			if len(filtered) == 0 {
-				return nil, true
-			}
-			key = tea.KeyPressMsg{Code: filtered[0], Text: string(filtered)}
-		}
-		prev := p.state.TMDB.Language.Value()
-		var cmd tea.Cmd
-		p.state.TMDB.Language, cmd = p.state.TMDB.Language.Update(key)
-		if prev != p.state.TMDB.Language.Value() {
-			// Language changes don't trigger validation directly.
-		}
-		return cmd, true
-
-	case ProviderFieldTVDBKey:
-		if !p.state.TVDB.Enabled {
-			return nil, false
-		}
-		if key.String() == "space" {
-			return nil, true
-		}
-		prev := p.state.TVDB.APIKey.Value()
-		var cmd tea.Cmd
-		p.state.TVDB.APIKey, cmd = p.state.TVDB.APIKey.Update(key)
-		if prev != p.state.TVDB.APIKey.Value() {
-			if debounced := p.queueTVDBValidation(); debounced != nil {
-				cmd = tea.Batch(cmd, debounced)
-			}
-		}
-		return cmd, true
+		key = tea.KeyPressMsg{Code: []rune(filtered)[0], Text: filtered}
 	}
 
-	return nil, false
+	return p.updateProviderInput(providerState, fieldState, key), true
 }
 
-func (p *providerSection) queueTMDBValidation() tea.Cmd {
-	if !p.state.TMDB.Enabled {
+func (p *providerSection) handlePaste(msg tea.PasteMsg) tea.Cmd {
+	if p.state.Active.Kind == ProviderFocusWorkers {
+		digits := filterDigits(msg.Content)
+		if digits == "" {
+			return nil
+		}
+		return p.updateWorkerInput(tea.PasteMsg{Content: digits})
+	}
+
+	if p.state.Active.Kind != ProviderFocusField {
 		return nil
 	}
-	key := strings.TrimSpace(p.state.TMDB.APIKey.Value())
-	p.state.TMDB.Validation.Reset()
-	if key == "" {
+	providerState := p.providerState(p.state.Active.ProviderName)
+	fieldState := p.activeField()
+	if providerState == nil || fieldState == nil || !providerState.Enabled {
 		return nil
 	}
-	return p.tmdbDebounce(key)
+	if fieldState.Schema.Type == provider.ConfigFieldTypeBool {
+		return nil
+	}
+	filtered := filterProviderInput(fieldState.Schema, msg.Content)
+	if filtered == "" {
+		return nil
+	}
+	return p.updateProviderInput(providerState, fieldState, tea.PasteMsg{Content: filtered})
 }
 
-func (p *providerSection) queueOMDBValidation() tea.Cmd {
-	if !p.state.OMDB.Enabled {
-		return nil
-	}
-	key := strings.TrimSpace(p.state.OMDB.APIKey.Value())
-	p.state.OMDB.Validation.Reset()
-	if key == "" {
-		return nil
-	}
-	return p.omdbDebounce(key)
+func (p *providerSection) updateWorkerInput(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	p.state.WorkerCount, cmd = p.state.WorkerCount.Update(msg)
+	return cmd
 }
 
-func (p *providerSection) queueTVDBValidation() tea.Cmd {
-	if !p.state.TVDB.Enabled {
-		return nil
+func (p *providerSection) updateProviderInput(providerState *ProviderServiceState, fieldState *ProviderFieldState, msg tea.Msg) tea.Cmd {
+	prev := fieldState.Input.Value()
+	var cmd tea.Cmd
+	fieldState.Input, cmd = fieldState.Input.Update(msg)
+	if prev != fieldState.Input.Value() && isValidationField(fieldState.Schema) {
+		if debounced := p.queueValidation(providerState); debounced != nil {
+			cmd = tea.Batch(cmd, debounced)
+		}
 	}
-	key := strings.TrimSpace(p.state.TVDB.APIKey.Value())
-	p.state.TVDB.Validation.Reset()
-	if key == "" {
-		return nil
-	}
-	return p.tvdbDebounce(key)
+	return cmd
 }
 
-func (p *providerSection) handleTMDBValidateCmd(cmd tmdbValidateCmd) (tea.Model, tea.Cmd) {
-	key := strings.TrimSpace(p.state.TMDB.APIKey.Value())
-	if cmd.apiKey == "" || cmd.apiKey != key {
+func (p *providerSection) queueValidation(providerState *ProviderServiceState) tea.Cmd {
+	if providerState == nil || !providerState.Enabled {
+		return nil
+	}
+	fieldState := providerState.RequiredPasswordField()
+	if fieldState == nil {
+		return nil
+	}
+	value := strings.TrimSpace(fieldState.Input.Value())
+	providerState.Validation.Reset()
+	if value == "" {
+		return nil
+	}
+	return p.debounce(providerState.Name(), fieldState.Schema.Name, value)
+}
+
+func (p *providerSection) handleProviderValidateCmd(cmd providerValidateCmd) (tea.Model, tea.Cmd) {
+	providerState := p.providerState(cmd.providerName)
+	fieldState := p.providerField(cmd.providerName, cmd.fieldName)
+	if providerState == nil || fieldState == nil {
 		return p, nil
 	}
-	if cmd.apiKey == p.state.TMDB.Validation.LastValidated {
+	value := strings.TrimSpace(fieldState.Input.Value())
+	if cmd.value == "" || cmd.value != value {
 		return p, nil
 	}
-	p.state.TMDB.Validation.Status = ProviderValidationValidating
-	return p, p.tmdbValidate(cmd.apiKey)
+	if cmd.value == providerState.Validation.LastValidated {
+		return p, nil
+	}
+	providerState.Validation.Status = ProviderValidationValidating
+	return p, p.validate(cmd.providerName, cmd.fieldName, cmd.value)
 }
 
-func (p *providerSection) handleTMDBValidationMsg(msg tmdbValidationMsg) (tea.Model, tea.Cmd) {
-	key := strings.TrimSpace(p.state.TMDB.APIKey.Value())
-	if msg.apiKey != key {
+func (p *providerSection) handleProviderValidationMsg(msg providerValidationMsg) (tea.Model, tea.Cmd) {
+	providerState := p.providerState(msg.providerName)
+	fieldState := p.providerField(msg.providerName, msg.fieldName)
+	if providerState == nil || fieldState == nil {
+		return p, nil
+	}
+	value := strings.TrimSpace(fieldState.Input.Value())
+	if msg.value != value {
 		return p, nil
 	}
 	if msg.valid {
-		p.state.TMDB.Validation.Status = ProviderValidationValid
+		providerState.Validation.Status = ProviderValidationValid
 	} else {
-		p.state.TMDB.Validation.Status = ProviderValidationInvalid
+		providerState.Validation.Status = ProviderValidationInvalid
 	}
-	p.state.TMDB.Validation.LastValidated = msg.apiKey
-	return p, nil
-}
-
-func (p *providerSection) handleOMDBValidateCmd(cmd omdbValidateCmd) (tea.Model, tea.Cmd) {
-	key := strings.TrimSpace(p.state.OMDB.APIKey.Value())
-	if cmd.apiKey == "" || cmd.apiKey != key {
-		return p, nil
-	}
-	if cmd.apiKey == p.state.OMDB.Validation.LastValidated {
-		return p, nil
-	}
-	p.state.OMDB.Validation.Status = ProviderValidationValidating
-	return p, p.omdbValidate(cmd.apiKey)
-}
-
-func (p *providerSection) handleOMDBValidationMsg(msg omdbValidationMsg) (tea.Model, tea.Cmd) {
-	key := strings.TrimSpace(p.state.OMDB.APIKey.Value())
-	if msg.apiKey != key {
-		return p, nil
-	}
-	if msg.valid {
-		p.state.OMDB.Validation.Status = ProviderValidationValid
-	} else {
-		p.state.OMDB.Validation.Status = ProviderValidationInvalid
-	}
-	p.state.OMDB.Validation.LastValidated = msg.apiKey
-	return p, nil
-}
-
-func (p *providerSection) handleTVDBValidateCmd(cmd tvdbValidateCmd) (tea.Model, tea.Cmd) {
-	key := strings.TrimSpace(p.state.TVDB.APIKey.Value())
-	if cmd.apiKey == "" || cmd.apiKey != key {
-		return p, nil
-	}
-	if cmd.apiKey == p.state.TVDB.Validation.LastValidated {
-		return p, nil
-	}
-	p.state.TVDB.Validation.Status = ProviderValidationValidating
-	return p, p.tvdbValidate(cmd.apiKey)
-}
-
-func (p *providerSection) handleTVDBValidationMsg(msg tvdbValidationMsg) (tea.Model, tea.Cmd) {
-	key := strings.TrimSpace(p.state.TVDB.APIKey.Value())
-	if msg.apiKey != key {
-		return p, nil
-	}
-	if msg.valid {
-		p.state.TVDB.Validation.Status = ProviderValidationValid
-	} else {
-		p.state.TVDB.Validation.Status = ProviderValidationInvalid
-	}
-	p.state.TVDB.Validation.LastValidated = msg.apiKey
+	providerState.Validation.LastValidated = msg.value
 	return p, nil
 }
 
 func (p *providerSection) Activate() tea.Cmd {
 	var cmds []tea.Cmd
-	if p.state.TMDB.Enabled {
-		if cmd := p.tmdbValidateOnActivate(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if p.state.OMDB.Enabled {
-		if cmd := p.omdbValidateOnActivate(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if p.state.TVDB.Enabled {
-		if cmd := p.tvdbValidateOnActivate(); cmd != nil {
+	for i := range p.state.Providers {
+		providerState := &p.state.Providers[i]
+		if cmd := p.validateOnActivate(providerState); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
 	return tea.Batch(cmds...)
 }
 
-func (p *providerSection) tmdbValidateOnActivate() tea.Cmd {
-	key := strings.TrimSpace(p.state.TMDB.APIKey.Value())
-	if key == "" || key == p.state.TMDB.Validation.LastValidated {
+func (p *providerSection) validateOnActivate(providerState *ProviderServiceState) tea.Cmd {
+	if providerState == nil || !providerState.Enabled {
 		return nil
 	}
-	p.state.TMDB.Validation.Status = ProviderValidationValidating
-	return p.tmdbValidate(key)
-}
-
-func (p *providerSection) omdbValidateOnActivate() tea.Cmd {
-	key := strings.TrimSpace(p.state.OMDB.APIKey.Value())
-	if key == "" || key == p.state.OMDB.Validation.LastValidated {
+	fieldState := providerState.RequiredPasswordField()
+	if fieldState == nil {
 		return nil
 	}
-	p.state.OMDB.Validation.Status = ProviderValidationValidating
-	return p.omdbValidate(key)
-}
-
-func (p *providerSection) tvdbValidateOnActivate() tea.Cmd {
-	key := strings.TrimSpace(p.state.TVDB.APIKey.Value())
-	if key == "" || key == p.state.TVDB.Validation.LastValidated {
+	value := strings.TrimSpace(fieldState.Input.Value())
+	if value == "" || value == providerState.Validation.LastValidated {
 		return nil
 	}
-	p.state.TVDB.Validation.Status = ProviderValidationValidating
-	return p.tvdbValidate(key)
+	providerState.Validation.Status = ProviderValidationValidating
+	return p.validate(providerState.Name(), fieldState.Schema.Name, value)
 }
 
 func (p *providerSection) View() tea.View {
 	colors := p.theme.Colors()
 	title := p.theme.PanelTitleStyle().Render("Metadata Providers")
 
-	shared := p.renderSharedColumn(colors)
-	ffprobe := p.renderFFProbeColumn(colors)
-	omdb := p.renderOMDBColumn(colors)
-	tvdb := p.renderTVDBColumn(colors)
-	tmdb := p.renderTMDBColumn(colors)
+	columns := []string{p.renderSharedColumn(colors)}
+	for i := range p.state.Providers {
+		columns = append(columns, p.renderProviderColumn(&p.state.Providers[i], colors))
+	}
 
 	columnGap := 2
 	minColumnWidth := 22
-	columnCount := 5
-	totalGap := columnGap * (columnCount - 1)
-	inline := p.width-totalGap >= minColumnWidth*columnCount
+	totalGap := columnGap * max(len(columns)-1, 0)
+	inline := p.width-totalGap >= minColumnWidth*len(columns)
 
 	if inline {
 		gap := lipgloss.NewStyle().Width(columnGap).Render(" ")
-		row := lipgloss.JoinHorizontal(lipgloss.Top, shared, gap, ffprobe, gap, omdb, gap, tmdb, gap, tvdb)
+		rowParts := make([]string, 0, len(columns)*2-1)
+		for i, column := range columns {
+			if i > 0 {
+				rowParts = append(rowParts, gap)
+			}
+			rowParts = append(rowParts, column)
+		}
+		row := lipgloss.JoinHorizontal(lipgloss.Top, rowParts...)
 		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, title, row))
 	}
 
 	separator := lipgloss.NewStyle().Height(1).Render("")
-	stacked := lipgloss.JoinVertical(
-		lipgloss.Left,
-		shared,
-		separator,
-		ffprobe,
-		separator,
-		omdb,
-		separator,
-		tmdb,
-		separator,
-		tvdb,
-	)
+	stackParts := make([]string, 0, len(columns)*2-1)
+	for i, column := range columns {
+		if i > 0 {
+			stackParts = append(stackParts, separator)
+		}
+		stackParts = append(stackParts, column)
+	}
+	stacked := lipgloss.JoinVertical(lipgloss.Left, stackParts...)
 	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, title, stacked))
 }
 
 func (p *providerSection) renderSharedColumn(colors theme.Colors) string {
-	focused := p.state.Active == ProviderFieldWorkers
+	focused := p.state.Active.Kind == ProviderFocusWorkers
 	field := p.state.WorkerCount.View()
 	if focused {
 		field = lipgloss.NewStyle().
@@ -555,153 +425,62 @@ func (p *providerSection) renderSharedColumn(colors theme.Colors) string {
 	return lipgloss.NewStyle().Width(22).Render(content)
 }
 
-func (p *providerSection) renderFFProbeColumn(colors theme.Colors) string {
-	focused := p.state.Active == ProviderFieldFFProbe
-	toggle := p.renderToggle("ffprobe", p.state.FFProbeEnabled, focused, colors)
-	description := lipgloss.NewStyle().Foreground(colors.Muted).Render("Enable codec metadata via ffprobe.")
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render("ffprobe"),
+func (p *providerSection) renderProviderColumn(providerState *ProviderServiceState, colors theme.Colors) string {
+	if providerState == nil {
+		return ""
+	}
+	providerName := providerState.Name()
+	displayName := providerState.DisplayName()
+	toggleFocused := p.state.Active == ProviderFocus{Kind: ProviderFocusToggle, ProviderName: providerName}
+	toggle := p.renderToggle(displayName, providerState.Enabled, toggleFocused, colors)
+
+	lines := []string{
+		lipgloss.NewStyle().Bold(true).Render(displayName),
 		toggle,
-		description,
-	)
+	}
+	for i := range providerState.Fields {
+		lines = append(lines, p.renderProviderField(providerState, &providerState.Fields[i], colors))
+	}
+	if providerState.RequiredPasswordField() != nil {
+		lines = append(lines, p.renderValidation("Status", providerState.Validation.Status))
+	}
+	if description := providerState.Description(); description != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(colors.Muted).Render(description))
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
 	return lipgloss.NewStyle().Width(22).Render(content)
 }
 
-func (p *providerSection) renderOMDBColumn(colors theme.Colors) string {
-	toggleFocused := p.state.Active == ProviderFieldOMDBToggle
-	keyFocused := p.state.Active == ProviderFieldOMDBKey && p.state.OMDB.Enabled
+func (p *providerSection) renderProviderField(providerState *ProviderServiceState, fieldState *ProviderFieldState, colors theme.Colors) string {
+	focused := p.state.Active == ProviderFocus{
+		Kind:         ProviderFocusField,
+		ProviderName: providerState.Name(),
+		FieldName:    fieldState.Schema.Name,
+	} && providerState.Enabled
 
-	toggle := p.renderToggle("OMDb", p.state.OMDB.Enabled, toggleFocused, colors)
-
-	apiKey := p.state.OMDB.APIKey.Value()
-	if keyFocused {
-		apiKey = p.state.OMDB.APIKey.View()
-	} else {
-		apiKey = p.state.OMDB.MaskedAPIKey(2, 2)
+	value := fieldState.Input.Value()
+	if focused {
+		value = fieldState.Input.View()
+	} else if fieldState.Schema.Sensitive {
+		value = maskAPIKeyVisible(value, 3, 3)
+	}
+	if value == "" {
+		value = "-"
 	}
 
 	switch {
-	case !p.state.OMDB.Enabled:
-		apiKey = lipgloss.NewStyle().Foreground(colors.Muted).Render(apiKey + " (disabled)")
-	case keyFocused:
-		apiKey = lipgloss.NewStyle().
+	case !providerState.Enabled:
+		value = lipgloss.NewStyle().Foreground(colors.Muted).Render(value + " (disabled)")
+	case focused:
+		value = lipgloss.NewStyle().
 			Background(colors.Accent).
 			Foreground(colors.Background).
-			Render(apiKey)
+			Render(value)
 	default:
-		apiKey = lipgloss.NewStyle().Foreground(colors.Primary).Render(apiKey)
+		value = lipgloss.NewStyle().Foreground(colors.Primary).Render(value)
 	}
 
-	status := p.renderValidation("Status", p.state.OMDB.Validation.Status)
-	description := lipgloss.NewStyle().Foreground(colors.Muted).Render("Film/series metadata from OMDb.")
-
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render("OMDb"),
-		toggle,
-		"API Key: "+apiKey,
-		status,
-		description,
-	)
-	return lipgloss.NewStyle().Width(22).Render(content)
-}
-
-func (p *providerSection) renderTMDBColumn(colors theme.Colors) string {
-	toggleFocused := p.state.Active == ProviderFieldTMDBToggle
-	keyFocused := p.state.Active == ProviderFieldTMDBKey && p.state.TMDB.Enabled
-	langFocused := p.state.Active == ProviderFieldTMDBLanguage && p.state.TMDB.Enabled
-
-	toggle := p.renderToggle("TMDB", p.state.TMDB.Enabled, toggleFocused, colors)
-
-	apiKey := p.state.TMDB.APIKey.Value()
-	if keyFocused {
-		apiKey = p.state.TMDB.APIKey.View()
-	} else {
-		apiKey = p.state.TMDB.MaskedAPIKey(4, 4)
-	}
-
-	switch {
-	case !p.state.TMDB.Enabled:
-		apiKey = lipgloss.NewStyle().Foreground(colors.Muted).Render(apiKey + " (disabled)")
-	case keyFocused:
-		apiKey = lipgloss.NewStyle().
-			Background(colors.Accent).
-			Foreground(colors.Background).
-			Render(apiKey)
-	default:
-		apiKey = lipgloss.NewStyle().Foreground(colors.Primary).Render(apiKey)
-	}
-
-	language := p.state.TMDB.Language.Value()
-	if langFocused {
-		language = p.state.TMDB.Language.View()
-	}
-
-	switch {
-	case !p.state.TMDB.Enabled:
-		language = lipgloss.NewStyle().Foreground(colors.Muted).Render(language + " (disabled)")
-	case langFocused:
-		language = lipgloss.NewStyle().
-			Background(colors.Accent).
-			Foreground(colors.Background).
-			Render(language)
-	default:
-		language = lipgloss.NewStyle().Foreground(colors.Primary).Render(language)
-	}
-
-	status := p.renderValidation("Status", p.state.TMDB.Validation.Status)
-	description := lipgloss.NewStyle().Foreground(colors.Muted).Render("Comprehensive metadata from TMDB.")
-
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render("TMDB"),
-		toggle,
-		"API Key: "+apiKey,
-		"Language: "+language,
-		status,
-		description,
-	)
-	return lipgloss.NewStyle().Width(22).Render(content)
-}
-
-func (p *providerSection) renderTVDBColumn(colors theme.Colors) string {
-	toggleFocused := p.state.Active == ProviderFieldTVDBToggle
-	keyFocused := p.state.Active == ProviderFieldTVDBKey && p.state.TVDB.Enabled
-
-	toggle := p.renderToggle("TVDB", p.state.TVDB.Enabled, toggleFocused, colors)
-
-	apiKey := p.state.TVDB.APIKey.Value()
-	if keyFocused {
-		apiKey = p.state.TVDB.APIKey.View()
-	} else {
-		apiKey = p.state.TVDB.MaskedAPIKey(3, 3)
-	}
-
-	switch {
-	case !p.state.TVDB.Enabled:
-		apiKey = lipgloss.NewStyle().Foreground(colors.Muted).Render(apiKey + " (disabled)")
-	case keyFocused:
-		apiKey = lipgloss.NewStyle().
-			Background(colors.Accent).
-			Foreground(colors.Background).
-			Render(apiKey)
-	default:
-		apiKey = lipgloss.NewStyle().Foreground(colors.Primary).Render(apiKey)
-	}
-
-	status := p.renderValidation("Status", p.state.TVDB.Validation.Status)
-	description := lipgloss.NewStyle().Foreground(colors.Muted).Render("TV and movie metadata from TVDB.")
-
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render("TVDB"),
-		toggle,
-		"API Key: "+apiKey,
-		status,
-		description,
-	)
-	return lipgloss.NewStyle().Width(22).Render(content)
+	return fmt.Sprintf("%s: %s", fieldLabel(fieldState.Schema), value)
 }
 
 func (p *providerSection) renderToggle(label string, enabled, focused bool, colors theme.Colors) string {
@@ -728,4 +507,87 @@ func (p *providerSection) renderValidation(label string, status ProviderValidati
 		return label + ": Not configured"
 	}
 	return label + ": " + status.String()
+}
+
+func (p *providerSection) providerState(name string) *ProviderServiceState {
+	for i := range p.state.Providers {
+		if p.state.Providers[i].Name() == name {
+			return &p.state.Providers[i]
+		}
+	}
+	return nil
+}
+
+func (p *providerSection) providerField(providerName, fieldName string) *ProviderFieldState {
+	providerState := p.providerState(providerName)
+	if providerState == nil {
+		return nil
+	}
+	return providerState.Field(fieldName)
+}
+
+func (p *providerSection) activeField() *ProviderFieldState {
+	if p.state.Active.Kind != ProviderFocusField {
+		return nil
+	}
+	return p.providerField(p.state.Active.ProviderName, p.state.Active.FieldName)
+}
+
+func isValidationField(field provider.ConfigField) bool {
+	return field.Required && field.Type == provider.ConfigFieldTypePassword
+}
+
+func filterProviderInput(field provider.ConfigField, text string) string {
+	filtered := make([]rune, 0, len(text))
+	for _, r := range text {
+		switch field.Type {
+		case provider.ConfigFieldTypeInt:
+			if unicode.IsDigit(r) {
+				filtered = append(filtered, r)
+			}
+		case provider.ConfigFieldTypeSelect:
+			if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+				filtered = append(filtered, r)
+			}
+		default:
+			if r != ' ' && !unicode.IsControl(r) {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+	return string(filtered)
+}
+
+func filterDigits(text string) string {
+	filtered := make([]rune, 0, len(text))
+	for _, r := range text {
+		if unicode.IsDigit(r) {
+			filtered = append(filtered, r)
+		}
+	}
+	return string(filtered)
+}
+
+func readClipboardPaste() tea.Cmd {
+	return func() tea.Msg {
+		content, err := clipboard.ReadAll()
+		if err != nil {
+			return nil
+		}
+		return tea.PasteMsg{Content: content}
+	}
+}
+
+func fieldLabel(field provider.ConfigField) string {
+	if strings.TrimSpace(field.DisplayName) != "" {
+		return field.DisplayName
+	}
+	return strings.ReplaceAll(field.Name, "_", " ")
+}
+
+func toggleBoolString(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "true") {
+		return "false"
+	}
+	return "true"
 }

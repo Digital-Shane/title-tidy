@@ -3,56 +3,42 @@ package config
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"charm.land/bubbletea/v2"
+	appconfig "github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
-	"github.com/Digital-Shane/title-tidy/internal/provider/omdb"
-	"github.com/Digital-Shane/title-tidy/internal/provider/tmdb"
-	"github.com/Digital-Shane/title-tidy/internal/provider/tvdb"
 )
 
-type tmdbValidationMsg struct {
-	apiKey string
-	valid  bool
+type providerValidationMsg struct {
+	providerName string
+	fieldName    string
+	value        string
+	valid        bool
 }
 
-type tmdbValidateCmd struct {
-	apiKey string
+type providerValidateCmd struct {
+	providerName string
+	fieldName    string
+	value        string
 }
 
-type omdbValidationMsg struct {
-	apiKey string
-	valid  bool
-}
-
-type omdbValidateCmd struct {
-	apiKey string
-}
-
-type tvdbValidationMsg struct {
-	apiKey string
-	valid  bool
-}
-
-type tvdbValidateCmd struct {
-	apiKey string
-}
-
-func validateTMDBAPIKey(apiKey string) tea.Cmd {
+func validateProviderAPIKey(providerName, fieldName, apiKey string) tea.Cmd {
 	return func() tea.Msg {
-		if apiKey == "" {
-			return tmdbValidationMsg{apiKey: "", valid: false}
+		if strings.TrimSpace(apiKey) == "" {
+			return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: false}
+		}
+		if err := appconfig.EnsureBuiltinProviders(); err != nil {
+			return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: false}
 		}
 
-		prov := tmdb.New()
-		cfg := map[string]interface{}{
-			"api_key":       apiKey,
-			"language":      "en-US",
-			"cache_enabled": false,
+		prov, ok := provider.GlobalRegistry.Get(providerName)
+		if !ok {
+			return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: false}
 		}
-		if err := prov.Configure(cfg); err != nil {
-			return tmdbValidationMsg{apiKey: apiKey, valid: false}
+		if err := prov.Configure(validationConfig(prov, apiKey)); err != nil {
+			return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: false}
 		}
 
 		req := provider.FetchRequest{
@@ -60,80 +46,36 @@ func validateTMDBAPIKey(apiKey string) tea.Cmd {
 			Name:      "The Matrix",
 			Year:      "1999",
 		}
-		if _, err := prov.Fetch(context.Background(), req); err != nil {
+		meta, err := prov.Fetch(context.Background(), req)
+		if err != nil || meta == nil {
 			var provErr *provider.ProviderError
 			if errors.As(err, &provErr) && provErr.Code == "AUTH_FAILED" {
-				return tmdbValidationMsg{apiKey: apiKey, valid: false}
+				return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: false}
 			}
-			return tmdbValidationMsg{apiKey: apiKey, valid: false}
+			return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: false}
 		}
 
-		return tmdbValidationMsg{apiKey: apiKey, valid: true}
+		return providerValidationMsg{providerName: providerName, fieldName: fieldName, value: apiKey, valid: true}
 	}
 }
 
-func debouncedTMDBValidate(apiKey string) tea.Cmd {
+func debouncedProviderValidate(providerName, fieldName, value string) tea.Cmd {
 	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
-		return tmdbValidateCmd{apiKey: apiKey}
+		return providerValidateCmd{providerName: providerName, fieldName: fieldName, value: value}
 	})
 }
 
-func validateOMDBAPIKey(apiKey string) tea.Cmd {
-	return func() tea.Msg {
-		if apiKey == "" {
-			return omdbValidationMsg{apiKey: "", valid: false}
+func validationConfig(prov provider.Provider, apiKey string) map[string]interface{} {
+	cfg := make(map[string]interface{})
+	for _, field := range prov.ConfigSchema().Fields {
+		switch {
+		case field.Type == provider.ConfigFieldTypePassword && field.Required:
+			cfg[field.Name] = apiKey
+		case field.Type == provider.ConfigFieldTypeBool:
+			cfg[field.Name] = false
+		case field.Default != nil:
+			cfg[field.Name] = field.Default
 		}
-
-		prov := omdb.New()
-		if err := prov.Configure(map[string]interface{}{"api_key": apiKey}); err != nil {
-			return omdbValidationMsg{apiKey: apiKey, valid: false}
-		}
-
-		req := provider.FetchRequest{
-			MediaType: provider.MediaTypeMovie,
-			Name:      "The Matrix",
-			Year:      "1999",
-		}
-		meta, err := prov.Fetch(context.Background(), req)
-		if err != nil || meta == nil {
-			return omdbValidationMsg{apiKey: apiKey, valid: false}
-		}
-		return omdbValidationMsg{apiKey: apiKey, valid: true}
 	}
-}
-
-func debouncedOMDBValidate(apiKey string) tea.Cmd {
-	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
-		return omdbValidateCmd{apiKey: apiKey}
-	})
-}
-
-func validateTVDBAPIKey(apiKey string) tea.Cmd {
-	return func() tea.Msg {
-		if apiKey == "" {
-			return tvdbValidationMsg{apiKey: "", valid: false}
-		}
-
-		prov := tvdb.New()
-		if err := prov.Configure(map[string]interface{}{"api_key": apiKey}); err != nil {
-			return tvdbValidationMsg{apiKey: apiKey, valid: false}
-		}
-
-		req := provider.FetchRequest{
-			MediaType: provider.MediaTypeMovie,
-			Name:      "The Matrix",
-			Year:      "1999",
-		}
-		meta, err := prov.Fetch(context.Background(), req)
-		if err != nil || meta == nil {
-			return tvdbValidationMsg{apiKey: apiKey, valid: false}
-		}
-		return tvdbValidationMsg{apiKey: apiKey, valid: true}
-	}
-}
-
-func debouncedTVDBValidate(apiKey string) tea.Cmd {
-	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
-		return tvdbValidateCmd{apiKey: apiKey}
-	})
+	return cfg
 }

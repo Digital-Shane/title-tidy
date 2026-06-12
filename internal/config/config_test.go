@@ -8,14 +8,12 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-// cmpOpts returns comparison options that ignore unexported fields
+// cmpOpts returns comparison options for stable config comparisons.
 func cmpOpts() cmp.Option {
-	return cmp.FilterPath(func(p cmp.Path) bool {
-		// Ignore unexported fields like 'resolver'
-		return p.Last().String() == ".resolver"
-	}, cmp.Ignore())
+	return cmpopts.EquateEmpty()
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -29,14 +27,8 @@ func TestDefaultConfig(t *testing.T) {
 		PreserveExistingTags: false,
 		LogRetentionDays:     30,
 		EnableLogging:        true,
-		TMDBAPIKey:           "",
-		EnableTMDBLookup:     false,
-		TMDBLanguage:         "en-US",
-		TMDBWorkerCount:      10,
-		OMDBAPIKey:           "",
-		EnableOMDBLookup:     false,
-		TVDBAPIKey:           "",
-		EnableTVDBLookup:     false,
+		MetadataWorkerCount:  10,
+		Providers:            map[string]ProviderConfig{},
 	}
 
 	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -67,161 +59,137 @@ func TestConfigPath(t *testing.T) {
 	}
 }
 
-func TestLoad_NonExistentFile(t *testing.T) {
-	// Save original HOME
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+func TestLoadMigratesLegacyProviderConfig(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 
-	// Use temp directory as HOME
-	tempDir := t.TempDir()
-	os.Setenv("HOME", tempDir)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Errorf("Load() with non-existent file error = %v, want nil", err)
-	}
-
-	// Should return default config
-	want := DefaultConfig()
-	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
-		t.Errorf("Load() with non-existent file mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestLoad_ValidFile(t *testing.T) {
-	// Save original HOME
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
-
-	// Use temp directory as HOME
-	tempDir := t.TempDir()
-	os.Setenv("HOME", tempDir)
-
-	// Create config directory and file
-	configDir := filepath.Join(tempDir, ".title-tidy")
-	err := os.MkdirAll(configDir, 0755)
-	if err != nil {
+	configDir := filepath.Join(os.Getenv("HOME"), ".title-tidy")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
 
 	configFile := filepath.Join(configDir, "config.json")
 	configData := []byte(`{
-		"show_folder": "custom {title}",
-		"season_folder": "custom Season {season}",
-		"episode": "custom E{episode}",
-		"movie": "custom {title}",
-		"preserve_existing_tags": true,
-		"log_retention_days": 60,
-		"enable_logging": false
+		"show_folder": "{title}",
+		"tmdb_api_key": "tmdb-key",
+		"enable_tmdb_lookup": true,
+		"tmdb_language": "es-ES",
+		"tmdb_worker_count": 3,
+		"omdb_api_key": "omdb-key",
+		"enable_omdb_lookup": true,
+		"tvdb_api_key": "tvdb-key",
+		"enable_tvdb_lookup": true,
+		"enable_ffprobe": true
 	}`)
-	err = os.WriteFile(configFile, configData, 0644)
-	if err != nil {
+	if err := os.WriteFile(configFile, configData, 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+		t.Fatalf("Load() error = %v", err)
 	}
 
-	want := &FormatConfig{
-		ShowFolder:           "custom {title}",
-		SeasonFolder:         "custom Season {season}",
-		Episode:              "custom E{episode}",
-		Movie:                "custom {title}",
-		PreserveExistingTags: true,
-		LogRetentionDays:     60,
-		EnableLogging:        false,
-		TMDBAPIKey:           "",
-		EnableTMDBLookup:     false,
-		TMDBLanguage:         "en-US", // Filled in by Load() with default
-		TMDBWorkerCount:      10,      // Filled in by Load() with default
-		OMDBAPIKey:           "",
-		EnableOMDBLookup:     false,
-		TVDBAPIKey:           "",
-		EnableTVDBLookup:     false,
+	if diff := cmp.Diff(3, cfg.MetadataWorkerCount); diff != "" {
+		t.Errorf("MetadataWorkerCount mismatch (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
-		t.Errorf("Load() mismatch (-want +got):\n%s", diff)
+	assertProvider := func(name string, enabled bool, want map[string]interface{}) {
+		t.Helper()
+		got := cfg.Provider(name)
+		if diff := cmp.Diff(enabled, got.Enabled); diff != "" {
+			t.Errorf("%s enabled mismatch (-want +got):\n%s", name, diff)
+		}
+		for key, wantValue := range want {
+			if diff := cmp.Diff(wantValue, got.Config[key]); diff != "" {
+				t.Errorf("%s config %s mismatch (-want +got):\n%s", name, key, diff)
+			}
+		}
+	}
+
+	assertProvider("tmdb", true, map[string]interface{}{"api_key": "tmdb-key", "language": "es-ES"})
+	assertProvider("omdb", true, map[string]interface{}{"api_key": "omdb-key"})
+	assertProvider("tvdb", true, map[string]interface{}{"api_key": "tvdb-key"})
+	assertProvider("ffprobe", true, nil)
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatalf("Failed to read migrated config: %v", err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Failed to unmarshal migrated config: %v", err)
+	}
+	for _, legacyKey := range []string{
+		"tmdb_api_key",
+		"enable_tmdb_lookup",
+		"tmdb_language",
+		"tmdb_worker_count",
+		"omdb_api_key",
+		"enable_omdb_lookup",
+		"tvdb_api_key",
+		"enable_tvdb_lookup",
+		"enable_ffprobe",
+	} {
+		if _, ok := raw[legacyKey]; ok {
+			t.Fatalf("migrated config still contains legacy key %q", legacyKey)
+		}
+	}
+	if _, ok := raw["providers"]; !ok {
+		t.Fatal("migrated config missing providers map")
+	}
+	if _, ok := raw["metadata_worker_count"]; !ok {
+		t.Fatal("migrated config missing metadata_worker_count")
 	}
 }
 
-func TestLoad_PartialConfig(t *testing.T) {
-	// Save original HOME
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+func TestLoadDropsLegacyTMDBCacheConfig(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 
-	// Use temp directory as HOME
-	tempDir := t.TempDir()
-	os.Setenv("HOME", tempDir)
-
-	// Create config directory and file with partial config
-	configDir := filepath.Join(tempDir, ".title-tidy")
-	err := os.MkdirAll(configDir, 0755)
-	if err != nil {
+	configDir := filepath.Join(os.Getenv("HOME"), ".title-tidy")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
 
 	configFile := filepath.Join(configDir, "config.json")
 	configData := []byte(`{
-		"show_folder": "custom {title}",
-		"log_retention_days": 60
+		"providers": {
+			"tmdb": {
+				"enabled": true,
+				"config": {
+					"api_key": "tmdb-key",
+					"language": "fr-FR",
+					"cache_enabled": false,
+					"cache_duration": 24
+				}
+			}
+		}
 	}`)
-	err = os.WriteFile(configFile, configData, 0644)
-	if err != nil {
+	if err := os.WriteFile(configFile, configData, 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+		t.Fatalf("Load() error = %v", err)
 	}
 
-	// Should have custom showFolder but default values for missing fields
-	if cfg.ShowFolder != "custom {title}" {
-		t.Errorf("Load() ShowFolder = %q, want %q", cfg.ShowFolder, "custom {title}")
+	tmdbConfig := cfg.Provider("tmdb").Config
+	if _, ok := tmdbConfig["cache_enabled"]; ok {
+		t.Fatal("tmdb config kept legacy cache_enabled")
 	}
-	if cfg.SeasonFolder != "Season {season}" {
-		t.Errorf("Load() SeasonFolder = %q, want default %q", cfg.SeasonFolder, "Season {season}")
+	if _, ok := tmdbConfig["cache_duration"]; ok {
+		t.Fatal("tmdb config kept legacy cache_duration")
 	}
-	if cfg.Episode != "S{season}E{episode}" {
-		t.Errorf("Load() Episode = %q, want default %q", cfg.Episode, "S{season}E{episode}")
+	if diff := cmp.Diff("tmdb-key", tmdbConfig["api_key"]); diff != "" {
+		t.Errorf("tmdb api_key mismatch (-want +got):\n%s", diff)
 	}
-	if cfg.Movie != "{title} ({year})" {
-		t.Errorf("Load() Movie = %q, want default %q", cfg.Movie, "{title} ({year})")
-	}
-	if cfg.LogRetentionDays != 60 {
-		t.Errorf("Load() LogRetentionDays = %d, want %d", cfg.LogRetentionDays, 60)
-	}
-}
-
-func TestLoad_InvalidJSON(t *testing.T) {
-	// Save original HOME
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
-
-	// Use temp directory as HOME
-	tempDir := t.TempDir()
-	os.Setenv("HOME", tempDir)
-
-	// Create config directory and invalid JSON file
-	configDir := filepath.Join(tempDir, ".title-tidy")
-	err := os.MkdirAll(configDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create config dir: %v", err)
-	}
-
-	configFile := filepath.Join(configDir, "config.json")
-	configData := []byte(`{invalid json}`)
-	err = os.WriteFile(configFile, configData, 0644)
-	if err != nil {
-		t.Fatalf("Failed to write config file: %v", err)
-	}
-
-	_, err = Load()
-	if err == nil {
-		t.Error("Load() with invalid JSON error = nil, want error")
+	if diff := cmp.Diff("fr-FR", tmdbConfig["language"]); diff != "" {
+		t.Errorf("tmdb language mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -315,20 +283,14 @@ func TestLoad(t *testing.T) {
 
 		// Expected config should include default values filled in by Load()
 		expectedConfig := &FormatConfig{
-			ShowFolder:       "{title} - {year}",
-			SeasonFolder:     "S{season}",
-			Episode:          "{code} {title}",
-			Movie:            "{title} [{year}]",
-			LogRetentionDays: 30,    // Default value filled in by Load()
-			EnableLogging:    false, // Not set in JSON, so false
-			TMDBAPIKey:       "",
-			EnableTMDBLookup: false,
-			TMDBLanguage:     "en-US", // Default value filled in by Load()
-			TMDBWorkerCount:  10,      // Default value filled in by Load()
-			OMDBAPIKey:       "",
-			EnableOMDBLookup: false,
-			TVDBAPIKey:       "",
-			EnableTVDBLookup: false,
+			ShowFolder:          "{title} - {year}",
+			SeasonFolder:        "S{season}",
+			Episode:             "{code} {title}",
+			Movie:               "{title} [{year}]",
+			LogRetentionDays:    30,    // Default value filled in by Load()
+			EnableLogging:       false, // Not set in JSON, so false
+			MetadataWorkerCount: 10,
+			Providers:           map[string]ProviderConfig{},
 		}
 
 		if diff := cmp.Diff(expectedConfig, cfg, cmpOpts()); diff != "" {
@@ -362,20 +324,14 @@ func TestLoad(t *testing.T) {
 
 		// Should fill in missing fields with defaults
 		want := &FormatConfig{
-			ShowFolder:       "{title}",
-			SeasonFolder:     "Season {season}", // default
-			Episode:          "{code}",
-			Movie:            "{title} ({year})", // default
-			LogRetentionDays: 30,                 // default
-			EnableLogging:    false,              // Not set in JSON, so false
-			TMDBAPIKey:       "",
-			EnableTMDBLookup: false,
-			TMDBLanguage:     "en-US", // default
-			TMDBWorkerCount:  10,      // default
-			OMDBAPIKey:       "",
-			EnableOMDBLookup: false,
-			TVDBAPIKey:       "",
-			EnableTVDBLookup: false,
+			ShowFolder:          "{title}",
+			SeasonFolder:        "Season {season}", // default
+			Episode:             "{code}",
+			Movie:               "{title} ({year})", // default
+			LogRetentionDays:    30,                 // default
+			EnableLogging:       false,              // Not set in JSON, so false
+			MetadataWorkerCount: 10,
+			Providers:           map[string]ProviderConfig{},
 		}
 
 		if diff := cmp.Diff(want, cfg, cmpOpts()); diff != "" {
@@ -399,43 +355,6 @@ func TestLoad(t *testing.T) {
 		_, err := Load()
 		if err == nil {
 			t.Error("Load() with invalid JSON error = nil, want error")
-		}
-	})
-}
-
-func TestFormatConfig_Save(t *testing.T) {
-	t.Run("save_new_config", func(t *testing.T) {
-		// Create temp dir for config
-		tempDir := t.TempDir()
-		oldHome := os.Getenv("HOME")
-		t.Setenv("HOME", tempDir)
-		defer func() { os.Setenv("HOME", oldHome) }()
-
-		cfg := &FormatConfig{
-			ShowFolder:   "{title} - {year}",
-			SeasonFolder: "Season {season}",
-			Episode:      "{title} {code}",
-			Movie:        "{title} [{year}]",
-		}
-
-		err := cfg.Save()
-		if err != nil {
-			t.Errorf("Save() error = %v, want nil", err)
-		}
-
-		// Verify file was created
-		configPath := filepath.Join(tempDir, ".title-tidy", "config.json")
-		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			t.Error("Save() did not create config file")
-		}
-
-		// Verify content
-		data, _ := os.ReadFile(configPath)
-		var loaded FormatConfig
-		json.Unmarshal(data, &loaded)
-
-		if diff := cmp.Diff(cfg, &loaded, cmpOpts()); diff != "" {
-			t.Errorf("Saved config mismatch (-want +got):\n%s", diff)
 		}
 	})
 }

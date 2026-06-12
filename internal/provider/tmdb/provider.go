@@ -66,14 +66,42 @@ func (p *Provider) Capabilities() provider.ProviderCapabilities {
 		},
 		RequiresAuth: true,
 		Priority:     100, // High priority as a comprehensive provider
+		DisplayName:  "TMDB",
+		DisplayOrder: 10,
+		Icon:         "film",
 	}
 }
 
 // SupportedVariables returns the template variables this provider supports
 func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 	return []provider.TemplateVariable{
-		// Note: We don't provide title or year as those come from the local provider
-		// We only provide TMDB-specific metadata
+		{
+			Name:        "title",
+			DisplayName: "Title",
+			Description: "Show or movie title from TMDB",
+			MediaTypes: []provider.MediaType{
+				provider.MediaTypeMovie,
+				provider.MediaTypeShow,
+				provider.MediaTypeSeason,
+				provider.MediaTypeEpisode,
+			},
+			Example:     "Breaking Bad",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyTitle,
+		},
+		{
+			Name:        "year",
+			DisplayName: "Year",
+			Description: "Release year from TMDB",
+			MediaTypes:  []provider.MediaType{provider.MediaTypeMovie, provider.MediaTypeShow},
+			Example:     "2008",
+			Category:    "basic",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyYear,
+		},
 
 		// Ratings and Reviews
 		{
@@ -85,6 +113,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "ratings",
 			Format:      "number",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyRating,
 		},
 
 		// Genres and Categories
@@ -97,6 +127,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "basic",
 			Format:      "list",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyGenres,
 		},
 
 		// Production Information
@@ -109,6 +141,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Category:    "production",
 			Format:      "list",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "networks",
 		},
 
 		// TV-Specific
@@ -120,6 +154,32 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "Pilot",
 			Category:    "basic",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceCore,
+			ValueKey:    provider.TemplateValueKeyEpisodeTitle,
+		},
+		{
+			Name:        "air_date",
+			DisplayName: "Air Date",
+			Description: "Episode air date",
+			MediaTypes:  []provider.MediaType{provider.MediaTypeEpisode},
+			Example:     "2008-01-20",
+			Category:    "basic",
+			Format:      "date",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "air_date",
+		},
+		{
+			Name:        "runtime",
+			DisplayName: "Runtime",
+			Description: "Runtime in minutes",
+			MediaTypes:  []provider.MediaType{provider.MediaTypeMovie, provider.MediaTypeShow},
+			Example:     "48",
+			Category:    "technical",
+			Format:      "number",
+			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "runtime",
 		},
 
 		// Marketing
@@ -131,6 +191,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "Welcome to the Real World",
 			Category:    "basic",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceExtended,
+			ValueKey:    "tagline",
 		},
 
 		// Identifiers
@@ -142,6 +204,8 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 			Example:     "tt0133093",
 			Category:    "identifiers",
 			Provider:    providerName,
+			ValueSource: provider.TemplateVariableValueSourceID,
+			ValueKey:    "imdb_id",
 		},
 	}
 }
@@ -151,12 +215,14 @@ func (p *Provider) ConfigSchema() provider.ConfigSchema {
 	return provider.ConfigSchema{
 		Fields: []provider.ConfigField{
 			{
-				Name:        "api_key",
-				DisplayName: "API Key",
-				Type:        provider.ConfigFieldTypePassword,
-				Required:    true,
-				Description: "TMDB API key (not the Read Access Token). Get it from themoviedb.org/settings/api",
-				Sensitive:   true,
+				Name:         "api_key",
+				DisplayName:  "API Key",
+				Type:         provider.ConfigFieldTypePassword,
+				Required:     true,
+				Description:  "TMDB API key (not the Read Access Token). Get it from themoviedb.org/settings/api",
+				Sensitive:    true,
+				Icon:         "key",
+				PreviewLabel: "TMDB API",
 				Validation: &provider.ConfigFieldValidation{
 					MinLength: 32,
 					MaxLength: 32,
@@ -164,12 +230,14 @@ func (p *Provider) ConfigSchema() provider.ConfigSchema {
 				},
 			},
 			{
-				Name:        "language",
-				DisplayName: "Language",
-				Type:        provider.ConfigFieldTypeSelect,
-				Required:    false,
-				Default:     "en-US",
-				Description: "Preferred language for metadata",
+				Name:         "language",
+				DisplayName:  "Language",
+				Type:         provider.ConfigFieldTypeSelect,
+				Required:     false,
+				Default:      "en-US",
+				Description:  "Preferred language for metadata",
+				Icon:         "globe",
+				PreviewLabel: "Language",
 				Validation: &provider.ConfigFieldValidation{
 					Options: []provider.ConfigFieldOption{
 						{Value: "en-US", Label: "English (US)", Description: ""},
@@ -183,27 +251,6 @@ func (p *Provider) ConfigSchema() provider.ConfigSchema {
 						{Value: "zh-CN", Label: "Chinese", Description: ""},
 						{Value: "pt-BR", Label: "Portuguese (Brazil)", Description: ""},
 					},
-				},
-			},
-			{
-				Name:        "cache_enabled",
-				DisplayName: "Enable Cache",
-				Type:        provider.ConfigFieldTypeBool,
-				Required:    false,
-				Default:     true,
-				Description: "Cache API responses to reduce requests",
-			},
-			{
-				Name:        "cache_duration",
-				DisplayName: "Cache Duration (hours)",
-				Type:        provider.ConfigFieldTypeInt,
-				Required:    false,
-				Default:     168, // 7 days
-				Description: "How long to cache metadata",
-				DependsOn:   "cache_enabled",
-				Validation: &provider.ConfigFieldValidation{
-					MinValue: 1,
-					MaxValue: 8760, // 1 year
 				},
 			},
 		},
@@ -236,32 +283,18 @@ func (p *Provider) Configure(config map[string]interface{}) error {
 	}
 	p.client = tmdb.Init(tmdbConfig)
 
-	// Set up cache if enabled
-	cacheEnabled := true
-	if enabled, ok := config["cache_enabled"].(bool); ok {
-		cacheEnabled = enabled
-	}
+	// Set up cache with fixed defaults. Older cache configuration keys are
+	// intentionally ignored by the config layer.
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		cacheDir := filepath.Join(homeDir, ".title-tidy", "tmdb_cache")
+		os.MkdirAll(cacheDir, 0755)
+		p.cacheFile = filepath.Join(cacheDir, "tmdb_cache.gob")
 
-	if cacheEnabled {
-		cacheDuration := 168 // Default 7 days
-		if duration, ok := config["cache_duration"].(int); ok {
-			cacheDuration = duration
-		}
+		p.cache = cache.New(168*time.Hour, 10*time.Minute)
 
-		// Set up cache file path
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			cacheDir := filepath.Join(homeDir, ".title-tidy", "tmdb_cache")
-			os.MkdirAll(cacheDir, 0755)
-			p.cacheFile = filepath.Join(cacheDir, "tmdb_cache.gob")
-
-			// Create cache with configured expiration
-			p.cache = cache.New(time.Duration(cacheDuration)*time.Hour, 10*time.Minute)
-
-			// Try to load existing cache from disk
-			if _, err := os.Stat(p.cacheFile); err == nil {
-				_ = p.cache.LoadFile(p.cacheFile)
-			}
+		if _, err := os.Stat(p.cacheFile); err == nil {
+			_ = p.cache.LoadFile(p.cacheFile)
 		}
 	}
 

@@ -19,7 +19,7 @@ It uses intelligent parsing to rename shows, seasons, episodes, and movies accor
 configured format templates.
 
 The tool supports interactive preview mode and instant application mode, with optional
-TMDB metadata lookup for enhanced naming accuracy.`,
+metadata provider lookup for enhanced naming accuracy.`,
 }
 
 // localProvider is shared across the command package since it is stateless.

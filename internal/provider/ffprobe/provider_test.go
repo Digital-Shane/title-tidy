@@ -32,7 +32,7 @@ func TestFetch_Success(t *testing.T) {
 		MediaType: provider.MediaTypeMovie,
 		Name:      "Example",
 		Extra: map[string]interface{}{
-			"path": "/videos/example.mkv",
+			provider.FetchRequestExtraFilePath: "/videos/example.mkv",
 		},
 	}
 
@@ -107,7 +107,7 @@ func TestFetch_SkipsResolutionWhenHeightMissing(t *testing.T) {
 		MediaType: provider.MediaTypeMovie,
 		Name:      "Example",
 		Extra: map[string]interface{}{
-			"path": "/videos/example.mkv",
+			provider.FetchRequestExtraFilePath: "/videos/example.mkv",
 		},
 	}
 
@@ -130,7 +130,7 @@ func TestFetch_UnsupportedMediaType(t *testing.T) {
 	req := provider.FetchRequest{
 		MediaType: provider.MediaTypeShow,
 		Extra: map[string]interface{}{
-			"path": "/videos/show.mkv",
+			provider.FetchRequestExtraFilePath: "/videos/show.mkv",
 		},
 	}
 
