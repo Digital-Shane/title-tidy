@@ -342,3 +342,55 @@ func TestProviderSectionActivateTriggersValidation(t *testing.T) {
 		t.Fatalf("activate validation calls = %d, want 1", called)
 	}
 }
+
+func TestProviderSectionPasteAPIKey(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
+	tmdb := testProviderState(t, &state.Providers, "tmdb")
+	tmdb.Enabled = true
+	state.Providers.Active = ProviderFocus{
+		Kind:         ProviderFocusField,
+		ProviderName: "tmdb",
+		FieldName:    "api_key",
+	}
+
+	ps := newProviderSection(&state.Providers, theme.Default())
+	ps.Focus()
+	var validated []string
+	ps.debounce = func(providerName, fieldName, value string) tea.Cmd {
+		if providerName != "tmdb" || fieldName != "api_key" {
+			t.Fatalf("debounce called with %q/%q, want tmdb/api_key", providerName, fieldName)
+		}
+		validated = append(validated, value)
+		return nil
+	}
+
+	_, cmd := ps.Update(tea.PasteMsg{Content: " abc 123\nXYZ "})
+	if cmd != nil {
+		cmd()
+	}
+
+	field := testProviderField(t, tmdb, "api_key")
+	if got, want := field.Input.Value(), "abc123XYZ"; got != want {
+		t.Fatalf("api key after paste = %q, want %q", got, want)
+	}
+	if diff := cmp.Diff([]string{"abc123XYZ"}, validated); diff != "" {
+		t.Fatalf("validation queue diff (-want +got):\n%s", diff)
+	}
+}
+
+func TestProviderSectionPasteWorkerCountFiltersDigits(t *testing.T) {
+	state := buildStateFromConfig(&config.FormatConfig{}, theme.Default())
+	state.Providers.WorkerCount.SetValue("")
+	state.Providers.Active = ProviderFocus{Kind: ProviderFocusWorkers}
+
+	ps := newProviderSection(&state.Providers, theme.Default())
+	ps.Focus()
+	_, cmd := ps.Update(tea.PasteMsg{Content: "2a3\n4"})
+	if cmd != nil {
+		cmd()
+	}
+
+	if got, want := state.Providers.WorkerCount.Value(), "234"; got != want {
+		t.Fatalf("worker count after paste = %q, want %q", got, want)
+	}
+}

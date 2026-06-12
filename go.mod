@@ -8,6 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.3
 	github.com/Digital-Shane/omdb v1.1.0
 	github.com/Digital-Shane/treeview/v2 v2.0.1
+	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/x/exp/teatest/v2 v2.0.0-20260422141420-a6cbdff8a7e2
 	github.com/dashotv/tvdb v0.5.2
 	github.com/google/go-cmp v0.7.0
@@ -20,7 +21,6 @@ require (
 )
 
 require (
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect

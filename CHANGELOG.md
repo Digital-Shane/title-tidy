@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 * Legacy TMDB cache settings no longer appear in provider configuration.
 * Config UI template variables panel clipping variable examples after horizontal viewport movement.
+* Ability to paste api keys in the config menu.
 
 ## [v1.19.1] - 2026-05-29
 ### Updated

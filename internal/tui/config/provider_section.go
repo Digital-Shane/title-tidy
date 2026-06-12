@@ -7,6 +7,7 @@ import (
 
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
+	"github.com/atotto/clipboard"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -62,6 +63,9 @@ func (p *providerSection) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		p.ensureActiveField()
 		return p, p.handleKey(m)
+	case tea.PasteMsg:
+		p.ensureActiveField()
+		return p, p.handlePaste(m)
 	case providerValidateCmd:
 		return p.handleProviderValidateCmd(m)
 	case providerValidationMsg:
@@ -196,25 +200,17 @@ func (p *providerSection) handleTextInputs(key tea.KeyPressMsg) (tea.Cmd, bool) 
 		if key.String() == "space" {
 			return nil, true
 		}
+		if key.String() == "ctrl+v" {
+			return readClipboardPaste(), true
+		}
 		if key.Text != "" {
-			digits := make([]rune, 0, len(key.Text))
-			for _, r := range key.Text {
-				if unicode.IsDigit(r) {
-					digits = append(digits, r)
-				}
-			}
-			if len(digits) == 0 {
+			digits := filterDigits(key.Text)
+			if digits == "" {
 				return nil, true
 			}
-			key = tea.KeyPressMsg{Code: digits[0], Text: string(digits)}
+			key = tea.KeyPressMsg{Code: []rune(digits)[0], Text: digits}
 		}
-		prev := p.state.WorkerCount.Value()
-		var cmd tea.Cmd
-		p.state.WorkerCount, cmd = p.state.WorkerCount.Update(key)
-		if prev != p.state.WorkerCount.Value() {
-			return cmd, true
-		}
-		return cmd, true
+		return p.updateWorkerInput(key), true
 	}
 
 	if p.state.Active.Kind != ProviderFocusField {
@@ -231,6 +227,9 @@ func (p *providerSection) handleTextInputs(key tea.KeyPressMsg) (tea.Cmd, bool) 
 	if key.String() == "space" && fieldState.Schema.Type == provider.ConfigFieldTypePassword {
 		return nil, true
 	}
+	if key.String() == "ctrl+v" {
+		return readClipboardPaste(), true
+	}
 	if key.Text != "" {
 		filtered := filterProviderInput(fieldState.Schema, key.Text)
 		if filtered == "" {
@@ -239,15 +238,52 @@ func (p *providerSection) handleTextInputs(key tea.KeyPressMsg) (tea.Cmd, bool) 
 		key = tea.KeyPressMsg{Code: []rune(filtered)[0], Text: filtered}
 	}
 
+	return p.updateProviderInput(providerState, fieldState, key), true
+}
+
+func (p *providerSection) handlePaste(msg tea.PasteMsg) tea.Cmd {
+	if p.state.Active.Kind == ProviderFocusWorkers {
+		digits := filterDigits(msg.Content)
+		if digits == "" {
+			return nil
+		}
+		return p.updateWorkerInput(tea.PasteMsg{Content: digits})
+	}
+
+	if p.state.Active.Kind != ProviderFocusField {
+		return nil
+	}
+	providerState := p.providerState(p.state.Active.ProviderName)
+	fieldState := p.activeField()
+	if providerState == nil || fieldState == nil || !providerState.Enabled {
+		return nil
+	}
+	if fieldState.Schema.Type == provider.ConfigFieldTypeBool {
+		return nil
+	}
+	filtered := filterProviderInput(fieldState.Schema, msg.Content)
+	if filtered == "" {
+		return nil
+	}
+	return p.updateProviderInput(providerState, fieldState, tea.PasteMsg{Content: filtered})
+}
+
+func (p *providerSection) updateWorkerInput(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	p.state.WorkerCount, cmd = p.state.WorkerCount.Update(msg)
+	return cmd
+}
+
+func (p *providerSection) updateProviderInput(providerState *ProviderServiceState, fieldState *ProviderFieldState, msg tea.Msg) tea.Cmd {
 	prev := fieldState.Input.Value()
 	var cmd tea.Cmd
-	fieldState.Input, cmd = fieldState.Input.Update(key)
+	fieldState.Input, cmd = fieldState.Input.Update(msg)
 	if prev != fieldState.Input.Value() && isValidationField(fieldState.Schema) {
 		if debounced := p.queueValidation(providerState); debounced != nil {
 			cmd = tea.Batch(cmd, debounced)
 		}
 	}
-	return cmd, true
+	return cmd
 }
 
 func (p *providerSection) queueValidation(providerState *ProviderServiceState) tea.Cmd {
@@ -520,6 +556,26 @@ func filterProviderInput(field provider.ConfigField, text string) string {
 		}
 	}
 	return string(filtered)
+}
+
+func filterDigits(text string) string {
+	filtered := make([]rune, 0, len(text))
+	for _, r := range text {
+		if unicode.IsDigit(r) {
+			filtered = append(filtered, r)
+		}
+	}
+	return string(filtered)
+}
+
+func readClipboardPaste() tea.Cmd {
+	return func() tea.Msg {
+		content, err := clipboard.ReadAll()
+		if err != nil {
+			return nil
+		}
+		return tea.PasteMsg{Content: content}
+	}
 }
 
 func fieldLabel(field provider.ConfigField) string {
