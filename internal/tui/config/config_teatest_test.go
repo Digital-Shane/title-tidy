@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/bubbletea/v2"
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/charmbracelet/x/exp/teatest/v2"
 	"github.com/google/go-cmp/cmp"
 )
@@ -257,6 +258,7 @@ func TestConfigTUIProvidersTMDB(t *testing.T) {
 	waitForOutput(t, tm, "Provider Controls")
 
 	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
 
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyDown)
@@ -314,6 +316,7 @@ func TestConfigTUIProvidersOMDB(t *testing.T) {
 	press(tm, tea.KeyRight)
 	press(tm, tea.KeyRight)
 	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
 
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyDown)
@@ -362,6 +365,7 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 	press(tm, tea.KeyRight)
 	press(tm, tea.KeyRight)
 	press(tm, tea.KeyRight)
+	press(tm, tea.KeyRight)
 	press(tm, tea.KeySpace)
 	press(tm, tea.KeyEnter)
 	press(tm, tea.KeySpace)
@@ -383,5 +387,33 @@ func TestConfigTUIProvidersSharedAndFFProbe(t *testing.T) {
 	wantFocus := ProviderFocus{Kind: ProviderFocusToggle, ProviderName: "ffprobe"}
 	if diff := cmp.Diff(wantFocus, model.state.Providers.Active); diff != "" {
 		t.Errorf("providerActive diff (-want +got):\n%s", diff)
+	}
+}
+
+func TestConfigTUIManualSearchSaveAndReset(t *testing.T) {
+	tm := newConfigTestModel(t)
+	waitForOutput(t, tm, "[ Show Folder ]")
+	for i := 0; i < 6; i++ {
+		press(tm, tea.KeyTab)
+	}
+	waitForOutput(t, tm, "Manual Search")
+	press(tm, tea.KeyRight)
+	press(tm, tea.KeySpace)
+	pressCtrl(tm, 's')
+	press(tm, tea.KeyEnter)
+	pressCtrl(tm, 'r')
+	press(tm, tea.KeyEsc)
+	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
+
+	model := finalConfigModel(t, tm)
+	if !model.state.Providers.EnableManualSearch || !model.original.EnableManualSearch {
+		t.Fatal("reset should restore the saved manual search setting")
+	}
+	saved, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.EnableManualSearch {
+		t.Fatal("manual search setting was not saved")
 	}
 }

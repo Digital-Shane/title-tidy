@@ -43,6 +43,7 @@ type FormatConfig struct {
 	LogRetentionDays     int                       `json:"log_retention_days"`
 	EnableLogging        bool                      `json:"enable_logging"`
 	MetadataWorkerCount  int                       `json:"metadata_worker_count"`
+	EnableManualSearch   bool                      `json:"enable_manual_search"`
 	Providers            map[string]ProviderConfig `json:"providers,omitempty"`
 }
 
@@ -63,6 +64,7 @@ func DefaultConfig() *FormatConfig {
 		LogRetentionDays:     30,
 		EnableLogging:        true,
 		MetadataWorkerCount:  10,
+		EnableManualSearch:   false,
 		Providers:            map[string]ProviderConfig{},
 	}
 }

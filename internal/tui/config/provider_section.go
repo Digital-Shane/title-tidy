@@ -114,7 +114,7 @@ func (p *providerSection) moveFocus(delta int) tea.Cmd {
 }
 
 func (p *providerSection) focusOrder() []ProviderFocus {
-	fields := []ProviderFocus{{Kind: ProviderFocusWorkers}}
+	fields := []ProviderFocus{{Kind: ProviderFocusWorkers}, {Kind: ProviderFocusManualSearch}}
 	for _, providerState := range p.state.Providers {
 		providerName := providerState.Name()
 		fields = append(fields, ProviderFocus{Kind: ProviderFocusToggle, ProviderName: providerName})
@@ -147,6 +147,9 @@ func (p *providerSection) ensureActiveField() {
 
 func (p *providerSection) toggleActive() (tea.Cmd, bool) {
 	switch p.state.Active.Kind {
+	case ProviderFocusManualSearch:
+		p.state.EnableManualSearch = !p.state.EnableManualSearch
+		return nil, true
 	case ProviderFocusToggle:
 		providerState := p.providerState(p.state.Active.ProviderName)
 		if providerState == nil {
@@ -421,6 +424,9 @@ func (p *providerSection) renderSharedColumn(colors theme.Colors) string {
 		lipgloss.NewStyle().Bold(true).Render("Shared"),
 		"Worker Count: "+field,
 		lipgloss.NewStyle().Foreground(colors.Muted).Render("Concurrent metadata fetch workers."),
+		"",
+		p.renderToggle("Manual Search", p.state.EnableManualSearch, p.state.Active.Kind == ProviderFocusManualSearch, colors),
+		lipgloss.NewStyle().Foreground(colors.Muted).Render("Enable for every run. Use --manual-search for one run."),
 	)
 	return lipgloss.NewStyle().Width(22).Render(content)
 }

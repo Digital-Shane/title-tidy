@@ -54,6 +54,7 @@ title-tidy [command]
 
 **Flags for rename commands:**
 * Add the `-i` or `--instant` flag to apply changes immediately without the interactive preview.
+* Add `--manual-search` to enable manual search for failed metadata lookups for a single run.
 * The `--no-nfo` flag will delete nfo files during the rename process.
 * The `--no-img` flag will delete image files during the rename process.
 * The `--no-sample` flag will delete files with "sample" in the name during the rename process.
@@ -144,6 +145,23 @@ Control rename behavior for source tags across media types:
 * **Preserve existing tags**: Keep bracketed tags already present in source names (for example `[Uncut]` or `[Theatrical Cut]`) when generating the new name
   * Default: disabled
   * Useful when alternate versions should stay distinct after rename
+
+#### Manual Metadata Search
+
+Manual search is disabled by default. Enable it for a single run when you need to correct a failed lookup:
+
+```bash
+title-tidy episodes --manual-search
+```
+
+The flag also works with `shows`, `seasons`, and `movies`. It lets you edit and retry searches that return no
+match from a metadata provider. It does not change your settings. Local filename parsing and ffprobe do not use manual search.
+
+To enable manual search for every run, turn on **Manual Search** under **Providers → Shared** in `title-tidy config`.
+You can then use `--manual-search=false` to skip the panel for a particular run.
+
+When manual search is disabled, metadata fetching still runs and renaming continues with the available metadata.
+Missing episode titles may remain blank.
 
 #### TMDB Integration
 

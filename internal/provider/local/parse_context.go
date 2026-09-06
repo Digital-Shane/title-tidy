@@ -1,6 +1,7 @@
 package local
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/Digital-Shane/treeview/v2"
@@ -50,19 +51,30 @@ func (ctx ParseContext) WorkingName() string {
 	return ctx.Name
 }
 
-// ParentNames collects ancestor names up to the requested depth.
+// ParentNames collects ancestor names up to the requested depth, continuing
+// along the source path when containing folders are outside the indexed tree.
 func (ctx ParseContext) ParentNames(maxDepth int) []string {
 	if ctx.Node == nil || maxDepth <= 0 {
 		return nil
 	}
 
 	names := make([]string, 0, maxDepth)
-	parent := ctx.Node.Parent()
-	depth := 0
-	for parent != nil && depth < maxDepth {
-		names = append(names, parent.Name())
-		parent = parent.Parent()
-		depth++
+	node := ctx.Node
+	for node.Parent() != nil && len(names) < maxDepth {
+		node = node.Parent()
+		names = append(names, node.Name())
+	}
+
+	// Rename previews detach their roots from the containing directory.
+	// Recover its name for parsing without changing the preview hierarchy.
+	path := node.Data().Path
+	for len(names) < maxDepth {
+		dir := filepath.Dir(path)
+		if dir == "." || dir == ".." || dir == filepath.Dir(dir) {
+			break
+		}
+		names = append(names, filepath.Base(dir))
+		path = dir
 	}
 
 	return names

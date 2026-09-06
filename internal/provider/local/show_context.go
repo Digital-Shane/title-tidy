@@ -41,15 +41,7 @@ func showInfoFromName(ctx ParseContext) (string, string, bool) {
 }
 
 func showInfoFromParents(ctx ParseContext, maxDepth int) (string, string) {
-	if ctx.Node == nil {
-		return "", ""
-	}
-
-	parent := ctx.Node.Parent()
-	depth := 0
-	for parent != nil && depth < maxDepth {
-		parentName := parent.Name()
-
+	for _, parentName := range ctx.ParentNames(maxDepth) {
 		if show, year := ExtractShowNameFromPath(parentName, false); show != "" {
 			return show, year
 		}
@@ -59,9 +51,6 @@ func showInfoFromParents(ctx ParseContext, maxDepth int) (string, string) {
 				return show, year
 			}
 		}
-
-		parent = parent.Parent()
-		depth++
 	}
 
 	return "", ""

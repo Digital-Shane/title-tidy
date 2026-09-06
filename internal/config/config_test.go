@@ -36,6 +36,27 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestManualSearchConfigRoundTrip(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := DefaultConfig()
+	if cfg.EnableManualSearch {
+		t.Fatal("manual search should be disabled by default")
+	}
+	for _, enabled := range []bool{true, false} {
+		cfg.EnableManualSearch = enabled
+		if err := cfg.Save(); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.EnableManualSearch != enabled {
+			t.Fatalf("saved manual search = %v, want %v", loaded.EnableManualSearch, enabled)
+		}
+	}
+}
+
 func TestConfigPath(t *testing.T) {
 	path, err := ConfigPath()
 	if err != nil {

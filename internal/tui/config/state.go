@@ -72,9 +72,10 @@ type LoggingState struct {
 
 // ProviderState stores metadata provider configuration and focus management.
 type ProviderState struct {
-	WorkerCount textinput.Model
-	Active      ProviderFocus
-	Providers   []ProviderServiceState
+	WorkerCount        textinput.Model
+	EnableManualSearch bool
+	Active             ProviderFocus
+	Providers          []ProviderServiceState
 }
 
 // Provider returns a provider state by stable provider name.
@@ -109,6 +110,7 @@ type ProviderFocusKind int
 
 const (
 	ProviderFocusWorkers ProviderFocusKind = iota
+	ProviderFocusManualSearch
 	ProviderFocusToggle
 	ProviderFocusField
 )

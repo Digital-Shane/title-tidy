@@ -35,6 +35,12 @@ func RunMediaCommand(cmd *cobra.Command, cmdConfig CommandConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	if cmd.Flags().Changed("manual-search") {
+		formatConfig.EnableManualSearch, err = cmd.Flags().GetBool("manual-search")
+		if err != nil {
+			return err
+		}
+	}
 
 	if err := validateLinkDestination(linkPath); err != nil {
 		return err
