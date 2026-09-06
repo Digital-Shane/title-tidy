@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="Title Tidy Logo" height="300">
-  <p style="color: #888; font-weight: bold; font-style: italic; font-size: 1.5em;">The free FileBot alternative</p>
+  <img src="logo.png" alt="Title Tidy Logo" width="500">
 </div>
 
 Title tidy is the quickest way to standardizes your media file names for use in Jellyfin, Plex, and Emby. Title tidy uses
@@ -467,7 +466,3 @@ When contributing:
 ## License
 
 This project is licensed under the GNU Version 3 - see the [LICENSE](./LICENSE) file for details.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Digital-Shane/title-tidy&type=Date)](https://www.star-history.com/#Digital-Shane/title-tidy&Date)
