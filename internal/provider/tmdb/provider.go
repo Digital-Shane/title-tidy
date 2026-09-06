@@ -319,6 +319,17 @@ func (p *Provider) mapError(err error) error {
 	}
 
 	errStr := strings.ToLower(err.Error())
+	// go-tmdb reports API status codes as "Code (n): ...", without the
+	// HTTP status. Missing resources and invalid prerequisite IDs need a
+	// corrected search query in the manual resolution panel.
+	if strings.Contains(errStr, "code (34):") || strings.Contains(errStr, "code (6):") || strings.Contains(errStr, "404 not found") {
+		return &provider.ProviderError{
+			Provider: providerName,
+			Code:     "NOT_FOUND",
+			Message:  "TMDB error: " + err.Error(),
+			Retry:    false,
+		}
+	}
 	if strings.Contains(errStr, "401") || strings.Contains(errStr, "unauthorized") {
 		return &provider.ProviderError{
 			Provider: providerName,

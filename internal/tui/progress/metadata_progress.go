@@ -68,6 +68,7 @@ type MetadataProgressModel struct {
 	failures            []core.MetadataFailure
 	selectedFailure     int
 	initialFailureCount int
+	manualEnabled       bool
 	manualActive        bool
 	manualSkipped       bool
 	retrying            bool
@@ -122,6 +123,7 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		providerLabels: providerLabels,
 		shouldRun:      len(summary.ActiveProviders) > 0,
 		input:          newMetadataSearchInput(th),
+		manualEnabled:  cfg.EnableManualSearch,
 		manualStatus:   "",
 	}
 }
@@ -201,7 +203,7 @@ func (m *MetadataProgressModel) handleMetadataEvent(msg metadataEventMsg) (tea.M
 		m.errors = m.engine.Errors()
 
 		failures := m.engine.ProviderFailures()
-		if len(failures) > 0 {
+		if m.manualEnabled && len(failures) > 0 {
 			m.failures = failures
 			m.initialFailureCount = len(failures)
 			m.manualActive = true
@@ -233,7 +235,7 @@ func (m *MetadataProgressModel) handleMetadataEvent(msg metadataEventMsg) (tea.M
 			return m, tea.Batch(cmd, m.waitForEvent())
 		}
 		failures := m.engine.ProviderFailures()
-		if len(failures) > 0 {
+		if m.manualEnabled && len(failures) > 0 {
 			m.failures = failures
 			m.initialFailureCount = len(failures)
 			m.manualActive = true

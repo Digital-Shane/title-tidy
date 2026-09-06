@@ -45,6 +45,7 @@ var (
 func init() {
 	// Global flags for all commands
 	rootCmd.PersistentFlags().BoolVarP(&instant, "instant", "i", false, "Apply renames immediately without interactive preview")
+	rootCmd.PersistentFlags().Bool("manual-search", false, "Enable manual search for failed metadata lookups for this run only")
 	rootCmd.PersistentFlags().BoolVar(&noNfo, "no-nfo", false, "Delete NFO files during rename")
 	rootCmd.PersistentFlags().BoolVar(&noImg, "no-img", false, "Delete image files during rename")
 	rootCmd.PersistentFlags().BoolVar(&noSample, "no-sample", false, "Delete sample media files and folders during rename")

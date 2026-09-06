@@ -374,7 +374,7 @@ func TestMetadataProgressDisplaysErrorsAndExposesErr(t *testing.T) {
 func TestMetadataProgressManualRetryResolvesFailure(t *testing.T) {
 	tree := newSingleMovieTree()
 
-	cfg := &config.FormatConfig{MetadataWorkerCount: 1}
+	cfg := &config.FormatConfig{MetadataWorkerCount: 1, EnableManualSearch: true}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	provider := newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		if req.Name == "Manual k Success" {
@@ -428,7 +428,7 @@ func TestMetadataProgressManualRetryResolvesFailure(t *testing.T) {
 func TestMetadataProgressManualSkipAllowsContinue(t *testing.T) {
 	tree := newSingleMovieTree()
 
-	cfg := &config.FormatConfig{MetadataWorkerCount: 1}
+	cfg := &config.FormatConfig{MetadataWorkerCount: 1, EnableManualSearch: true}
 	model := NewMetadataProgressModel(tree, cfg, theme.Default())
 	provider := newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
 		return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "NOT_FOUND", Message: fmt.Sprintf("no results for %s", req.Name), Retry: false}

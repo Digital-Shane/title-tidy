@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.20.0] - 2026-09-06
+### Added
+* Opt in manual metadata search, disabled by default. Enable in settings or use `--manual-search` to enable it once.
+### Fixed
+* Missing TMDB episodes and invalid show IDs now open the manual search panel when enabled.
+* Episode lookups recover show metadata from containing folders when running inside a show or season directory.
+
 ## [v1.19.2] - 2026-06-12
 ### Updated
 * Provider registry to be the source of truth for built-in provider config, priority, variables, and display ordering.

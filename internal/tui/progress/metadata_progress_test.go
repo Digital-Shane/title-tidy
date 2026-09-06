@@ -5,10 +5,56 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/tui/theme"
 	"github.com/google/go-cmp/cmp"
 )
+
+func TestMetadataProgressManualSearchOption(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, channelClosed := range []bool{false, true} {
+			name := "disabled"
+			if enabled {
+				name = "enabled"
+			}
+			if channelClosed {
+				name += "/channel_closed"
+			} else {
+				name += "/done_summary"
+			}
+			t.Run(name, func(t *testing.T) {
+				tree := newMetadataTestTree()
+				cfg := config.DefaultConfig()
+				cfg.EnableManualSearch = enabled
+				model := NewMetadataProgressModel(tree, cfg, theme.Default())
+				configureTestEngine(model, tree, newMetadataFakeProvider("fakeTMDB", func(req provider.FetchRequest) (*provider.Metadata, error) {
+					if req.MediaType == provider.MediaTypeEpisode {
+						return nil, &provider.ProviderError{Provider: "fakeTMDB", Code: "NOT_FOUND", Message: "missing episode"}
+					}
+					return &provider.Metadata{Core: provider.CoreMetadata{Title: req.Name, MediaType: req.MediaType}}, nil
+				}), 1)
+				for range model.engine.Start(context.Background()) {
+				}
+				model.handleMetadataEvent(metadataEventMsg{
+					done:  channelClosed,
+					event: core.MetadataEvent{Summary: model.engine.SummarySnapshot()},
+				})
+				if model.manualActive != enabled || model.done == enabled {
+					t.Fatalf("manualActive = %v, done = %v with manual search enabled = %v", model.manualActive, model.done, enabled)
+				}
+				if len(model.errors) != 1 {
+					t.Errorf("metadata errors = %v, want the missing episode error retained", model.errors)
+				}
+				key := provider.GenerateMetadataKey("movie", "Sample Movie", "2021", 0, 0)
+				if meta := model.Metadata()[key]; meta == nil || meta.Core.Title != "Sample Movie" {
+					t.Errorf("successful metadata = %+v, want Sample Movie retained", meta)
+				}
+			})
+		}
+	}
+}
 
 func TestMetadataProgressShouldRunFilePathProvider(t *testing.T) {
 	movieNode := newMetadataFileNode("movie", "movie.mkv", "/library/movie.mkv", false)

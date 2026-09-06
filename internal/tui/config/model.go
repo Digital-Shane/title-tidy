@@ -654,6 +654,7 @@ func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
 		LogRetentionDays:     cfg.LogRetentionDays,
 		EnableLogging:        cfg.EnableLogging,
 		MetadataWorkerCount:  cfg.MetadataWorkerCount,
+		EnableManualSearch:   cfg.EnableManualSearch,
 		Providers:            cloneProviderConfigs(cfg.Providers),
 	}
 }
@@ -677,6 +678,7 @@ func applyProviderStateToConfig(cfg *config.FormatConfig, state *ProviderState) 
 	if cfg == nil || state == nil {
 		return
 	}
+	cfg.EnableManualSearch = state.EnableManualSearch
 	for _, providerState := range state.Providers {
 		providerName := providerState.Name()
 		cfg.SetProviderEnabled(providerName, providerState.Enabled)
@@ -746,9 +748,10 @@ func buildProviderState(cfg *config.FormatConfig, th theme.Theme, reg *provider.
 	}
 
 	return ProviderState{
-		WorkerCount: worker,
-		Active:      ProviderFocus{Kind: ProviderFocusWorkers},
-		Providers:   providerStates,
+		WorkerCount:        worker,
+		EnableManualSearch: cfg.EnableManualSearch,
+		Active:             ProviderFocus{Kind: ProviderFocusWorkers},
+		Providers:          providerStates,
 	}
 }
 
