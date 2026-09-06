@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Updated
+* New and improved logo image for the readme.
+### Removed
+* Star history. The site keeps breaking and I don't care about tracking this anymore.
+
 ## [v1.20.0] - 2026-09-06
 ### Added
 * Opt in manual metadata search, disabled by default. Enable in settings or use `--manual-search` to enable it once.
