@@ -22,6 +22,13 @@ const (
 
 type RenameState struct {
 	PreserveExistingTags bool
+	Replacements         []FilenameReplacementState
+	Focus                int // 0: tag toggle; then alternating search/replacement fields
+}
+
+type FilenameReplacementState struct {
+	Search      textinput.Model
+	Replacement textinput.Model
 }
 
 // TemplateSections encapsulates all template editors with dedicated state.

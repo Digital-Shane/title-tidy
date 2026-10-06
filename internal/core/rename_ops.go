@@ -12,7 +12,7 @@ import (
 // RenameRegular renames a node; returns true only when an actual filesystem rename occurred.
 func RenameRegular(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (bool, error) {
 	oldPath := node.Data().Path
-	newName, err := sanitizeFilename(mm.NewName)
+	newName, err := SanitizeFilename(mm.NewName)
 	if err != nil {
 		log.LogRename(oldPath, "", false, err)
 		return false, mm.Fail(err)
@@ -47,7 +47,7 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (in
 	successes := 0
 	errs := []error{}
 
-	dirName, err := sanitizeFilename(mm.NewName)
+	dirName, err := SanitizeFilename(mm.NewName)
 	if err != nil {
 		log.LogCreateDir(mm.NewName, false, err)
 		errs = append(errs, mm.Fail(err))
@@ -82,7 +82,7 @@ func CreateVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta) (in
 		if childName == "" {
 			childName = child.Name()
 		}
-		childName, err := sanitizeFilename(childName)
+		childName, err := SanitizeFilename(childName)
 		if err != nil {
 			log.LogRename(child.Data().Path, "", false, err)
 			errs = append(errs, fmt.Errorf("%s: %w", child.Name(), cm.Fail(err)))
@@ -169,7 +169,7 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta, linkP
 	errs := []error{}
 
 	// Create directory in the destination
-	dirName, err := sanitizeFilename(mm.NewName)
+	dirName, err := SanitizeFilename(mm.NewName)
 	if err != nil {
 		log.LogCreateDir(mm.NewName, false, err)
 		errs = append(errs, mm.Fail(err))
@@ -203,7 +203,7 @@ func LinkVirtualDir(node *treeview.Node[treeview.FileInfo], mm *MediaMeta, linkP
 		if childName == "" {
 			childName = child.Name()
 		}
-		childName, err := sanitizeFilename(childName)
+		childName, err := SanitizeFilename(childName)
 		if err != nil {
 			log.LogLink(child.Data().Path, "", false, err)
 			errs = append(errs, fmt.Errorf("%s: %w", child.Name(), cm.Fail(err)))

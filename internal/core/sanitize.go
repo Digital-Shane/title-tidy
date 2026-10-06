@@ -8,7 +8,9 @@ import (
 
 const invalidFilenameChars = "<>:\"/\\|?*"
 
-func sanitizeFilename(name string) (string, error) {
+// SanitizeFilename converts a name to a portable filename component, collapsing
+// spaces and invalid characters. It is shared by filesystem operations and previews.
+func SanitizeFilename(name string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("name is empty after sanitization")
 	}
@@ -60,7 +62,7 @@ func sanitizePath(path string) (string, error) {
 		if part == "" {
 			continue
 		}
-		sanitized, err := sanitizeFilename(part)
+		sanitized, err := SanitizeFilename(part)
 		if err != nil {
 			return "", err
 		}

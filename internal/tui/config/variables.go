@@ -19,7 +19,11 @@ func buildVariables(section Section, state *ConfigState, registry *provider.Regi
 	switch section {
 	case SectionRename:
 		return []variable{
-			{"Space/Enter", "Toggle existing tag preservation", "Keeps bracket tags like [Uncut] from source movie filenames"},
+			{"↑/↓ arrows", "Select a rename setting", ""},
+			{"Space/Enter", "Toggle tag preservation", "Enter advances between replacement fields"},
+			{"Ctrl+N", "Add a replacement pair", `For example, ":" replaced by " - "`},
+			{"Ctrl+D", "Remove the selected pair", ""},
+			{"Replacements", "Literal, case-sensitive matches", "Longest match first; empty values delete matches"},
 		}
 	case SectionLogging:
 		return []variable{

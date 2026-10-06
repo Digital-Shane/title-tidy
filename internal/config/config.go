@@ -40,6 +40,7 @@ type FormatConfig struct {
 	Episode              string                    `json:"episode"`
 	Movie                string                    `json:"movie"`
 	PreserveExistingTags bool                      `json:"preserve_existing_tags"`
+	FilenameReplacements map[string]string         `json:"filename_replacements"`
 	LogRetentionDays     int                       `json:"log_retention_days"`
 	EnableLogging        bool                      `json:"enable_logging"`
 	MetadataWorkerCount  int                       `json:"metadata_worker_count"`
@@ -61,6 +62,7 @@ func DefaultConfig() *FormatConfig {
 		Episode:              "S{season}E{episode}",
 		Movie:                "{title} ({year})",
 		PreserveExistingTags: false,
+		FilenameReplacements: map[string]string{},
 		LogRetentionDays:     30,
 		EnableLogging:        true,
 		MetadataWorkerCount:  10,
@@ -111,6 +113,9 @@ func Load() (*FormatConfig, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 	cfg := disk.FormatConfig
+	if err := ValidateFilenameReplacements(cfg.FilenameReplacements); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 
 	// Fill in any missing fields with defaults
 	defaults := DefaultConfig()
@@ -137,6 +142,9 @@ func Load() (*FormatConfig, error) {
 	}
 	if cfg.Providers == nil {
 		cfg.Providers = make(map[string]ProviderConfig)
+	}
+	if cfg.FilenameReplacements == nil {
+		cfg.FilenameReplacements = make(map[string]string)
 	}
 	if len(cfg.Providers) == 0 {
 		cfg.applyLegacyProviderConfig(disk.TMDBAPIKey, disk.EnableTMDBLookup, disk.TMDBLanguage, disk.OMDBAPIKey, disk.EnableOMDBLookup, disk.TVDBAPIKey, disk.EnableTVDBLookup, disk.EnableFFProbe)
@@ -193,6 +201,9 @@ func metadataVariableNames() []string {
 
 // Save writes the configuration to disk
 func (cfg *FormatConfig) Save() error {
+	if err := ValidateFilenameReplacements(cfg.FilenameReplacements); err != nil {
+		return err
+	}
 	path, err := ConfigPath()
 	if err != nil {
 		return err
