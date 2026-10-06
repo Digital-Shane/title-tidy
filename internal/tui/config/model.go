@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Option configures the configuration TUI model.
@@ -204,12 +206,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshVariablesPanel()
 			return m, tea.Batch(cmds...)
 		case "up":
-			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders {
+			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders && m.activeSection() != SectionRename {
 				m.disableVariablesAuto()
 				m.scrollVariables(-1, 1)
 			}
 		case "down":
-			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders {
+			if m.activeSection() != SectionLogging && m.activeSection() != SectionProviders && m.activeSection() != SectionRename {
 				m.disableVariablesAuto()
 				m.scrollVariables(1, 1)
 			}
@@ -286,7 +288,7 @@ func (m *Model) handleWindowResize(msg tea.WindowSizeMsg) {
 	}
 
 	for _, sec := range m.sections {
-		sec.Resize(rightWidth - 2)
+		sec.Resize(max(rightWidth-m.theme.PanelStyle().GetHorizontalFrameSize(), 0))
 	}
 }
 
@@ -373,11 +375,30 @@ func (m *Model) renderLeftPanel(width, height int) string {
 	var content string
 	if m.activeSection() == SectionProviders {
 		content = m.renderProvidersSidebar(width - 4)
+	} else if m.activeSection() == SectionRename {
+		content = m.renderRenameSidebar(width - 4)
 	} else {
 		content = m.renderVariablesSidebar(width - 4)
 	}
 
 	return panel.Render(content)
+}
+
+func (m *Model) renderRenameSidebar(width int) string {
+	title := m.theme.PanelTitleStyle().Render("Rename Controls")
+	body := lipgloss.NewStyle().Foreground(m.theme.Colors().Muted).Width(max(width, 1)).Render(strings.Join([]string{
+		"↑/↓: Select a setting.",
+		"Space: Toggle source tags.",
+		"Enter: Toggle or next field.",
+		"Ctrl+N: Add a pair.",
+		"Ctrl+D: Remove selected pair.",
+		"",
+		"Search text is literal and case-sensitive.",
+		"Longest search keys win; replacements run once.",
+		"Empty values delete matches.",
+		"Extensions stay unchanged.",
+	}, "\n"))
+	return lipgloss.JoinVertical(lipgloss.Left, title, "", body)
 }
 
 func (m *Model) renderProvidersSidebar(width int) string {
@@ -442,8 +463,9 @@ func (m *Model) renderRightPanel(width, height int) string {
 	}
 
 	previews := buildPreviews(m.activeSection(), &m.state, m.icons, m.providerRegistry)
-	previewView := m.renderPreview(previews, width-2)
-	separator := lipgloss.NewStyle().Foreground(m.theme.Colors().Muted).Render(strings.Repeat("─", max(width-2, 0)))
+	contentWidth := max(width-panel.GetHorizontalFrameSize(), 0)
+	previewView := m.renderPreview(previews, contentWidth)
+	separator := lipgloss.NewStyle().Foreground(m.theme.Colors().Muted).Render(strings.Repeat("─", contentWidth))
 
 	content := lipgloss.JoinVertical(lipgloss.Left, sectionView, separator, previewView)
 	return panel.Render(content)
@@ -456,7 +478,7 @@ func (m *Model) renderPreview(previews []preview, width int) string {
 	for _, p := range previews {
 		line := fmt.Sprintf("%s %s %s", p.icon, labelStyle.Render(p.label+":"), valueStyle.Render(p.preview))
 		if lipgloss.Width(line) > width && width > 3 {
-			line = line[:width-3] + "..."
+			line = ansi.Truncate(line, width, "...")
 		}
 		lines = append(lines, line)
 	}
@@ -482,27 +504,32 @@ func (m *Model) renderStatusBar() string {
 		key.Render("Ctrl+R") + ": Reset",
 		key.Render("Esc/Ctrl+C") + ": Quit",
 	}
-	if m.variablesOverflowing() {
+	if m.activeSection() != SectionRename && m.variablesOverflowing() {
 		parts = append(parts, key.Render("↑↓")+": Scroll", key.Render("Alt+Space")+": Toggle auto")
 	}
 
 	line := help.Render(strings.Join(parts, " │ "))
 	if m.saveStatus != "" {
 		if m.err != nil {
-			line += " │ " + failure.Render(m.saveStatus)
+			line = failure.Render(m.saveStatus) + " │ " + line
 		} else {
-			line += " │ " + success.Render(m.saveStatus)
+			line = success.Render(m.saveStatus) + " │ " + line
 		}
 	}
 	return line
 }
 
 func (m *Model) save() tea.Cmd {
+	replacements, err := m.state.Rename.filenameReplacements()
+	if err != nil {
+		return m.setSaveStatus("Failed to save: "+err.Error(), err)
+	}
 	m.config.ShowFolder = stripNullChars(m.state.Templates.Show.Input.Value())
 	m.config.SeasonFolder = stripNullChars(m.state.Templates.Season.Input.Value())
 	m.config.Episode = stripNullChars(m.state.Templates.Episode.Input.Value())
 	m.config.Movie = stripNullChars(m.state.Templates.Movie.Input.Value())
 	m.config.PreserveExistingTags = m.state.Rename.PreserveExistingTags
+	m.config.FilenameReplacements = replacements
 
 	m.config.EnableLogging = m.state.Logging.Enabled
 	retention := stripNullChars(m.state.Logging.Retention.Value())
@@ -540,7 +567,9 @@ func (m *Model) reset() tea.Cmd {
 	m.state.Templates.Episode.Input.CursorEnd()
 	m.state.Templates.Movie.Input.SetValue(m.original.Movie)
 	m.state.Templates.Movie.Input.CursorEnd()
-	m.state.Rename.PreserveExistingTags = m.original.PreserveExistingTags
+	m.sections[SectionRename].Blur()
+	m.state.Rename = buildRenameState(m.original, m.theme)
+	m.sections[SectionRename].Resize(m.width - m.width/3 - 4 - m.theme.PanelStyle().GetHorizontalFrameSize())
 
 	m.state.Logging.Enabled = m.original.EnableLogging
 	m.state.Logging.Retention.SetValue(fmt.Sprintf("%d", m.original.LogRetentionDays))
@@ -651,6 +680,7 @@ func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
 		Episode:              cfg.Episode,
 		Movie:                cfg.Movie,
 		PreserveExistingTags: cfg.PreserveExistingTags,
+		FilenameReplacements: maps.Clone(cfg.FilenameReplacements),
 		LogRetentionDays:     cfg.LogRetentionDays,
 		EnableLogging:        cfg.EnableLogging,
 		MetadataWorkerCount:  cfg.MetadataWorkerCount,
@@ -819,9 +849,7 @@ func buildStateFromConfig(cfg *config.FormatConfig, th theme.Theme, regs ...*pro
 
 	return ConfigState{
 		Templates: tmpl,
-		Rename: RenameState{
-			PreserveExistingTags: cfg.PreserveExistingTags,
-		},
+		Rename:    buildRenameState(cfg, th),
 		Logging: LoggingState{
 			Enabled:   cfg.EnableLogging,
 			Focus:     LoggingFieldToggle,

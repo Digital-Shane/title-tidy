@@ -248,6 +248,45 @@ func TestConfigTUISaveAndReset(t *testing.T) {
 	}
 }
 
+func TestConfigTUIFilenameReplacements(t *testing.T) {
+	tm := newConfigTestModel(t)
+	waitForOutput(t, tm, "[ Show Folder ]")
+	for range 4 {
+		press(tm, tea.KeyTab)
+	}
+	waitForOutput(t, tm, "Filename Replacements")
+	pressCtrl(tm, 'n')
+	tm.Type(":")
+	press(tm, tea.KeyEnter)
+	tm.Type(" - ")
+	pressCtrl(tm, 's')
+	waitForOutput(t, tm, "Configuration saved!")
+
+	pressCtrl(tm, 'n')
+	tm.Type("?")
+	press(tm, tea.KeyEnter)
+	pressCtrl(tm, 's')
+	pressCtrl(tm, 'd')
+	pressCtrl(tm, 'r')
+	waitForOutput(t, tm, "Reset to saved values")
+	press(tm, tea.KeyEsc)
+	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
+
+	model := finalConfigModel(t, tm)
+	want := map[string]string{":": " - ", "?": ""}
+	values, err := model.state.Rename.filenameReplacements()
+	if err != nil || cmp.Diff(want, values) != "" {
+		t.Fatalf("editor replacements = %v, %v; want %v", values, err, want)
+	}
+	saved, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(want, saved.FilenameReplacements); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
 func TestConfigTUIProvidersTMDB(t *testing.T) {
 	tm := newConfigTestModel(t)
 	waitForOutput(t, tm, "[ Show Folder ]")

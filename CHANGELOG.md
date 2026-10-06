@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v1.21.0] - 2026-10-05
+### Added
+* Ability to configure filename replacements for generated file and folder names.
 ### Updated
 * New and improved logo image for the readme.
 ### Removed

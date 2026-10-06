@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
+	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
 )
 
@@ -20,9 +21,26 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		if state.Rename.PreserveExistingTags {
 			status = "Enabled"
 		}
-		return []preview{
+		previews := []preview{
 			{icons["check"], "Preserve Existing Tags", status},
 		}
+		replacements, err := state.Rename.filenameReplacements()
+		if err != nil {
+			return append(previews, preview{icons["document"], "Replacements", err.Error()})
+		}
+		status = "Disabled"
+		if len(replacements) > 0 {
+			status = fmt.Sprintf("%d pairs", len(replacements))
+		}
+		cfg := &config.FormatConfig{FilenameReplacements: replacements}
+		example := cfg.ApplyFilenameReplacements("Diary of a Wimpy Kid: Dog Days (2012) [544p]")
+		if sanitized, err := core.SanitizeFilename(example); err == nil {
+			example = sanitized
+		}
+		return append(previews,
+			preview{icons["check"], "Replacements", status},
+			preview{icons["movie"], "Example", example},
+		)
 
 	case SectionLogging:
 		status := "Disabled"
@@ -50,6 +68,7 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		Episode:      state.Templates.Episode.Input.Value(),
 		Movie:        state.Templates.Movie.Input.Value(),
 	}
+	cfg.FilenameReplacements, _ = state.Rename.filenameReplacements()
 
 	showMetadata := &provider.Metadata{
 		Core: provider.CoreMetadata{
@@ -119,6 +138,10 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 	seasonPreview, _ := config.ResolveTemplate(cfg.SeasonFolder, seasonCtx, showMetadata, registry)
 	episodePreview, _ := config.ResolveTemplate(cfg.Episode, episodeCtx, showMetadata, registry)
 	moviePreview, _ := config.ResolveTemplate(cfg.Movie, movieCtx, movieMetadata, registry)
+	showPreview = cfg.ApplyFilenameReplacements(showPreview)
+	seasonPreview = cfg.ApplyFilenameReplacements(seasonPreview)
+	episodePreview = cfg.ApplyFilenameReplacements(episodePreview)
+	moviePreview = cfg.ApplyFilenameReplacements(moviePreview)
 	episodePreview += ".mkv"
 
 	return []preview{

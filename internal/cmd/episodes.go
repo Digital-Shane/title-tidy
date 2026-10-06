@@ -88,7 +88,7 @@ func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Forma
 			sourceBase = sourceBase[:len(sourceBase)-len(ext)]
 		}
 		generated := cfg.ApplyEpisodeTemplate(ctx)
-		generated = core.PreserveExistingBracketTags(generated, sourceBase, cfg.PreserveExistingTags)
+		generated = formatGeneratedName(cfg, generated, sourceBase)
 		m.NewName = generated + ext
 
 		if linkPath != "" {

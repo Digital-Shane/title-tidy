@@ -88,7 +88,7 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 				movieName, year := detectMovieNameAndYear(n)
 				ctx := createFormatContext(cfg, "", movieName, year, 0, 0, nil)
 				newBase := cfg.ApplyMovieTemplate(ctx)
-				newBase = core.PreserveExistingBracketTags(newBase, base, cfg.PreserveExistingTags)
+				newBase = formatGeneratedName(cfg, newBase, base)
 				m.NewName = newBase + fileExt
 
 				// Store the rename mapping for subtitle matching
@@ -219,7 +219,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 
 				ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 				generated := cfg.ApplyMovieTemplate(ctx)
-				m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
+				m.NewName = formatGeneratedName(cfg, generated, ni.Node.Name())
 
 				if linkPath != "" {
 					m.DestinationPath = linkPath
@@ -239,7 +239,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 					formatCtx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 					newBase := cfg.ApplyMovieTemplate(formatCtx)
 					sourceBase := stripExtension(ni.Node.Name())
-					newBase = core.PreserveExistingBracketTags(newBase, sourceBase, cfg.PreserveExistingTags)
+					newBase = formatGeneratedName(cfg, newBase, sourceBase)
 					m.NewName = newBase + local.ExtractExtension(ni.Node.Name())
 
 					if linkPath != "" {
@@ -293,7 +293,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 					ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 					baseNewName := cfg.ApplyMovieTemplate(ctx)
 					sourceBase := stripExtension(ni.Node.Name())
-					baseNewName = core.PreserveExistingBracketTags(baseNewName, sourceBase, cfg.PreserveExistingTags)
+					baseNewName = formatGeneratedName(cfg, baseNewName, sourceBase)
 					m.NewName = baseNewName + local.ExtractExtension(ni.Node.Name())
 				}
 
@@ -318,7 +318,7 @@ func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatC
 					ctx := createFormatContext(cfg, "", movieName, year, 0, 0, meta)
 					baseNewName := cfg.ApplyMovieTemplate(ctx)
 					sourceBase := stripExtension(ni.Node.Name())
-					baseNewName = core.PreserveExistingBracketTags(baseNewName, sourceBase, cfg.PreserveExistingTags)
+					baseNewName = formatGeneratedName(cfg, baseNewName, sourceBase)
 
 					// Preserve the subtitle extension including language codes
 					m.NewName = baseNewName + local.ExtractExtension(ni.Node.Name())

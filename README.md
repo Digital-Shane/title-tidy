@@ -29,7 +29,6 @@ Green items indicate pending changes. You can navigate through the list and appl
 - [Built With](#built-with)
 - [Contributing](#contributing)
 - [License](#license)
-- [Star History](#star-history)
 
 ## How to Use It
 
@@ -139,11 +138,31 @@ When logging is enabled, all rename operations are saved to `~/.title-tidy/logs/
 
 #### Rename Settings
 
-Control rename behavior for source tags across media types:
+Control rename behavior across media types in the **Rename** section of `title-tidy config`:
 
 * **Preserve existing tags**: Keep bracketed tags already present in source names (for example `[Uncut]` or `[Theatrical Cut]`) when generating the new name
   * Default: disabled
   * Useful when alternate versions should stay distinct after rename
+
+* **Filename replacements**: Add literal search/replacement pairs with **Ctrl+N**, edit them with **↑/↓** and **Enter**, and remove the selected pair with **Ctrl+D**
+  * Default: empty (disabled), including for existing configs
+  * Applies to generated movie, show, season, and episode names, including preserved tags, in both rename and hard-link modes
+  * File extensions (including subtitle language suffixes such as `.en.srt`) and source/destination parent paths are kept outside the replacement rules
+
+You can also edit `filename_replacements` in `~/.title-tidy/config.json`. For example:
+
+```json
+"filename_replacements": {
+  ":": " - ",
+  "?": "",
+  " & ": " and "
+}
+```
+
+Matches are case sensitive literal text, with longer search keys taking priority when they overlap.
+Empty values delete matches, and spacing is tidied afterward. Search keys must be nonempty, and
+replacement values must not contain control characters or `<>:"/\|?*`. Remaining invalid filename
+characters are handled by the usual sanitization.
 
 #### Manual Metadata Search
 

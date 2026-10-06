@@ -70,7 +70,7 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 
 			ctx := createFormatContext(cfg, showMeta.Core.Title, "", showMeta.Core.Year, 0, 0, meta)
 			generated := cfg.ApplyShowFolderTemplate(ctx)
-			m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
+			m.NewName = formatGeneratedName(cfg, generated, ni.Node.Name())
 
 			if meta != nil {
 				showMetadata[ni.Node] = meta
@@ -111,7 +111,7 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 
 			ctx := createFormatContext(cfg, showName, "", year, seasonMeta.Core.SeasonNum, 0, meta)
 			generated := cfg.ApplySeasonFolderTemplate(ctx)
-			m.NewName = core.PreserveExistingBracketTags(generated, ni.Node.Name(), cfg.PreserveExistingTags)
+			m.NewName = formatGeneratedName(cfg, generated, ni.Node.Name())
 
 			if linkPath != "" {
 				if parentPath, exists := parentPaths[ni.Node.Parent()]; exists {
@@ -177,7 +177,7 @@ func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatCo
 				sourceBase = sourceBase[:len(sourceBase)-len(ext)]
 			}
 			generated := cfg.ApplyEpisodeTemplate(ctx)
-			generated = core.PreserveExistingBracketTags(generated, sourceBase, cfg.PreserveExistingTags)
+			generated = formatGeneratedName(cfg, generated, sourceBase)
 			m.NewName = generated + ext
 
 			if linkPath != "" {

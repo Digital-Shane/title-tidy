@@ -29,6 +29,13 @@ type CommandConfig struct {
 	TreePreprocess func([]*treeview.Node[treeview.FileInfo], *config.FormatConfig) []*treeview.Node[treeview.FileInfo]
 }
 
+// formatGeneratedName applies rename rules to the base name once, leaving file
+// extensions and parent paths outside the replacement scope.
+func formatGeneratedName(cfg *config.FormatConfig, generated, source string) string {
+	name := core.PreserveExistingBracketTags(generated, source, cfg.PreserveExistingTags)
+	return cfg.ApplyFilenameReplacements(name)
+}
+
 // RunMediaCommand executes the common logic for all media commands
 func RunMediaCommand(cmd *cobra.Command, cmdConfig CommandConfig) error {
 	formatConfig, err := config.Load()
