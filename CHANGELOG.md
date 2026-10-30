@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## [v1.22.0] - 2026-10-30
+### Added
+* Ordered Go regex filename preprocessing with capture replacements. Rule reordering supported
+* Inline Go regex pattern validation.
 ### Fixed
 * Titles with years in them being mistaken for the year of release.
 

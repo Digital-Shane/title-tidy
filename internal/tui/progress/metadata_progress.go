@@ -104,6 +104,7 @@ func NewMetadataProgressModel(tree *treeview.Tree[treeview.FileInfo], cfg *confi
 		providerLabels[core.MetadataProviderType(runtime.Name)] = config.ProviderDisplayName(runtime.Provider)
 	}
 
+	core.PrepareFilenamePreprocessing(tree.Nodes(), cfg.FilenamePreprocessor())
 	engineCfg := core.MetadataEngineConfig{
 		Tree:        tree,
 		WorkerCount: cfg.MetadataWorkerCount,

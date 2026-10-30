@@ -273,7 +273,7 @@ func TestConfigTUIFilenameReplacements(t *testing.T) {
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
 
 	model := finalConfigModel(t, tm)
-	want := map[string]string{":": " - ", "?": ""}
+	want := config.FilenameReplacements{{Search: ":", Replacement: " - "}, {Search: "?", Replacement: ""}}
 	values, err := model.state.Rename.filenameReplacements()
 	if err != nil || cmp.Diff(want, values) != "" {
 		t.Fatalf("editor replacements = %v, %v; want %v", values, err, want)
@@ -454,5 +454,55 @@ func TestConfigTUIManualSearchSaveAndReset(t *testing.T) {
 	}
 	if !saved.EnableManualSearch {
 		t.Fatal("manual search setting was not saved")
+	}
+}
+
+func TestConfigTUIRegexFilenameReplacements(t *testing.T) {
+	tm := newConfigTestModel(t)
+	waitForOutput(t, tm, "[ Show Folder ]")
+	for range 4 {
+		press(tm, tea.KeyTab)
+	}
+	waitForOutput(t, tm, "Use Go Regular Expressions")
+	press(tm, tea.KeyEnter) // Preserve tags.
+	press(tm, tea.KeyDown)
+	press(tm, tea.KeyEnter) // Regex mode.
+	pressCtrl(tm, 'n')
+	tm.Type("[")
+	pressCtrl(tm, 's')
+	waitForOutput(t, tm, "Failed to save:")
+	press(tm, tea.KeyBackspace)
+	tm.Type(`[Ee]xtended(.[Vv]ersion)?`)
+	press(tm, tea.KeyEnter)
+	tm.Type("@Extended@")
+	pressCtrl(tm, 'n')
+	tm.Type(`\[.+?\]`)
+	press(tm, tea.KeyEnter)
+	pressCtrl(tm, 'n')
+	tm.Type("@Extended@")
+	press(tm, tea.KeyEnter)
+	tm.Type("[Extended]")
+	pressCtrl(tm, tea.KeyUp)
+	pressCtrl(tm, tea.KeyDown)
+	pressCtrl(tm, 's')
+	waitForOutput(t, tm, "Configuration saved!")
+	pressCtrl(tm, 'r')
+	waitForOutput(t, tm, "Reset to saved values")
+	press(tm, tea.KeyEsc)
+	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
+
+	saved, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.FilenameReplacementsRegex || !saved.PreserveExistingTags {
+		t.Fatal("regex/tag settings were not saved")
+	}
+	if got := saved.FilenamePreprocessor()("Argo_Extended_version_(2012)_[H.264].[AAC].[DVDRip]"); got != "Argo_[Extended]_(2012)_.." {
+		t.Fatalf("saved regex pipeline = %q", got)
+	}
+	model := finalConfigModel(t, tm)
+	if !model.state.Rename.RegexReplacements {
+		t.Fatal("reset lost regex setting")
 	}
 }

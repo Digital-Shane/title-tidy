@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -388,13 +388,15 @@ func (m *Model) renderRenameSidebar(width int) string {
 	title := m.theme.PanelTitleStyle().Render("Rename Controls")
 	body := lipgloss.NewStyle().Foreground(m.theme.Colors().Muted).Width(max(width, 1)).Render(strings.Join([]string{
 		"↑/↓: Select a setting.",
-		"Space: Toggle source tags.",
+		"Space: Toggle selected setting.",
 		"Enter: Toggle or next field.",
 		"Ctrl+N: Add a pair.",
 		"Ctrl+D: Remove selected pair.",
+		"Ctrl+↑/↓: Reorder pairs.",
 		"",
-		"Search text is literal and case-sensitive.",
-		"Longest search keys win; replacements run once.",
+		"Regex mode preprocesses source names in order, before parsing and tag preservation.",
+		"Captures use $1 or ${name}.",
+		"Literal mode edits generated names. Complex regexes stay paused.",
 		"Empty values delete matches.",
 		"Extensions stay unchanged.",
 	}, "\n"))
@@ -530,6 +532,7 @@ func (m *Model) save() tea.Cmd {
 	m.config.Movie = stripNullChars(m.state.Templates.Movie.Input.Value())
 	m.config.PreserveExistingTags = m.state.Rename.PreserveExistingTags
 	m.config.FilenameReplacements = replacements
+	m.config.FilenameReplacementsRegex = m.state.Rename.RegexReplacements
 
 	m.config.EnableLogging = m.state.Logging.Enabled
 	retention := stripNullChars(m.state.Logging.Retention.Value())
@@ -675,17 +678,18 @@ func (m *Model) resetVariablesHorizontalOffset() {
 
 func cloneFormatConfig(cfg *config.FormatConfig) *config.FormatConfig {
 	return &config.FormatConfig{
-		ShowFolder:           cfg.ShowFolder,
-		SeasonFolder:         cfg.SeasonFolder,
-		Episode:              cfg.Episode,
-		Movie:                cfg.Movie,
-		PreserveExistingTags: cfg.PreserveExistingTags,
-		FilenameReplacements: maps.Clone(cfg.FilenameReplacements),
-		LogRetentionDays:     cfg.LogRetentionDays,
-		EnableLogging:        cfg.EnableLogging,
-		MetadataWorkerCount:  cfg.MetadataWorkerCount,
-		EnableManualSearch:   cfg.EnableManualSearch,
-		Providers:            cloneProviderConfigs(cfg.Providers),
+		ShowFolder:                cfg.ShowFolder,
+		SeasonFolder:              cfg.SeasonFolder,
+		Episode:                   cfg.Episode,
+		Movie:                     cfg.Movie,
+		PreserveExistingTags:      cfg.PreserveExistingTags,
+		FilenameReplacements:      slices.Clone(cfg.FilenameReplacements),
+		FilenameReplacementsRegex: cfg.FilenameReplacementsRegex,
+		LogRetentionDays:          cfg.LogRetentionDays,
+		EnableLogging:             cfg.EnableLogging,
+		MetadataWorkerCount:       cfg.MetadataWorkerCount,
+		EnableManualSearch:        cfg.EnableManualSearch,
+		Providers:                 cloneProviderConfigs(cfg.Providers),
 	}
 }
 

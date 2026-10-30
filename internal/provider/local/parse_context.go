@@ -39,13 +39,19 @@ func NewParseContext(name string, node *treeview.Node[treeview.FileInfo]) ParseC
 		ctx.BaseName = name
 	}
 
+	// Only preprocess raw input. Detection may pass the processed name on to
+	// another parser, and sequential replacement chains must never run twice.
+	if node != nil && name == node.Name() {
+		ctx.BaseName = namePreprocessor(node)(ctx.BaseName)
+		ctx.Name = ctx.BaseName + ctx.Extension
+	}
 	return ctx
 }
 
 // WorkingName returns the most useful representation for pattern matching:
 // file base name when we have an extension, otherwise the raw name.
 func (ctx ParseContext) WorkingName() string {
-	if ctx.BaseName != "" {
+	if ctx.IsFile || ctx.BaseName != "" {
 		return ctx.BaseName
 	}
 	return ctx.Name
@@ -62,7 +68,7 @@ func (ctx ParseContext) ParentNames(maxDepth int) []string {
 	node := ctx.Node
 	for node.Parent() != nil && len(names) < maxDepth {
 		node = node.Parent()
-		names = append(names, node.Name())
+		names = append(names, namePreprocessor(ctx.Node)(node.Name()))
 	}
 
 	// Rename previews detach their roots from the containing directory.
@@ -73,7 +79,7 @@ func (ctx ParseContext) ParentNames(maxDepth int) []string {
 		if dir == "." || dir == ".." || dir == filepath.Dir(dir) {
 			break
 		}
-		names = append(names, filepath.Base(dir))
+		names = append(names, namePreprocessor(ctx.Node)(filepath.Base(dir)))
 		path = dir
 	}
 

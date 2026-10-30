@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Digital-Shane/title-tidy/internal/config"
@@ -32,7 +33,15 @@ type CommandConfig struct {
 // formatGeneratedName applies rename rules to the base name once, leaving file
 // extensions and parent paths outside the replacement scope.
 func formatGeneratedName(cfg *config.FormatConfig, generated, source string) string {
+	if cfg.FilenameReplacementsRegex {
+		source = cfg.FilenamePreprocessor()(source)
+		// Separate tags produced by preprocessing from the generated title.
+		generated += " "
+	}
 	name := core.PreserveExistingBracketTags(generated, source, cfg.PreserveExistingTags)
+	if cfg.FilenameReplacementsRegex {
+		name = strings.TrimSpace(name)
+	}
 	return cfg.ApplyFilenameReplacements(name)
 }
 
@@ -120,6 +129,7 @@ func indexFiles(formatConfig *config.FormatConfig, cmdConfig CommandConfig) (*tr
 	}
 
 	nodes := unwrapRoot(t)
+	core.PrepareFilenamePreprocessing(nodes, formatConfig.FilenamePreprocessor())
 
 	// Apply preprocessing if provided
 	if cmdConfig.TreePreprocess != nil {

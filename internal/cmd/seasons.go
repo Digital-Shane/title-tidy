@@ -32,6 +32,7 @@ func runSeasonsCommand(cmd *cobra.Command, args []string) error {
 }
 
 func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
+	core.PrepareFilenamePreprocessing(t.Nodes(), cfg.FilenamePreprocessor())
 	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
 	var seasonShowMeta *provider.Metadata
 	var seasonShowName string
