@@ -29,7 +29,8 @@ var (
 	langPattern = regexp.MustCompile(`(\.[a-zA-Z]{2,3}(?:[-_][a-zA-Z]{2,4})?)$`)
 
 	// Year extraction
-	yearRangeRe = regexp.MustCompile(`(?:^|[^\d])((19|20)\d{2})(?:[\s\-–—]+(?:19|20)\d{2})?(?:[^\d]|$)`)
+	yearRe         = regexp.MustCompile(`(?:^|[^\d])((?:19|20)\d{2})`)
+	yearRangeEndRe = regexp.MustCompile(`^\s*[-–—]\s*(?:19|20)\d{2}(?:\b|_)`)
 
 	// Encoding tags to remove
 	encodingTagsRe = regexp.MustCompile(`(?i)\b(?:HD|HDR|DV|x265|x264|H\.?264|H\.?265|HEVC|AVC|AAC|AC3|DD|DTS|FLAC|MP3|WEB-?DL|BluRay|BDRip|DVDRip|HDTV|720p|1080p|2160p|4K|UHD|SDR|10bit|8bit|PROPER|REPACK|iNTERNAL|LiMiTED|UNRATED|EXTENDED|DiRECTORS?\.?CUT|THEATRICAL|COMPLETE|SEASON|SERIES|MULTI|DUAL|DUBBED|SUBBED|SUB|RETAIL|WS|FS|NTSC|PAL|R[1-6]|UNCUT|UNCENSORED)\b`)

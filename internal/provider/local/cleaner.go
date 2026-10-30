@@ -13,26 +13,39 @@ func ExtractNameAndYear(name string) (string, string) {
 		return name, ""
 	}
 
-	formatted := name
-	year := ""
-
-	// First, look for a year or year range in the name
-	yearMatches := yearRangeRe.FindStringSubmatch(formatted)
-
-	if len(yearMatches) > 1 {
-		// Extract just the first year from the match
-		year = yearMatches[1]
-
-		// Find the position of the actual year within the formatted string
-		yearIndex := strings.Index(formatted, year)
-		if yearIndex != -1 {
-			// Keep only the part before the year
-			formatted = formatted[:yearIndex]
-			formatted = strings.TrimRight(formatted, " ([{-_")
+	for _, match := range yearRe.FindAllStringSubmatchIndex(name, -1) {
+		start, end := match[2], match[3]
+		if end < len(name) && name[end] >= '0' && name[end] <= '9' {
+			continue
 		}
+
+		// A year cannot be the release year if it leaves no title behind.
+		// Use match offsets so titles such as "1984 (1984)" stay intact.
+		title := cleanMediaName(strings.TrimRight(name[:start], " .([{<-_"))
+		if title == "" {
+			continue
+		}
+
+		// Release years end the title. Words after a year belong to the
+		// title unless they are bracketed tags or follow an encoding tag.
+		suffix := yearRangeEndRe.ReplaceAllString(name[end:], "")
+		suffix = stripTagBlocks(suffix)
+		suffix = strings.ReplaceAll(suffix, "_", " ")
+		if tag := encodingTagsRe.FindStringIndex(suffix); tag != nil {
+			suffix = suffix[:tag[0]]
+		}
+		if strings.Trim(suffix, " .-_–—()[]{}<>") != "" {
+			continue
+		}
+
+		return title, name[start:end]
 	}
 
-	formatted = stripTagBlocksIfUseful(formatted)
+	return cleanMediaName(name), ""
+}
+
+func cleanMediaName(name string) string {
+	formatted := stripTagBlocksIfUseful(name)
 
 	// Replace separators with spaces
 	formatted = strings.ReplaceAll(formatted, ".", " ")
@@ -45,7 +58,7 @@ func ExtractNameAndYear(name string) (string, string) {
 	// Clean up extra spaces
 	formatted = strings.TrimSpace(strings.Join(strings.Fields(formatted), " "))
 
-	return formatted, year
+	return formatted
 }
 
 func tagAwareCandidates(input string) []string {
