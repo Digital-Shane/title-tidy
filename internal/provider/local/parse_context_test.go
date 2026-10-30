@@ -2,6 +2,7 @@ package local
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -45,5 +46,28 @@ func TestParentNamesDoesNotInferWorkingDirectory(t *testing.T) {
 				t.Errorf("parent names for %q = %v, want none", path, names)
 			}
 		})
+	}
+}
+
+func TestNamePreprocessingKeepsExtensionsAndSourcePaths(t *testing.T) {
+	episode := newTestNode("Release_Extended_S02E01.en.srt", false)
+	episode.Data().Path = filepath.Join("/library", "Release_Extended (2020)", "Season 02", episode.Name())
+	SetNamePreprocessor(episode, func(name string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(name, "_Extended", ""), ".en.srt", "changed")
+	})
+	ctx := NewParseContext(episode.Name(), episode)
+	if ctx.Name != "Release_S02E01.en.srt" || ctx.Extension != ".en.srt" {
+		t.Fatalf("processed file = %+v", ctx)
+	}
+	if got := ctx.ParentNames(2); got[1] != "Release (2020)" {
+		t.Fatalf("parent preprocessing = %v", got)
+	}
+	SetNamePreprocessor(episode, func(string) string { return "" })
+	if got := NewParseContext(episode.Name(), episode).WorkingName(); got != "" {
+		t.Fatalf("empty base name became extension: %q", got)
+	}
+	SetNamePreprocessor(episode, nil)
+	if got := NewParseContext(episode.Name(), episode).Name; got != episode.Name() {
+		t.Fatalf("disabled preprocessing = %q", got)
 	}
 }

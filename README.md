@@ -144,9 +144,10 @@ Control rename behavior across media types in the **Rename** section of `title-t
   * Default: disabled
   * Useful when alternate versions should stay distinct after rename
 
-* **Filename replacements**: Add literal search/replacement pairs with **Ctrl+N**, edit them with **↑/↓** and **Enter**, and remove the selected pair with **Ctrl+D**
+* **Filename replacements**:
   * Default: empty (disabled), including for existing configs
-  * Applies to generated movie, show, season, and episode names, including preserved tags, in both rename and hard-link modes
+  * Literal mode applies to generated movie, show, season, and episode names, including preserved tags, in both rename and hard-link modes
+  * **Use Go Regular Expressions** enables ordered preprocessing of source names before title/year parsing, metadata lookup, and tag preservation
   * File extensions (including subtitle language suffixes such as `.en.srt`) and source/destination parent paths are kept outside the replacement rules
 
 You can also edit `filename_replacements` in `~/.title-tidy/config.json`. For example:
@@ -163,6 +164,27 @@ Matches are case sensitive literal text, with longer search keys taking priority
 Empty values delete matches, and spacing is tidied afterward. Search keys must be nonempty, and
 replacement values must not contain control characters or `<>:"/\|?*`. Remaining invalid filename
 characters are handled by the usual sanitization.
+
+With **Use Go Regular Expressions** enabled, each pair replaces all matches and feeds its result
+to the next pair, in the displayed order. Patterns use [Go regular expression syntax](https://pkg.go.dev/regexp/syntax).
+Replacement captures use `$1` or `${name}`; `$$` inserts a literal dollar sign. Brackets in replacement
+text are literal: use `[Extended]`, not `\[Extended\]`. Invalid patterns are highlighted in red with
+the Go compiler's error and cannot be saved.
+
+For example, enable **Preserve Existing Tags** and use these ordered rules to turn
+`Argo_Extended_version_(2012)_[H.264].[AAC].[DVDRip].mp4` into `Argo (2012) [Extended].mp4`:
+
+```json
+"filename_replacements_regex": true,
+"filename_replacements": [
+  {"search": "[Ee]xtended(.[Vv]ersion)?", "replacement": "@Extended@", "regex": true},
+  {"search": "\\[.+?\\]", "replacement": "", "regex": true},
+  {"search": "@Extended@", "replacement": "[Extended]", "regex": true}
+]
+```
+
+The original JSON object format above remains supported for literal configurations. Saving uses the
+ordered array format so rule order and paused regex rules survive reopening.
 
 #### Manual Metadata Search
 

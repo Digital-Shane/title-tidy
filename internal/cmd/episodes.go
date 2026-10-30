@@ -32,6 +32,7 @@ func runEpisodesCommand(cmd *cobra.Command, args []string) error {
 }
 
 func annotateEpisodesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
+	core.PrepareFilenamePreprocessing(t.Nodes(), cfg.FilenamePreprocessor())
 	ctx := context.Background()
 
 	for ni := range t.All(ctx) {

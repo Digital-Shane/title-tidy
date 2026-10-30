@@ -56,7 +56,7 @@ func fallbackMovieNameYear(node *treeview.Node[treeview.FileInfo]) (string, stri
 		return "", ""
 	}
 
-	name := node.Name()
+	name := local.NewParseContext(node.Name(), node).Name
 	if !node.Data().IsDir() {
 		if ext := local.ExtractExtension(name); ext != "" {
 			name = name[:len(name)-len(ext)]
@@ -67,6 +67,7 @@ func fallbackMovieNameYear(node *treeview.Node[treeview.FileInfo]) (string, stri
 }
 
 func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.FormatConfig, noDir bool) []*treeview.Node[treeview.FileInfo] {
+	core.PrepareFilenamePreprocessing(nodes, cfg.FilenamePreprocessor())
 	if noDir {
 		// First pass: process video files and build a map of base names to new names
 		videoRenames := make(map[string]string) // maps original base name to new base name
@@ -189,6 +190,7 @@ func moviePreprocess(nodes []*treeview.Node[treeview.FileInfo], cfg *config.Form
 }
 
 func annotateMoviesTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
+	core.PrepareFilenamePreprocessing(t.Nodes(), cfg.FilenamePreprocessor())
 	ctx := context.Background()
 
 	videoRenameMap := make(map[string]string)

@@ -117,7 +117,7 @@ func isLikelyShowNode(node *treeview.Node[treeview.FileInfo]) bool {
 		}
 
 		if child.Data().IsDir() {
-			if _, ok := ExtractSeasonNumber(child.Name()); ok {
+			if _, ok := ExtractSeasonNumber(NewParseContext(child.Name(), child).Name); ok {
 				return true
 			}
 			continue

@@ -35,17 +35,18 @@ type FormatContext struct {
 
 // FormatConfig holds the format templates for different media types
 type FormatConfig struct {
-	ShowFolder           string                    `json:"show_folder"`
-	SeasonFolder         string                    `json:"season_folder"`
-	Episode              string                    `json:"episode"`
-	Movie                string                    `json:"movie"`
-	PreserveExistingTags bool                      `json:"preserve_existing_tags"`
-	FilenameReplacements map[string]string         `json:"filename_replacements"`
-	LogRetentionDays     int                       `json:"log_retention_days"`
-	EnableLogging        bool                      `json:"enable_logging"`
-	MetadataWorkerCount  int                       `json:"metadata_worker_count"`
-	EnableManualSearch   bool                      `json:"enable_manual_search"`
-	Providers            map[string]ProviderConfig `json:"providers,omitempty"`
+	ShowFolder                string                    `json:"show_folder"`
+	SeasonFolder              string                    `json:"season_folder"`
+	Episode                   string                    `json:"episode"`
+	Movie                     string                    `json:"movie"`
+	PreserveExistingTags      bool                      `json:"preserve_existing_tags"`
+	FilenameReplacements      FilenameReplacements      `json:"filename_replacements"`
+	FilenameReplacementsRegex bool                      `json:"filename_replacements_regex"`
+	LogRetentionDays          int                       `json:"log_retention_days"`
+	EnableLogging             bool                      `json:"enable_logging"`
+	MetadataWorkerCount       int                       `json:"metadata_worker_count"`
+	EnableManualSearch        bool                      `json:"enable_manual_search"`
+	Providers                 map[string]ProviderConfig `json:"providers,omitempty"`
 }
 
 // ProviderConfig stores persisted settings for a metadata provider.
@@ -62,7 +63,7 @@ func DefaultConfig() *FormatConfig {
 		Episode:              "S{season}E{episode}",
 		Movie:                "{title} ({year})",
 		PreserveExistingTags: false,
-		FilenameReplacements: map[string]string{},
+		FilenameReplacements: FilenameReplacements{},
 		LogRetentionDays:     30,
 		EnableLogging:        true,
 		MetadataWorkerCount:  10,
@@ -113,7 +114,7 @@ func Load() (*FormatConfig, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 	cfg := disk.FormatConfig
-	if err := ValidateFilenameReplacements(cfg.FilenameReplacements); err != nil {
+	if err := ValidateFilenameReplacements(cfg.FilenameReplacements, cfg.FilenameReplacementsRegex); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
@@ -144,7 +145,7 @@ func Load() (*FormatConfig, error) {
 		cfg.Providers = make(map[string]ProviderConfig)
 	}
 	if cfg.FilenameReplacements == nil {
-		cfg.FilenameReplacements = make(map[string]string)
+		cfg.FilenameReplacements = FilenameReplacements{}
 	}
 	if len(cfg.Providers) == 0 {
 		cfg.applyLegacyProviderConfig(disk.TMDBAPIKey, disk.EnableTMDBLookup, disk.TMDBLanguage, disk.OMDBAPIKey, disk.EnableOMDBLookup, disk.TVDBAPIKey, disk.EnableTVDBLookup, disk.EnableFFProbe)
@@ -201,7 +202,7 @@ func metadataVariableNames() []string {
 
 // Save writes the configuration to disk
 func (cfg *FormatConfig) Save() error {
-	if err := ValidateFilenameReplacements(cfg.FilenameReplacements); err != nil {
+	if err := ValidateFilenameReplacements(cfg.FilenameReplacements, cfg.FilenameReplacementsRegex); err != nil {
 		return err
 	}
 	path, err := ConfigPath()

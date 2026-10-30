@@ -32,6 +32,7 @@ func runShowsCommand(cmd *cobra.Command, args []string) error {
 }
 
 func annotateShowsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.FormatConfig, metadata map[string]*provider.Metadata) {
+	core.PrepareFilenamePreprocessing(t.Nodes(), cfg.FilenamePreprocessor())
 	parentPaths := make(map[*treeview.Node[treeview.FileInfo]]string)
 	showMetadata := make(map[*treeview.Node[treeview.FileInfo]]*provider.Metadata)
 	// Store show info for fallback when episodes don't contain show name

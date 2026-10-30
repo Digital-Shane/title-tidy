@@ -22,13 +22,20 @@ const (
 
 type RenameState struct {
 	PreserveExistingTags bool
+	RegexReplacements    bool
 	Replacements         []FilenameReplacementState
-	Focus                int // 0: tag toggle; then alternating search/replacement fields
+	Focus                int // 0: tag toggle; 1: regex toggle; then alternating search/replacement fields
 }
 
 type FilenameReplacementState struct {
+	Regex       bool
 	Search      textinput.Model
 	Replacement textinput.Model
+
+	// textinput sanitizes control characters. Keep the unedited source so merely
+	// opening the editor or toggling modes cannot rewrite a saved search.
+	searchSource  string
+	searchDisplay string
 }
 
 // TemplateSections encapsulates all template editors with dedicated state.

@@ -2,10 +2,12 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Digital-Shane/title-tidy/internal/config"
 	"github.com/Digital-Shane/title-tidy/internal/core"
 	"github.com/Digital-Shane/title-tidy/internal/provider"
+	"github.com/Digital-Shane/title-tidy/internal/provider/local"
 )
 
 type preview struct {
@@ -30,10 +32,26 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		}
 		status = "Disabled"
 		if len(replacements) > 0 {
+			paused := 0
+			for _, rule := range replacements {
+				if rule.Regex && !state.Rename.RegexReplacements {
+					paused++
+				}
+			}
 			status = fmt.Sprintf("%d pairs", len(replacements))
+			if paused > 0 {
+				status = fmt.Sprintf("%d active, %d paused", len(replacements)-paused, paused)
+			}
 		}
-		cfg := &config.FormatConfig{FilenameReplacements: replacements}
+		cfg := &config.FormatConfig{FilenameReplacements: replacements, FilenameReplacementsRegex: state.Rename.RegexReplacements}
 		example := cfg.ApplyFilenameReplacements("Diary of a Wimpy Kid: Dog Days (2012) [544p]")
+		if state.Rename.RegexReplacements {
+			status += " (regex)"
+			source := cfg.FilenamePreprocessor()("Argo_Extended_version_(2012)_[H.264].[AAC].[DVDRip]")
+			title, year := local.ExtractNameAndYear(source)
+			example = config.DefaultConfig().ApplyMovieTemplate(&config.FormatContext{MovieName: title, Year: year})
+			example = strings.TrimSpace(core.PreserveExistingBracketTags(example+" ", source, state.Rename.PreserveExistingTags))
+		}
 		if sanitized, err := core.SanitizeFilename(example); err == nil {
 			example = sanitized
 		}
@@ -69,6 +87,7 @@ func buildPreviews(section Section, state *ConfigState, icons map[string]string,
 		Movie:        state.Templates.Movie.Input.Value(),
 	}
 	cfg.FilenameReplacements, _ = state.Rename.filenameReplacements()
+	cfg.FilenameReplacementsRegex = state.Rename.RegexReplacements
 
 	showMetadata := &provider.Metadata{
 		Core: provider.CoreMetadata{
