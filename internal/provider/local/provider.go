@@ -104,7 +104,7 @@ func (p *Provider) SupportedVariables() []provider.TemplateVariable {
 		{
 			Name:        "episode",
 			DisplayName: "Episode",
-			Description: "Episode number (zero-padded)",
+			Description: "Episode number or range (zero-padded, e.g. 01-E02)",
 			MediaTypes: []provider.MediaType{
 				provider.MediaTypeEpisode,
 			},

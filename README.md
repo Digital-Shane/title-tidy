@@ -87,7 +87,7 @@ Customize how your media files and folders are named:
 * `{title}` - Show or movie title
 * `{year}` - Release year
 * `{season}` - Season number with zero padding (e.g., "01")
-* `{episode}` - Episode number with zero padding (e.g., "01")
+* `{episode}` - Episode number with zero padding (e.g., "01"), or a multi-episode range (e.g., "01-E02")
 
 **TMDB Metadata Variables (when TMDB is enabled):**
 * `{title}` - Show or movie title

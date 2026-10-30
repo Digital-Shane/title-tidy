@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Inline Go regex pattern validation.
 ### Fixed
 * Titles with years in them being mistaken for the year of release.
+* Multi-episode files such as `S01E01E02` now retain the correct season and rename to media server compatible ranges such as `S01E01-E02`.
 
 ## [v1.21.0] - 2026-10-05
 ### Added

@@ -114,6 +114,7 @@ func annotateSeasonsTree(t *treeview.Tree[treeview.FileInfo], cfg *config.Format
 			}
 
 			ctx := createFormatContext(cfg, showName, "", year, episodeMeta.Core.SeasonNum, episodeMeta.Core.EpisodeNum, meta)
+			ctx.EpisodeEnd = episodeMeta.Core.EpisodeEndNum
 			ext := local.ExtractExtension(ni.Node.Name())
 			sourceBase := ni.Node.Name()
 			if ext != "" {

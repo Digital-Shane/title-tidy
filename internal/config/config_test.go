@@ -962,6 +962,26 @@ func TestResolveVariableComprehensive(t *testing.T) {
 			want: "00 - 00", // Season 0 and Episode 0 are valid (specials/extras)
 		},
 		{
+			name:     "multi_episode_range",
+			template: "S{season}E{episode}",
+			ctx: &FormatContext{
+				Season:     1,
+				Episode:    1,
+				EpisodeEnd: 2,
+			},
+			want: "S01E01-E02",
+		},
+		{
+			name:     "multi_episode_zero_special",
+			template: "S{season}E{episode}",
+			ctx: &FormatContext{
+				Season:     0,
+				Episode:    0,
+				EpisodeEnd: 1,
+			},
+			want: "S00E00-E01",
+		},
+		{
 			name:     "title_fallback_to_movie",
 			template: "{title}",
 			ctx: &FormatContext{

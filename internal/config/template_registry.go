@@ -184,6 +184,9 @@ func resolveContextVariable(variable provider.TemplateVariable, ctx *FormatConte
 		return ""
 	case provider.TemplateValueKeyEpisode:
 		if ctx.Episode >= 0 {
+			if ctx.EpisodeEnd > ctx.Episode {
+				return fmt.Sprintf("%02d-E%02d", ctx.Episode, ctx.EpisodeEnd)
+			}
 			return fmt.Sprintf("%02d", ctx.Episode)
 		}
 		return ""

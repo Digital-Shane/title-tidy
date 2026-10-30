@@ -156,9 +156,10 @@ type CoreMetadata struct {
 	MediaType MediaType
 
 	// TV-specific
-	SeasonNum   int
-	EpisodeName string
-	EpisodeNum  int
+	SeasonNum     int
+	EpisodeName   string
+	EpisodeNum    int
+	EpisodeEndNum int // Last episode in a multi-episode file; zero for single episodes.
 
 	// Common fields
 	Overview string

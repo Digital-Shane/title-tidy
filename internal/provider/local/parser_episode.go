@@ -18,7 +18,7 @@ func (p *EpisodeParser) Parse(name string, node *treeview.Node[treeview.FileInfo
 	ctx := NewParseContext(name, node)
 
 	// Parse season and episode numbers
-	season, episode, found := seasonEpisodeFromContext(ctx, true)
+	season, episode, episodeEnd, found := seasonEpisodeFromContext(ctx, true)
 	if !found {
 		return nil, &provider.ProviderError{
 			Provider: providerName,
@@ -35,6 +35,7 @@ func (p *EpisodeParser) Parse(name string, node *treeview.Node[treeview.FileInfo
 	metadata := createMetadata(provider.MediaTypeEpisode, showName, year, 1.0)
 	metadata.Core.SeasonNum = season
 	metadata.Core.EpisodeNum = episode
+	metadata.Core.EpisodeEndNum = episodeEnd
 
 	// Add to sources
 	metadata.Sources["season"] = providerName
@@ -57,7 +58,8 @@ func (p *EpisodeParser) CanParse(name string, node *treeview.Node[treeview.FileI
 
 // parseSeasonEpisode extracts season and episode numbers using multiple strategies
 func (p *EpisodeParser) parseSeasonEpisode(input string, node *treeview.Node[treeview.FileInfo]) (int, int, bool) {
-	return seasonEpisodeFromContext(NewParseContext(input, node), true)
+	season, episode, _, found := seasonEpisodeFromContext(NewParseContext(input, node), true)
+	return season, episode, found
 }
 
 // extractShowInfo extracts show name and year from filename and parent directories

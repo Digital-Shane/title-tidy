@@ -10,20 +10,19 @@ const (
 	maxEpisodeNumber = 300
 )
 
-// seasonEpisodeFromString extracts season and episode numbers from a name-only string.
-// It mirrors the heuristics the legacy EpisodeParser used so the behavior stays stable
-// while allowing other callers to share the same logic.
-func seasonEpisodeFromString(input string) (int, int, bool) {
-	if m := seasonEpisodeRe.FindStringSubmatch(input); len(m) >= 3 && matchOutsideTagBlock(input, seasonEpisodeRe.FindStringIndex(input)) {
-		seasonText, episodeText := m[1], m[2]
-		if seasonText == "" && len(m) >= 5 {
-			seasonText, episodeText = m[3], m[4]
+// seasonEpisodeFromString extracts season and episode numbers, including the
+// last episode of a multi-episode file (zero for a single episode).
+func seasonEpisodeFromString(input string) (season, episode, episodeEnd int, found bool) {
+	if m := seasonEpisodeRe.FindStringSubmatch(input); len(m) >= 7 && matchOutsideTagBlock(input, seasonEpisodeRe.FindStringIndex(input)) {
+		seasonText, episodeText, suffix := m[1], m[2], m[3]
+		if seasonText == "" {
+			seasonText, episodeText, suffix = m[4], m[5], m[6]
 		}
 
 		season, err1 := strconv.Atoi(seasonText)
 		episode, err2 := strconv.Atoi(episodeText)
 		if err1 == nil && err2 == nil && validSeasonEpisode(season, episode) {
-			return season, episode, true
+			return season, episode, episodeRangeEnd(episode, suffix), true
 		}
 	}
 
@@ -31,11 +30,25 @@ func seasonEpisodeFromString(input string) (int, int, bool) {
 		season, err1 := strconv.Atoi(m[1])
 		episode, err2 := strconv.Atoi(m[2])
 		if err1 == nil && err2 == nil && validSeasonEpisode(season, episode) {
-			return season, episode, true
+			return season, episode, 0, true
 		}
 	}
 
-	return 0, 0, false
+	return 0, 0, 0, false
+}
+
+func episodeRangeEnd(first int, suffix string) int {
+	last := 0
+	previous := first
+	for _, number := range strings.FieldsFunc(suffix, func(r rune) bool { return r < '0' || r > '9' }) {
+		episode, err := strconv.Atoi(number)
+		if err != nil || episode <= previous || episode > maxEpisodeNumber {
+			return 0
+		}
+		last = episode
+		previous = episode
+	}
+	return last
 }
 
 func validSeasonEpisode(season, episode int) bool {
@@ -45,15 +58,16 @@ func validSeasonEpisode(season, episode int) bool {
 // SeasonEpisodeFromContext extracts season and episode numbers using the parse context.
 // It falls back to episode-only matches and resolves season numbers from parent folders.
 func SeasonEpisodeFromContext(ctx ParseContext) (int, int, bool) {
-	return seasonEpisodeFromContext(ctx, false)
+	season, episode, _, found := seasonEpisodeFromContext(ctx, false)
+	return season, episode, found
 }
 
-func seasonEpisodeFromContext(ctx ParseContext, allowBareSeparatorEpisode bool) (int, int, bool) {
+func seasonEpisodeFromContext(ctx ParseContext, allowBareSeparatorEpisode bool) (season, episode, episodeEnd int, found bool) {
 	candidates := contextNameCandidates(ctx)
 
 	for _, candidate := range candidates {
-		if season, episode, ok := seasonEpisodeFromString(candidate); ok {
-			return season, episode, true
+		if season, episode, episodeEnd, ok := seasonEpisodeFromString(candidate); ok {
+			return season, episode, episodeEnd, true
 		}
 	}
 
@@ -65,15 +79,15 @@ func seasonEpisodeFromContext(ctx ParseContext, allowBareSeparatorEpisode bool) 
 
 		// Try to resolve season from parent folders.
 		if season, found := seasonFromParents(ctx); found {
-			return season, episode, true
+			return season, episode, 0, true
 		}
 
 		if episodeOnlyAllowed(fromSeparator, explicitEpisode, allowBareSeparatorEpisode) {
-			return 0, episode, true
+			return 0, episode, 0, true
 		}
 	}
 
-	return 0, 0, false
+	return 0, 0, 0, false
 }
 
 func contextNameCandidates(ctx ParseContext) []string {
