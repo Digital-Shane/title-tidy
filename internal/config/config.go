@@ -16,11 +16,12 @@ import (
 // This allows us to easily extend with new metadata without changing function signatures.
 type FormatContext struct {
 	// Core identifiers
-	ShowName  string
-	MovieName string
-	Year      string
-	Season    int
-	Episode   int
+	ShowName   string
+	MovieName  string
+	Year       string
+	Season     int
+	Episode    int
+	EpisodeEnd int // Last episode in a multi-episode file; zero for single episodes.
 
 	// File information
 	OriginalName string

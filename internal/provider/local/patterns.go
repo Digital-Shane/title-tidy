@@ -13,7 +13,7 @@ var (
 	seasonAltRe = regexp.MustCompile(`(?i)(?:^|[\s\.\-_])(?:s|season)[\s\.\-_]+(\d+)`)
 
 	// Episode patterns
-	seasonEpisodeRe       = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s?(\d{1,2})e(\d{1,3})|(\d{1,2})x(\d{1,3}))(?:[^a-z0-9]|$)`)
+	seasonEpisodeRe       = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s?(\d{1,2})e(\d{1,3})((?:-?e\d{1,3}|-\d{1,3})*)|(\d{1,2})x(\d{1,3})((?:-?x\d{1,3}|-\d{1,3})*))(?:[^a-z0-9]|$)`)
 	dottedSeasonEpisodeRe = regexp.MustCompile(`(?i)(?:^|[\s_\-\.])([0-9]{1,2})[\. _-]([0-9]{1,2})(?:[^0-9]|$)`)
 	episodeNumberRe       = regexp.MustCompile(`(?:^|[\s\.\-_]|[Ee])(\d+)(?:[\s\.\-_]|$)`)
 	separatorEpisodeRe    = regexp.MustCompile(`(?i)(?:^|[\s._])[-–—][\s._]*(\d{1,3})(?:[^0-9]|$)`)
@@ -43,13 +43,13 @@ var (
 
 	// Patterns to find where season/episode info starts
 	seasonEpisodePatterns = []*regexp.Regexp{
-		seasonEpisodeRe,                    // S01E01, 1x01, s1e1
+		seasonEpisodeRe,                    // S01E01, S01E01E02, S01E01-E02, 1x01
 		seasonAltRe,                        // _Season_02, .Season.02
 		seasonRe,                           // Season at start
 		dottedSeasonEpisodeRe,              // Dotted format: 1.04
 		regexp.MustCompile(`(?i)^[eE]\d+`), // Episode at start: E01
 		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`), // Episode at start
-		separatorEpisodeRe,                            // Anime style: Title - 17
+		separatorEpisodeRe, // Anime style: Title - 17
 	}
 )
 
