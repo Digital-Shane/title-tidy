@@ -106,6 +106,84 @@ func TestExtractNameAndYear(t *testing.T) {
 			wantName: "Stranger Things",
 			wantYear: "2016",
 		},
+		{
+			name:     "YearAsTitle",
+			input:    "1917",
+			wantName: "1917",
+		},
+		{
+			name:     "YearAsTitleWithReleaseYear",
+			input:    "1917.2019.720p",
+			wantName: "1917",
+			wantYear: "2019",
+		},
+		{
+			name:     "TitleAndReleaseYearAreIdentical",
+			input:    "1984 (1984)",
+			wantName: "1984",
+			wantYear: "1984",
+		},
+		{
+			name:     "NumericTitleWithSpaceSeparatedYear",
+			input:    "1917 2019",
+			wantName: "1917",
+			wantYear: "2019",
+		},
+		{
+			name:     "NumericTitleWithDashSeparatedYear",
+			input:    "1917-2019",
+			wantName: "1917",
+			wantYear: "2019",
+		},
+		{
+			name:     "NumericTitleWithUnderscoreSeparatedYear",
+			input:    "1917_2019_720p",
+			wantName: "1917",
+			wantYear: "2019",
+		},
+		{
+			name:     "UnderscoreSeparatedReleaseYearAndTags",
+			input:    "The_Matrix_1999_1080p_BluRay_x264-YIFY",
+			wantName: "The Matrix",
+			wantYear: "1999",
+		},
+		{
+			name:     "YearAtStartOfTitle",
+			input:    "2010: The Year We Make Contact",
+			wantName: "2010: The Year We Make Contact",
+		},
+		{
+			name:     "YearAtStartOfTitleWithReleaseYear",
+			input:    "2010: The Year We Make Contact (1984)",
+			wantName: "2010: The Year We Make Contact",
+			wantYear: "1984",
+		},
+		{
+			name:     "YearInTitle",
+			input:    "Tamala 2010: A Punk Cat in Space",
+			wantName: "Tamala 2010: A Punk Cat in Space",
+		},
+		{
+			name:     "YearInTitleWithReleaseYear",
+			input:    "Tamala.2010:.A.Punk.Cat.in.Space.2002.1080p.BluRay.x264-YIFY",
+			wantName: "Tamala 2010: A Punk Cat in Space",
+			wantYear: "2002",
+		},
+		{
+			name:     "YearInTitleWithQualityTags",
+			input:    "Class.of.1999.II.The.Substitute.1080p",
+			wantName: "Class of 1999 II The Substitute",
+		},
+		{
+			name:     "YearIsPartOfLongerNumber",
+			input:    "Movie 12010",
+			wantName: "Movie 12010",
+		},
+		{
+			name:     "YearStartsLongerNumber",
+			input:    "Movie 20100",
+			wantName: "Movie 20100",
+		},
 	}
 
 	for _, tt := range tests {
@@ -425,6 +503,22 @@ func TestMovieParser(t *testing.T) {
 			input:     "Movie.Title.[0E123677].mkv",
 			wantTitle: "Movie Title",
 			wantYear:  "",
+		},
+		{
+			name:      "YearAsTitle",
+			input:     "1917.2019.720p.mp4",
+			wantTitle: "1917",
+			wantYear:  "2019",
+		},
+		{
+			name:      "YearAtStartOfTitle",
+			input:     "2010: The Year We Make Contact.mp4",
+			wantTitle: "2010: The Year We Make Contact",
+		},
+		{
+			name:      "YearInTitle",
+			input:     "Tamala 2010: A Punk Cat in Space.mp4",
+			wantTitle: "Tamala 2010: A Punk Cat in Space",
 		},
 	}
 

@@ -13,6 +13,69 @@ import (
 	tmdbapi "github.com/ryanbradynd05/go-tmdb"
 )
 
+type movieTitleLookupClient struct {
+	TMDBClient
+	t           *testing.T
+	title       string
+	searchYear  string
+	releaseDate string
+}
+
+func (c movieTitleLookupClient) SearchMovie(name string, options map[string]string) (*tmdbapi.MovieSearchResults, error) {
+	c.t.Helper()
+	if name != c.title || options["year"] != c.searchYear {
+		c.t.Errorf("movie search = (%q, year %q), want (%q, year %q)", name, options["year"], c.title, c.searchYear)
+	}
+	var results tmdbapi.MovieSearchResults
+	err := json.Unmarshal([]byte(`{"results":[{"id":123}]}`), &results)
+	return &results, err
+}
+
+func (c movieTitleLookupClient) GetMovieInfo(_ int, _ map[string]string) (*tmdbapi.Movie, error) {
+	return &tmdbapi.Movie{ID: 123, Title: c.title, ReleaseDate: c.releaseDate}, nil
+}
+
+func TestMovieTitlesContainingYearsReachSearchIntact(t *testing.T) {
+	for _, tt := range []struct {
+		filename    string
+		title       string
+		searchYear  string
+		releaseDate string
+	}{
+		{"1917.2019.720p.mp4", "1917", "2019", "2019-12-25"},
+		{"2010: The Year We Make Contact.mp4", "2010: The Year We Make Contact", "", "1984-12-06"},
+		{"Tamala 2010: A Punk Cat in Space.mp4", "Tamala 2010: A Punk Cat in Space", "", "2002-10-19"},
+	} {
+		t.Run(tt.filename, func(t *testing.T) {
+			prov := New()
+			prov.client = movieTitleLookupClient{
+				t: t, title: tt.title, searchYear: tt.searchYear, releaseDate: tt.releaseDate,
+			}
+			prov.rateLimiter = newRateLimiter(100, time.Second)
+			node := treeview.NewNode(tt.filename, tt.filename, treeview.FileInfo{
+				FileInfo: core.NewSimpleFileInfo(tt.filename, false),
+				Path:     tt.filename,
+			})
+			engine := core.NewMetadataEngine(core.MetadataEngineConfig{
+				Tree:        treeview.NewTree([]*treeview.Node[treeview.FileInfo]{node}),
+				WorkerCount: 1,
+				Providers:   []provider.RuntimeConfig{{Name: prov.Name(), Provider: prov, Enabled: true}},
+			})
+			for range engine.Start(context.Background()) {
+			}
+
+			key := provider.GenerateMetadataKey("movie", tt.title, tt.searchYear, 0, 0)
+			meta := engine.Metadata()[key]
+			if meta == nil || meta.Core.Title != tt.title || meta.Core.Year != tt.releaseDate[:4] {
+				t.Fatalf("movie metadata = %+v, want %q (%s)", meta, tt.title, tt.releaseDate[:4])
+			}
+			if engine.SummarySnapshot().ErrorCount != 0 {
+				t.Fatalf("movie lookup failures = %+v", engine.ProviderFailures())
+			}
+		})
+	}
+}
+
 type episodeLookupClient struct{ TMDBClient }
 
 func (episodeLookupClient) SearchTv(name string, _ map[string]string) (*tmdbapi.TvSearchResults, error) {

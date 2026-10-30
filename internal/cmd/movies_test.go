@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -110,6 +111,76 @@ func TestAnnotateMoviesTreeNoDirAppliesMetadata(t *testing.T) {
 	}
 	if diff := cmp.Diff("Inception (2010) tt1375666.en.srt", gotSubtitle); diff != "" {
 		t.Errorf("subtitle rename mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestAnnotateMoviesTreePreservesYearsInTitles(t *testing.T) {
+	prevNoDir := noDir
+	t.Cleanup(func() { noDir = prevNoDir })
+	cfg := config.DefaultConfig()
+	cfg.Movie = "{title} ({year})"
+
+	for _, mode := range []struct {
+		name     string
+		noDir    bool
+		metadata bool
+	}{
+		{"localFiles", true, false},
+		{"localFolders", false, false},
+		{"metadataFiles", true, true},
+		{"metadataFolders", false, true},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			noDir = mode.noDir
+			for _, tt := range []struct {
+				filename    string
+				title       string
+				year        string
+				fetchedYear string
+			}{
+				{"1917.2019.720p.mp4", "1917", "2019", "2019"},
+				{"2010: The Year We Make Contact.mp4", "2010: The Year We Make Contact", "", "1984"},
+				{"Tamala 2010: A Punk Cat in Space.mp4", "Tamala 2010: A Punk Cat in Space", "", "2002"},
+			} {
+				t.Run(tt.filename, func(t *testing.T) {
+					sourceBase := strings.TrimSuffix(tt.filename, ".mp4")
+					subtitle := sourceBase + ".en.srt"
+					var nodes []*treeview.Node[treeview.FileInfo]
+					for _, name := range []string{tt.filename, subtitle} {
+						nodes = append(nodes, treeview.NewNode(name, name, treeview.FileInfo{
+							FileInfo: core.NewSimpleFileInfo(name, false),
+							Path:     name,
+						}))
+					}
+					tree := treeview.NewTree(moviePreprocess(nodes, cfg, noDir))
+					var metadata map[string]*provider.Metadata
+					year := tt.year
+					if mode.metadata {
+						year = tt.fetchedYear
+						key := provider.GenerateMetadataKey("movie", tt.title, tt.year, 0, 0)
+						metadata = map[string]*provider.Metadata{key: {
+							Core: provider.CoreMetadata{Title: tt.title, Year: year, MediaType: provider.MediaTypeMovie},
+						}}
+					}
+					annotateMoviesTree(tree, cfg, metadata)
+
+					wantBase := tt.title
+					if year != "" {
+						wantBase += " (" + year + ")"
+					}
+					for ni := range tree.All(context.Background()) {
+						want := wantBase
+						if !ni.Node.Data().IsDir() {
+							want += local.ExtractExtension(ni.Node.Name())
+						}
+						meta := core.GetMeta(ni.Node)
+						if meta == nil || meta.NewName != want {
+							t.Errorf("rename of %q = %+v, want %q", ni.Node.Name(), meta, want)
+						}
+					}
+				})
+			}
+		})
 	}
 }
 
