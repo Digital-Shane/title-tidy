@@ -49,7 +49,7 @@ var (
 		dottedSeasonEpisodeRe,              // Dotted format: 1.04
 		regexp.MustCompile(`(?i)^[eE]\d+`), // Episode at start: E01
 		regexp.MustCompile(`(?i)^Episode[\s._-]*\d+`), // Episode at start
-		separatorEpisodeRe, // Anime style: Title - 17
+		separatorEpisodeRe,                            // Anime style: Title - 17
 	}
 )
 
