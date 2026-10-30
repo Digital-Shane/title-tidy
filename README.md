@@ -387,7 +387,7 @@ Logs are stored in `~/.title-tidy/logs/` as JSON files and are automatically cle
 
 ### Go Install
 
-The recommended way to install Title Tidy is using Go. This provides the best performance and easiest usage.
+The recommended way to install Title Tidy is using Go 1.27 or later. This provides the best performance and easiest usage.
 
 #### Installing Go
 

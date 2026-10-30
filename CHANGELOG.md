@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 * Ordered Go regex filename preprocessing with capture replacements. Rule reordering supported
 * Inline Go regex pattern validation.
+### Updated
+* Go version to 1.27.
 ### Fixed
 * Titles with years in them being mistaken for the year of release.
 * Multi-episode files such as `S01E01E02` now retain the correct season and rename to media server compatible ranges such as `S01E01-E02`.
